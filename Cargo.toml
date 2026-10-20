@@ -4,6 +4,7 @@ members = [
     "crates/sim-cli",
     "crates/sim-core",
     "crates/sim-format",
+    "crates/sim-gpu",
     "crates/sim-kernels",
 ]
 resolver = "3"

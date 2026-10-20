@@ -1,0 +1,30 @@
+[package]
+name = "sim-gpu"
+description = "wgpu host that runs the single-source sim-kernels compute shaders on a GPU."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Mirrors the workspace lints, except that `unsafe_code` is `deny` rather than `forbid`: loading
+# rust-gpu SPIR-V requires exactly one audited `unsafe` passthrough call.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+must_use_candidate = "allow"
+module_name_repetitions = "allow"
+
+[dependencies]
+bytemuck.workspace = true
+pollster = "1.0.1"
+sim-kernels = { path = "../sim-kernels", features = ["bytemuck"] }
+wgpu = "30.0.1"
+
+[dev-dependencies]
+sim-core = { path = "../sim-core" }
