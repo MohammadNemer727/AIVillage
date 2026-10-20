@@ -174,6 +174,9 @@ pub struct PhysiologySnapshot {
 const V2_RETINAL_RANGE_CELLS: i32 = 6;
 const V2_SENSOR_COST: u16 = 1;
 const V2_SENSOR_MAX_VALUE: u16 = 255;
+/// Acoustic emissions are bounded to 255 and lose 32 per cell, so sources beyond this range
+/// contribute exactly zero vibration.
+const V2_VIBRATION_RANGE_CELLS: u16 = 255 / 32;
 
 /// Read-only bounded V2 brain diagnostics for inspectors and experiment fixtures.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -673,6 +676,68 @@ struct AgentSlot {
     alive: bool,
 }
 
+/// Living agents bucketed by grid cell, in stable slot order within each cell.
+///
+/// Stored as compressed sparse rows: `agents[cell_starts[c]..cell_starts[c + 1]]` are the agents
+/// in cell `c`. Lookup is O(1), rebuilding is a counting sort with no per-cell allocation, and
+/// both flat buffers can be uploaded unchanged to a GPU backend.
+#[derive(Clone, Debug, Default)]
+struct SpatialIndex {
+    cell_starts: Vec<usize>,
+    agents: Vec<AgentId>,
+    /// Scratch write cursors reused across rebuilds.
+    cursors: Vec<usize>,
+}
+
+impl SpatialIndex {
+    const fn new() -> Self {
+        Self {
+            cell_starts: Vec::new(),
+            agents: Vec::new(),
+            cursors: Vec::new(),
+        }
+    }
+
+    /// Rebuilds from `(cell, id)` pairs, which must be yielded in ascending slot order.
+    fn rebuild(
+        &mut self,
+        cell_count: usize,
+        entries: impl Iterator<Item = (usize, AgentId)> + Clone,
+    ) {
+        self.cell_starts.clear();
+        self.cell_starts.resize(cell_count + 1, 0);
+        for (cell, _) in entries.clone() {
+            self.cell_starts[cell + 1] += 1;
+        }
+        for cell in 0..cell_count {
+            self.cell_starts[cell + 1] += self.cell_starts[cell];
+        }
+        self.cursors.clear();
+        self.cursors
+            .extend_from_slice(&self.cell_starts[..cell_count]);
+        self.agents.clear();
+        self.agents.resize(
+            self.cell_starts[cell_count],
+            AgentId {
+                slot: 0,
+                generation: 0,
+            },
+        );
+        for (cell, id) in entries {
+            self.agents[self.cursors[cell]] = id;
+            self.cursors[cell] += 1;
+        }
+    }
+
+    /// Returns the agents in one cell, or none before the first rebuild.
+    fn cell(&self, cell: usize) -> &[AgentId] {
+        match (self.cell_starts.get(cell), self.cell_starts.get(cell + 1)) {
+            (Some(&start), Some(&end)) => &self.agents[start..end],
+            _ => &[],
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 #[allow(
     clippy::struct_excessive_bools,
@@ -820,7 +885,7 @@ pub struct World {
     materials: Vec<u16>,
     inventories: Vec<u8>,
     blocks: Vec<u16>,
-    spatial_bins: Vec<Vec<AgentId>>,
+    spatial_index: SpatialIndex,
     signals: Vec<Option<BlankSignal>>,
     previous_signals: Vec<Option<BlankSignal>>,
     signal_intervention: SignalIntervention,
@@ -905,7 +970,7 @@ impl World {
             materials: Vec::new(),
             inventories: Vec::new(),
             blocks: Vec::new(),
-            spatial_bins: Vec::new(),
+            spatial_index: SpatialIndex::new(),
             signals: Vec::new(),
             previous_signals: Vec::new(),
             signal_intervention: SignalIntervention::Baseline,
@@ -964,7 +1029,6 @@ impl World {
     /// Panics only if a platform cannot represent this world's bounded cell count as `u64`.
     pub fn with_settings(seed: WorldSeed, settings: WorldSettings) -> Result<Self, WorldError> {
         let mut world = Self::with_settings_unchecked(seed, settings);
-        world.spatial_bins = vec![Vec::new(); world.cell_count()];
         world.resources = (0..world.cell_count())
             .map(|cell| {
                 let cell = u64::try_from(cell).expect("world cell count fits u64");
@@ -1625,7 +1689,7 @@ impl World {
         if !self.contains(position) {
             return &[];
         }
-        &self.spatial_bins[self.cell_index(position)]
+        self.spatial_index.cell(self.cell_index(position))
     }
 
     /// Returns living V2 agents whose torso centres are within `radius` of `centre`.
@@ -2070,22 +2134,90 @@ impl World {
     }
 
     fn rebuild_spatial_index(&mut self) {
-        if self.spatial_bins.len() != self.cell_count() {
-            self.spatial_bins = vec![Vec::new(); self.cell_count()];
-        }
-        for bin in &mut self.spatial_bins {
-            bin.clear();
-        }
-        for (index, slot) in self.slots.iter().enumerate() {
-            if slot.alive {
-                let slot_id = u32::try_from(index).expect("slot count is constrained by AgentId");
-                let cell = self.cell_index(self.positions[index]);
-                self.spatial_bins[cell].push(AgentId {
-                    slot: slot_id,
-                    generation: slot.generation,
-                });
+        let mut index = core::mem::take(&mut self.spatial_index);
+        index.rebuild(
+            self.cell_count(),
+            self.slots
+                .iter()
+                .enumerate()
+                .filter(|(_, slot)| slot.alive)
+                .map(|(index, slot)| {
+                    debug_assert!(
+                        self.model_version != ModelVersion::V2Physics
+                            || self.positions[index]
+                                == self.grid_cell_of(self.physics_positions[index]),
+                        "indexed V2 neighbour queries require grid cells to match torso centres"
+                    );
+                    let id = AgentId {
+                        slot: u32::try_from(index).expect("slot count is constrained by AgentId"),
+                        generation: slot.generation,
+                    };
+                    (self.cell_index(self.positions[index]), id)
+                }),
+        );
+        self.spatial_index = index;
+    }
+
+    /// Returns the grid cell containing a wrapped fixed-point position.
+    fn grid_cell_of(&self, position: Position) -> GridPosition {
+        let column = Self::wrap_fixed(position.x.raw(), self.settings.width) / FIXED_SCALE;
+        let row = Self::wrap_fixed(position.y.raw(), self.settings.height) / FIXED_SCALE;
+        GridPosition::new(
+            u16::try_from(column).expect("wrapped x fits grid"),
+            u16::try_from(row).expect("wrapped y fits grid"),
+        )
+    }
+
+    /// Visits each distinct cell within torus Chebyshev distance `radius` of `centre` once.
+    ///
+    /// When the neighbourhood spans a whole axis, every row or column is visited exactly once
+    /// rather than wrapping onto itself.
+    fn for_each_cell_near(&self, centre: GridPosition, radius: u16, mut visit: impl FnMut(usize)) {
+        let axis = |centre: u16, dimension: u16| {
+            let full = 2 * u32::from(radius) + 1 >= u32::from(dimension);
+            let (first, count) = if full {
+                (0, dimension)
+            } else {
+                ((centre + dimension - radius) % dimension, 2 * radius + 1)
+            };
+            (0..count).map(move |step| (first + step) % dimension)
+        };
+        for y in axis(centre.y, self.settings.height) {
+            for x in axis(centre.x, self.settings.width) {
+                visit(self.cell_index(GridPosition::new(x, y)));
             }
         }
+    }
+
+    /// Returns whether any living agent other than `except` has its torso centre within
+    /// `radius` (less than one cell) of `centre`. Requires a current spatial index.
+    fn any_other_agent_within(&self, centre: Position, radius: Fixed, except: usize) -> bool {
+        debug_assert!(
+            radius.raw() < FIXED_SCALE,
+            "neighbour search covers one cell"
+        );
+        let radius_squared = i64::from(radius.raw()).pow(2);
+        let mut found = false;
+        self.for_each_cell_near(self.grid_cell_of(centre), 1, |cell| {
+            found = found
+                || self.spatial_index.cell(cell).iter().any(|id| {
+                    let other = id.slot as usize;
+                    other != except && {
+                        let delta_x = Self::wrapped_delta(
+                            centre.x.raw(),
+                            self.physics_positions[other].x.raw(),
+                            self.settings.width,
+                        );
+                        let delta_y = Self::wrapped_delta(
+                            centre.y.raw(),
+                            self.physics_positions[other].y.raw(),
+                            self.settings.height,
+                        );
+                        i64::from(delta_x).pow(2) + i64::from(delta_y).pow(2) <= radius_squared
+                    }
+                });
+        });
+        found
     }
 
     /// V2-only explicit material flow. It intentionally runs after physics and does not alter
@@ -2572,7 +2704,10 @@ impl World {
         let mut count = 0;
         for dy in -1..=1 {
             for dx in -1..=1 {
-                count += self.spatial_bins[self.cell_index(self.offset(position, dx, dy))].len();
+                count += self
+                    .spatial_index
+                    .cell(self.cell_index(self.offset(position, dx, dy)))
+                    .len();
             }
         }
         count
@@ -2984,25 +3119,18 @@ impl World {
             let mut selected_cell = self.positions[index];
             let mut occlusion = 0;
             for step in 1..=V2_RETINAL_RANGE_CELLS {
-                let x = position.x.raw() + dx * step * FIXED_SCALE / 256;
-                let y = position.y.raw() + dy * step * FIXED_SCALE / 256;
-                selected_cell = GridPosition::new(
-                    u16::try_from(Self::wrap_fixed(x, self.settings.width) / FIXED_SCALE)
-                        .expect("wrapped x fits grid"),
-                    u16::try_from(Self::wrap_fixed(y, self.settings.height) / FIXED_SCALE)
-                        .expect("wrapped y fits grid"),
-                );
-                if self
-                    .agents_in_radius(
-                        Position {
-                            x: Fixed::from_raw(Self::wrap_fixed(x, self.settings.width)),
-                            y: Fixed::from_raw(Self::wrap_fixed(y, self.settings.height)),
-                        },
-                        Fixed::from_raw(FIXED_SCALE / 3),
-                    )
-                    .iter()
-                    .any(|id| usize::try_from(id.slot()).expect("slot fits") != index)
-                {
+                let sample = Position {
+                    x: Fixed::from_raw(Self::wrap_fixed(
+                        position.x.raw() + dx * step * FIXED_SCALE / 256,
+                        self.settings.width,
+                    )),
+                    y: Fixed::from_raw(Self::wrap_fixed(
+                        position.y.raw() + dy * step * FIXED_SCALE / 256,
+                        self.settings.height,
+                    )),
+                };
+                selected_cell = self.grid_cell_of(sample);
+                if self.any_other_agent_within(sample, Fixed::from_raw(FIXED_SCALE / 3), index) {
                     occlusion = V2_SENSOR_MAX_VALUE;
                     break;
                 }
@@ -3011,7 +3139,9 @@ impl World {
             let plant = self.plants[cell].min(80);
             // A display is visible only by changing broad reflected colour/luminance at the
             // physical ray endpoint; the receptor has no source identity or display category.
-            let display = self.spatial_bins[cell]
+            let display = self
+                .spatial_index
+                .cell(cell)
                 .iter()
                 .filter_map(|id| {
                     let other = usize::try_from(id.slot()).ok()?;
@@ -3069,14 +3199,11 @@ impl World {
             retinal,
             chemicals,
             vibration,
-            touch: u16::try_from(
-                self.agents_in_radius(position, Fixed::from_raw(FIXED_SCALE * 2 / 3))
-                    .len()
-                    .saturating_sub(1)
-                    .min(1),
-            )
-            .expect("contact count is at most one")
-                * V2_SENSOR_MAX_VALUE,
+            touch: u16::from(self.any_other_agent_within(
+                position,
+                Fixed::from_raw(FIXED_SCALE * 2 / 3),
+                index,
+            )) * V2_SENSOR_MAX_VALUE,
             joint_position: u16::from(orientation.0),
             muscle_tension: ((speed / 8).min(u32::from(V2_SENSOR_MAX_VALUE)))
                 .try_into()
@@ -3137,7 +3264,8 @@ impl World {
     }
 
     fn chemical_emission_at(&self, cell: usize) -> u16 {
-        self.spatial_bins[cell]
+        self.spatial_index
+            .cell(cell)
             .iter()
             .map(|id| self.chemical_emissions[id.slot() as usize] / 4)
             .sum::<u16>()
@@ -3148,16 +3276,19 @@ impl World {
         if !self.transmission_controls.physical_social_signals_enabled {
             return 0;
         }
-        self.slots
-            .iter()
-            .enumerate()
-            .filter(|(index, slot)| slot.alive && *index != receiver)
-            .map(|(index, _)| {
-                let distance = self.grid_distance(self.positions[receiver], self.positions[index]);
-                self.acoustic_emissions[index].saturating_sub(distance.saturating_mul(32))
-            })
-            .sum::<u16>()
-            .min(255)
+        let centre = self.positions[receiver];
+        let mut total = 0_u16;
+        self.for_each_cell_near(centre, V2_VIBRATION_RANGE_CELLS, |cell| {
+            for id in self.spatial_index.cell(cell) {
+                let index = id.slot as usize;
+                if index != receiver {
+                    let distance = self.grid_distance(centre, self.positions[index]);
+                    total +=
+                        self.acoustic_emissions[index].saturating_sub(distance.saturating_mul(32));
+                }
+            }
+        });
+        total.min(255)
     }
 
     fn received_signal(
@@ -3175,18 +3306,23 @@ impl World {
         } else {
             &self.signals
         };
+        let receiver_index = usize::try_from(receiver.slot).expect("slot fits usize");
         let mut sources = Vec::new();
-        for (index, slot) in self.slots.iter().enumerate() {
-            if !slot.alive || index == usize::try_from(receiver.slot).expect("slot fits usize") {
-                continue;
+        self.for_each_cell_near(position, SIGNAL_RANGE, |cell| {
+            for id in self.spatial_index.cell(cell) {
+                let index = id.slot as usize;
+                if index == receiver_index {
+                    continue;
+                }
+                if let Some(signal) = source_signals[index]
+                    && self.grid_distance(position, self.positions[index]) <= SIGNAL_RANGE
+                {
+                    sources.push((index, signal));
+                }
             }
-            let Some(signal) = source_signals[index] else {
-                continue;
-            };
-            if self.grid_distance(position, self.positions[index]) <= SIGNAL_RANGE {
-                sources.push((index, signal));
-            }
-        }
+        });
+        // Sources are attributed in stable slot order regardless of cell traversal order.
+        sources.sort_unstable_by_key(|(index, _)| *index);
         let (_, mut signal) = *sources.first()?;
         match self.signal_intervention {
             SignalIntervention::Shuffle if sources.len() > 1 => {

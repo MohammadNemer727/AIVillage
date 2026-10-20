@@ -387,17 +387,21 @@ fn benchmark_populations(ticks: u32) -> Result<(), String> {
     for (population, side) in [(128, 32), (500, 48), (2_000, 64)] {
         let settings = WorldSettings::new(side, side, population)
             .map_err(|error| format!("invalid population benchmark settings: {error}"))?;
-        let mut world = configured_world(u64::from(population), settings);
-        let started = Instant::now();
-        for _ in 0..ticks {
-            let _ = world.step();
+        let v1 = configured_world(u64::from(population), settings);
+        let v2 = World::with_settings_v2(WorldSeed::new(u64::from(population)), settings)
+            .map_err(|error| format!("create V2 benchmark world: {error}"))?;
+        for (model, mut world) in [("v1", v1), ("v2", v2)] {
+            let started = Instant::now();
+            for _ in 0..ticks {
+                let _ = world.step();
+            }
+            let elapsed = started.elapsed();
+            let ticks_per_second = f64::from(ticks) / elapsed.as_secs_f64();
+            println!(
+                "population: model={model}, requested={population}, living={}, ticks={ticks}, elapsed={elapsed:.3?}, ticks_per_second={ticks_per_second:.1}",
+                world.agent_count()
+            );
         }
-        let elapsed = started.elapsed();
-        let ticks_per_second = f64::from(ticks) / elapsed.as_secs_f64();
-        println!(
-            "population: requested={population}, living={}, ticks={ticks}, elapsed={elapsed:.3?}, ticks_per_second={ticks_per_second:.1}",
-            world.agent_count()
-        );
     }
     Ok(())
 }
