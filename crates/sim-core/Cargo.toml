@@ -12,6 +12,7 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+rayon.workspace = true
 serde.workspace = true
 sim-kernels = { path = "../sim-kernels" }
 

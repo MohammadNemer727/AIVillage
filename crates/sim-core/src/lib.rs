@@ -13,6 +13,7 @@
 use core::fmt;
 use std::error::Error;
 
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sim_kernels::{
     brain::{
@@ -736,6 +737,37 @@ impl SpatialIndex {
             _ => &[],
         }
     }
+}
+
+/// What one living agent perceived this tick, sampled from the immutable pre-tick world.
+enum Perception {
+    /// V1 grid agent: controller inputs plus the local cell facts its action gates need.
+    Grid(GridPerception),
+    /// V2 animal body: a raw receptor frame.
+    Body(BodyPerception),
+}
+
+struct GridPerception {
+    inputs: [i16; INPUTS],
+    food_here: u16,
+    material_here: u16,
+    block_here: u16,
+    nearby_agents: usize,
+    observed_signal: Option<BlankSignal>,
+}
+
+#[derive(Debug, PartialEq)]
+struct BodyPerception {
+    frame: RawSensoryFrame,
+    /// The receptor adaptation state to keep after this sample.
+    chemical_adaptation: [u16; CHEMICAL_RECEPTOR_COUNT],
+}
+
+/// One agent's controller or brain output for this tick.
+struct Thought {
+    outputs: [i16; OUTPUTS],
+    /// Whether a lifetime learning update ran, for the shared counter.
+    learned: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1759,137 +1791,239 @@ impl World {
         clippy::too_many_lines,
         reason = "One ordered controller-to-intent pass preserves deterministic snapshots."
     )]
+    /// Senses, thinks, and emits one intent per living agent.
+    ///
+    /// Every agent senses the same immutable pre-tick world and then updates only its own
+    /// lifetime state, so both phases run in parallel. Shared counters and intents are then
+    /// assembled in stable slot order, which keeps the result independent of thread count.
     fn evaluate_intents(&mut self) -> Vec<Intent> {
+        let perceptions: Vec<Option<Perception>> = (0..self.slots.len())
+            .into_par_iter()
+            .map(|index| self.slots[index].alive.then(|| self.perceive(index)))
+            .collect();
+        let thoughts = self.think(&perceptions);
         let mut intents = Vec::with_capacity(self.agent_count());
-        for index in 0..self.slots.len() {
-            if !self.slots[index].alive {
+        for (index, (perception, thought)) in perceptions.iter().zip(&thoughts).enumerate() {
+            let (Some(perception), Some(thought)) = (perception, thought) else {
                 continue;
+            };
+            if thought.learned {
+                self.learning_updates = self.learning_updates.saturating_add(1);
             }
-            let generation = self.slots[index].generation;
-            let slot_id = u32::try_from(index).expect("slot count is constrained by AgentId");
-            let id = AgentId {
-                slot: slot_id,
-                generation,
-            };
-            let position = self.positions[index];
-            let energy = self.energies[index];
-            let (sensing, food_here, material_here, block_here, nearby_agents) =
-                if self.model_version == ModelVersion::V2Physics {
-                    let frame = self.sample_raw_senses(index);
-                    self.last_raw_senses[index] = frame;
-                    (
-                        sim_kernels::controller::raw_controller_projection(&frame),
-                        0,
-                        0,
-                        0,
-                        0,
-                    )
-                } else {
-                    let food_here = self.resources[self.cell_index(position)];
-                    let material_here = self.materials[self.cell_index(position)];
-                    let block_here = self.blocks[self.cell_index(position)];
-                    let nearby_agents = self.local_agent_count(position);
-                    let received_signal = self.received_signal(id, position);
-                    let sensing = self.local_sensing(
-                        position,
-                        self.energies[index],
-                        nearby_agents,
-                        self.inventories[index],
-                        material_here,
-                        block_here,
-                        received_signal,
-                    );
-                    (sensing, food_here, material_here, block_here, nearby_agents)
-                };
-            let outputs = if self.model_version == ModelVersion::V2Physics {
-                let frame = self.last_raw_senses[index];
-                self.evaluate_predictive_brain(index, &frame)
-            } else {
-                let genome = &self.genomes[index];
-                let outputs = sim_kernels::controller::evaluate_controller(
-                    &genome.weights,
-                    &genome.biases,
-                    &self.plastic_biases[index],
-                    &mut self.recurrent_states[index],
-                    &sensing,
-                );
-                self.apply_lifetime_plasticity(index, &outputs);
-                outputs
-            };
-            let movement = outputs[..4]
-                .iter()
-                .enumerate()
-                .max_by_key(|(output, value)| (**value, std::cmp::Reverse(*output)))
-                .map_or(0, |(output, _)| output);
-            let (dx, dy) = match movement {
-                1 => (1, 0),
-                2 => (-1, 0),
-                3 => (0, 1),
-                _ => (0, -1),
-            };
-            let thrust = (outputs[1] - outputs[2]).clamp(-256, 256);
-            let turn = (outputs[3] - outputs[0]).clamp(-256, 256);
-            let legacy_actions = self.model_version == ModelVersion::V1Grid;
-            intents.push(Intent {
-                id,
-                dx,
-                dy,
-                thrust,
-                turn,
-                jaw: outputs[4].clamp(0, 256),
-                eat: legacy_actions && food_here > 0 && energy < MAX_ENERGY,
-                eat_at: position,
-                // The ecological gates prevent a global fitness rule; the inherited controller
-                // decides only whether an eligible agent attempts reproduction.
-                reproduce: legacy_actions
-                    && energy >= BIRTH_THRESHOLD
-                    && nearby_agents >= 2
-                    && outputs[7] > 0,
-                harvest_material: legacy_actions
-                    && material_here > 0
-                    && self.inventories[index] < MAX_CARRIED_MATERIAL
-                    && outputs[4] > 0,
-                place_block: legacy_actions
-                    && self.inventories[index] > 0
-                    && block_here == 0
-                    && outputs[5] > 0,
-                remove_block: legacy_actions && block_here > 0 && outputs[6] > 0,
-                signal: legacy_actions
-                    .then(|| {
-                        outputs[8..]
-                            .iter()
-                            .enumerate()
-                            .max_by_key(|(symbol, value)| (**value, std::cmp::Reverse(*symbol)))
-                            .and_then(|(symbol, value)| {
-                                (*value > 0).then(|| {
-                                    BlankSignal::new(
-                                        u8::try_from(symbol).expect("symbol index fits u8"),
-                                    )
-                                    .expect("symbol index is bounded by the blank alphabet")
-                                })
-                            })
-                    })
-                    .flatten(),
-                // V2 motor neurons drive ordinary sound-producing motion, gland output, and
-                // body display intensity. No ordinal, receiver, sender ID, or symbol is used.
-                acoustic: if legacy_actions {
-                    0
-                } else {
-                    outputs[5].max(0).cast_unsigned()
-                },
-                chemical: if legacy_actions {
-                    0
-                } else {
-                    outputs[6].max(0).cast_unsigned()
-                },
-                visual: if legacy_actions {
-                    0
-                } else {
-                    outputs[7].max(0).cast_unsigned()
-                },
-            });
+            if let Perception::Grid(GridPerception {
+                observed_signal: Some(signal),
+                ..
+            }) = perception
+            {
+                self.signal_observations = self.signal_observations.saturating_add(1);
+                let symbol = usize::from(signal.get());
+                self.symbol_observations[symbol] =
+                    self.symbol_observations[symbol].saturating_add(1);
+            }
+            intents.push(self.intent_for(index, perception, &thought.outputs));
         }
         intents
+    }
+
+    /// Samples one living agent's receptors without mutating the world.
+    fn perceive(&self, index: usize) -> Perception {
+        if self.model_version == ModelVersion::V2Physics {
+            return Perception::Body(self.sample_raw_senses(index));
+        }
+        let position = self.positions[index];
+        let cell = self.cell_index(position);
+        let id = AgentId {
+            slot: u32::try_from(index).expect("slot count is constrained by AgentId"),
+            generation: self.slots[index].generation,
+        };
+        let material_here = self.materials[cell];
+        let block_here = self.blocks[cell];
+        let nearby_agents = self.local_agent_count(position);
+        let observed_signal = self.received_signal(id, position);
+        Perception::Grid(GridPerception {
+            inputs: self.local_sensing(
+                position,
+                self.energies[index],
+                nearby_agents,
+                self.inventories[index],
+                material_here,
+                block_here,
+                observed_signal,
+            ),
+            food_here: self.resources[cell],
+            material_here,
+            block_here,
+            nearby_agents,
+            observed_signal,
+        })
+    }
+
+    /// Runs each agent's controller or brain on its own perception, in parallel. Only that
+    /// agent's lifetime state is written.
+    fn think(&mut self, perceptions: &[Option<Perception>]) -> Vec<Option<Thought>> {
+        let ablations = self.brain_ablations;
+        let controls = self.transmission_controls;
+        debug_assert!(
+            [
+                self.genomes.len(),
+                self.developmental_genomes.len(),
+                self.recurrent_states.len(),
+                self.plastic_biases.len(),
+                self.predictive_brains.len(),
+                self.last_raw_senses.len(),
+                self.chemical_adaptation.len(),
+            ]
+            .iter()
+            .all(|length| *length == perceptions.len()),
+            "per-agent buffers must cover every slot"
+        );
+        (
+            perceptions.par_iter(),
+            self.genomes.par_iter(),
+            self.developmental_genomes.par_iter(),
+            self.recurrent_states.par_iter_mut(),
+            self.plastic_biases.par_iter_mut(),
+            self.predictive_brains.par_iter_mut(),
+            self.last_raw_senses.par_iter_mut(),
+            self.chemical_adaptation.par_iter_mut(),
+        )
+            .into_par_iter()
+            .map(
+                |(
+                    perception,
+                    genome,
+                    development,
+                    recurrent,
+                    plastic,
+                    brain,
+                    last_frame,
+                    adaptation,
+                )| match perception.as_ref()? {
+                    Perception::Grid(grid) => {
+                        let outputs = sim_kernels::controller::evaluate_controller(
+                            &genome.weights,
+                            &genome.biases,
+                            plastic,
+                            recurrent,
+                            &grid.inputs,
+                        );
+                        if controls.plasticity_enabled {
+                            sim_kernels::controller::apply_lifetime_plasticity(plastic, &outputs);
+                        }
+                        Some(Thought {
+                            outputs,
+                            learned: controls.plasticity_enabled,
+                        })
+                    }
+                    Perception::Body(body) => {
+                        *last_frame = body.frame;
+                        *adaptation = body.chemical_adaptation;
+                        let step = brain
+                            .step(&brain_config(development, ablations, controls), &body.frame);
+                        Some(Thought {
+                            outputs: step.outputs,
+                            learned: step.learned,
+                        })
+                    }
+                },
+            )
+            .collect()
+    }
+
+    /// Translates controller outputs into one agent's simultaneous intent.
+    fn intent_for(
+        &self,
+        index: usize,
+        perception: &Perception,
+        outputs: &[i16; OUTPUTS],
+    ) -> Intent {
+        let id = AgentId {
+            slot: u32::try_from(index).expect("slot count is constrained by AgentId"),
+            generation: self.slots[index].generation,
+        };
+        let position = self.positions[index];
+        let energy = self.energies[index];
+        let (food_here, material_here, block_here, nearby_agents) = match perception {
+            Perception::Grid(grid) => (
+                grid.food_here,
+                grid.material_here,
+                grid.block_here,
+                grid.nearby_agents,
+            ),
+            Perception::Body(_) => (0, 0, 0, 0),
+        };
+        let movement = outputs[..4]
+            .iter()
+            .enumerate()
+            .max_by_key(|(output, value)| (**value, std::cmp::Reverse(*output)))
+            .map_or(0, |(output, _)| output);
+        let (dx, dy) = match movement {
+            1 => (1, 0),
+            2 => (-1, 0),
+            3 => (0, 1),
+            _ => (0, -1),
+        };
+        let thrust = (outputs[1] - outputs[2]).clamp(-256, 256);
+        let turn = (outputs[3] - outputs[0]).clamp(-256, 256);
+        let legacy_actions = self.model_version == ModelVersion::V1Grid;
+        Intent {
+            id,
+            dx,
+            dy,
+            thrust,
+            turn,
+            jaw: outputs[4].clamp(0, 256),
+            eat: legacy_actions && food_here > 0 && energy < MAX_ENERGY,
+            eat_at: position,
+            // The ecological gates prevent a global fitness rule; the inherited controller
+            // decides only whether an eligible agent attempts reproduction.
+            reproduce: legacy_actions
+                && energy >= BIRTH_THRESHOLD
+                && nearby_agents >= 2
+                && outputs[7] > 0,
+            harvest_material: legacy_actions
+                && material_here > 0
+                && self.inventories[index] < MAX_CARRIED_MATERIAL
+                && outputs[4] > 0,
+            place_block: legacy_actions
+                && self.inventories[index] > 0
+                && block_here == 0
+                && outputs[5] > 0,
+            remove_block: legacy_actions && block_here > 0 && outputs[6] > 0,
+            signal: legacy_actions
+                .then(|| {
+                    outputs[8..]
+                        .iter()
+                        .enumerate()
+                        .max_by_key(|(symbol, value)| (**value, std::cmp::Reverse(*symbol)))
+                        .and_then(|(symbol, value)| {
+                            (*value > 0).then(|| {
+                                BlankSignal::new(
+                                    u8::try_from(symbol).expect("symbol index fits u8"),
+                                )
+                                .expect("symbol index is bounded by the blank alphabet")
+                            })
+                        })
+                })
+                .flatten(),
+            // V2 motor neurons drive ordinary sound-producing motion, gland output, and
+            // body display intensity. No ordinal, receiver, sender ID, or symbol is used.
+            acoustic: if legacy_actions {
+                0
+            } else {
+                outputs[5].max(0).cast_unsigned()
+            },
+            chemical: if legacy_actions {
+                0
+            } else {
+                outputs[6].max(0).cast_unsigned()
+            },
+            visual: if legacy_actions {
+                0
+            } else {
+                outputs[7].max(0).cast_unsigned()
+            },
+        }
     }
 
     fn resolve_intents(&mut self, intents: &[Intent]) {
@@ -3108,7 +3242,7 @@ impl World {
     /// Samples V2 physical receptors only. Sensor geometry is deliberately fixed and bounded:
     /// 16 rays reach at most six cells; four chemical lobes overlap a 3x3 neighbourhood.
     #[allow(clippy::too_many_lines)]
-    fn sample_raw_senses(&mut self, index: usize) -> RawSensoryFrame {
+    fn sample_raw_senses(&self, index: usize) -> BodyPerception {
         let position = self.physics_positions[index];
         let orientation = self.orientations[index];
         let mut retinal = [RetinalSample::default(); RETINAL_RAY_COUNT];
@@ -3163,6 +3297,7 @@ impl World {
             sample.occlusion = occlusion;
         }
         let mut chemicals = [0; CHEMICAL_RECEPTOR_COUNT];
+        let mut chemical_adaptation = self.chemical_adaptation[index];
         for (receptor, chemical) in chemicals.iter_mut().enumerate() {
             let mut concentration = 0_u16;
             for dy in -1..=1 {
@@ -3180,11 +3315,11 @@ impl World {
                     concentration = concentration.saturating_add(source / 3);
                 }
             }
-            let adaptation = self.chemical_adaptation[index][receptor];
+            let adaptation = chemical_adaptation[receptor];
             *chemical = concentration
                 .saturating_sub(adaptation / 2)
                 .min(V2_SENSOR_MAX_VALUE);
-            self.chemical_adaptation[index][receptor] = (adaptation.saturating_mul(3) / 4)
+            chemical_adaptation[receptor] = (adaptation.saturating_mul(3) / 4)
                 .saturating_add(concentration / 4)
                 .min(V2_SENSOR_MAX_VALUE);
         }
@@ -3195,7 +3330,7 @@ impl World {
         let interoception = |value, tag| {
             noisy_receptor(value, self.seed.get(), self.tick.get(), receptor_cell, tag)
         };
-        RawSensoryFrame {
+        let frame = RawSensoryFrame {
             retinal,
             chemicals,
             vibration,
@@ -3223,6 +3358,10 @@ impl World {
             hydration: interoception(self.hydrations[index], 0x4859_4452),
             fatigue: interoception(self.fatigues[index], 0x4641_5447),
             damage: interoception(self.v2_pain(index), 0x4441_4D47),
+        };
+        BodyPerception {
+            frame,
+            chemical_adaptation,
         }
     }
 
@@ -3291,11 +3430,7 @@ impl World {
         total.min(255)
     }
 
-    fn received_signal(
-        &mut self,
-        receiver: AgentId,
-        position: GridPosition,
-    ) -> Option<BlankSignal> {
+    fn received_signal(&self, receiver: AgentId, position: GridPosition) -> Option<BlankSignal> {
         if !self.transmission_controls.signals_enabled
             || self.signal_intervention == SignalIntervention::Mute
         {
@@ -3353,9 +3488,6 @@ impl World {
             }
             _ => {}
         }
-        self.signal_observations = self.signal_observations.saturating_add(1);
-        self.symbol_observations[usize::from(signal.get())] =
-            self.symbol_observations[usize::from(signal.get())].saturating_add(1);
         Some(signal)
     }
 
@@ -3460,39 +3592,39 @@ impl World {
         }
     }
 
-    /// Runs the V2 predictive-brain kernel with this agent's developmental parameters and the
-    /// current experiment switches.
+    /// Runs one agent's brain outside the tick pipeline, for controlled-receptor fixtures.
+    #[cfg(test)]
     fn evaluate_predictive_brain(
         &mut self,
         index: usize,
         frame: &RawSensoryFrame,
     ) -> [i16; OUTPUTS] {
-        let development = &self.developmental_genomes[index];
-        let config = BrainConfig {
-            connection_stride: 1 + usize::from(development.locus(6) % 15),
-            plasticity_scale: 1 + i32::from(development.locus(13) / 16),
-            plasticity_enabled: self.brain_ablations.plasticity_enabled
-                && self.transmission_controls.plasticity_enabled,
-            episodic_memory_enabled: self.brain_ablations.episodic_memory_enabled,
-            action_contingency_enabled: self.brain_ablations.action_contingency_enabled,
-            prediction_enabled: self.brain_ablations.prediction_enabled,
-        };
+        let config = brain_config(
+            &self.developmental_genomes[index],
+            self.brain_ablations,
+            self.transmission_controls,
+        );
         let step = self.predictive_brains[index].step(&config, frame);
         if step.learned {
             self.learning_updates = self.learning_updates.saturating_add(1);
         }
         step.outputs
     }
+}
 
-    fn apply_lifetime_plasticity(&mut self, index: usize, outputs: &[i16; OUTPUTS]) {
-        if !self.transmission_controls.plasticity_enabled {
-            return;
-        }
-        sim_kernels::controller::apply_lifetime_plasticity(
-            &mut self.plastic_biases[index],
-            outputs,
-        );
-        self.learning_updates = self.learning_updates.saturating_add(1);
+/// Derives one agent's brain parameters from its developmental loci and the experiment switches.
+fn brain_config(
+    development: &DevelopmentalGenome,
+    ablations: BrainAblations,
+    controls: CulturalTransmissionControls,
+) -> BrainConfig {
+    BrainConfig {
+        connection_stride: 1 + usize::from(development.locus(6) % 15),
+        plasticity_scale: 1 + i32::from(development.locus(13) / 16),
+        plasticity_enabled: ablations.plasticity_enabled && controls.plasticity_enabled,
+        episodic_memory_enabled: ablations.episodic_memory_enabled,
+        action_contingency_enabled: ablations.action_contingency_enabled,
+        prediction_enabled: ablations.prediction_enabled,
     }
 }
 
