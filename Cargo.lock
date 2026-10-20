@@ -4147,6 +4147,7 @@ dependencies = [
  "serde",
  "sim-core",
  "sim-format",
+ "sim-gpu",
  "toml 0.9.12+spec-1.1.0",
 ]
 

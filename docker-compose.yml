@@ -1,12 +1,35 @@
-# CPU-only headless environment. Checkpoints and reports go to ./out on the host.
+# Headless environments. Checkpoints and reports go to ./out on the host.
+#
+# CPU (default):
 #   docker compose run --rm sim golden
 #   docker compose run --rm sim save /out/village-v1.toml 500
 #
-# A GPU service belongs here only once sim-core has a GPU kernel to run; it would reuse
-# this image with `gpus: all` under a `gpu` profile.
+# GPU (Linux host with an NVIDIA driver and the NVIDIA Container Toolkit):
+#   docker compose --profile gpu run --rm sim-gpu            # gpu-verify, 500 ticks
+#   docker compose --profile gpu run --rm sim-gpu gpu-verify 2000
 services:
   sim:
-    build: .
+    build:
+      context: .
+      target: runtime
     image: ai-village-sim:cpu
     volumes:
       - ./out:/out
+
+  sim-gpu:
+    profiles: ["gpu"]
+    build:
+      context: .
+      target: runtime-gpu
+      args:
+        CARGO_FEATURES: gpu
+    image: ai-village-sim:gpu
+    volumes:
+      - ./out:/out
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

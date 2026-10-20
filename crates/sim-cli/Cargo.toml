@@ -15,4 +15,9 @@ workspace = true
 serde = { workspace = true }
 sim-core = { path = "../sim-core" }
 sim-format = { path = "../sim-format" }
+sim-gpu = { path = "../sim-gpu", optional = true }
 toml = { workspace = true }
+
+[features]
+# Adds the `gpu-verify` command, which runs V2 brains on a Vulkan GPU via sim-gpu.
+gpu = ["dep:sim-gpu"]

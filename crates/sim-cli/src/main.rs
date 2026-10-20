@@ -42,6 +42,7 @@ fn run() -> Result<(), String> {
         "experiment-report" => replicated_experiment_report(&arguments)?,
         "save" => save_checkpoint(&arguments)?,
         "resume" => resume_checkpoint(&arguments)?,
+        "gpu-verify" => gpu_verify(&arguments)?,
         "--help" | "-h" | "help" => print_usage(),
         _ => return Err(format!("unknown verification command: {command}")),
     }
@@ -50,7 +51,7 @@ fn run() -> Result<(), String> {
 
 fn print_usage() {
     println!(
-        "usage: sim-cli [all|determinism|population|soak|golden|golden-print|development|unknown-hazards|social-learning|cultural-evolution|experiment-report|save|resume]\n\
+        "usage: sim-cli [all|determinism|population|soak|golden|golden-print|development|unknown-hazards|social-learning|cultural-evolution|experiment-report|save|resume|gpu-verify]\n\
          \n\
          V1 freeze ({V1_FREEZE_LABEL}): config schema {CONFIG_SCHEMA_VERSION}, \
          snapshot schema {SNAPSHOT_SCHEMA_VERSION}, state-hash version {STATE_HASH_VERSION}\n\
@@ -62,7 +63,9 @@ fn print_usage() {
          cultural-evolution  run replacement-cohort tradition and cumulative-practice controls\n\
          experiment-report [path]  write deterministic replicated V2 metrics as TOML (stdout if omitted)\n\
          save <path> [ticks]    write a versioned deterministic checkpoint\n\
-         resume <path> [ticks]  load a checkpoint and advance it"
+         resume <path> [ticks]  load a checkpoint and advance it\n\
+         gpu-verify [ticks]     run V2 brains on CPU and GPU in lockstep and compare hashes\n\
+         \x20                      (requires the `gpu` feature and a Vulkan GPU)"
     );
 }
 
@@ -432,6 +435,63 @@ fn checkpoint_arguments(arguments: &[String]) -> Result<(&str, u32), String> {
         value.parse::<u32>().map_err(|error| error.to_string())
     })?;
     Ok((path, ticks))
+}
+
+/// Steps one V2 world on the CPU and an identical world with GPU brains in lockstep, failing on
+/// the first tick whose state hashes differ.
+#[cfg(feature = "gpu")]
+fn gpu_verify(arguments: &[String]) -> Result<(), String> {
+    use std::time::Duration;
+
+    let ticks = arguments.get(1).map_or(Ok(500), |value| {
+        value
+            .parse::<u32>()
+            .map_err(|error| format!("invalid tick count {value}: {error}"))
+    })?;
+    let settings = WorldSettings::new(64, 64, 2_000)
+        .map_err(|error| format!("invalid gpu-verify settings: {error}"))?;
+    let mut stepper = sim_gpu::GpuBrainStepper::new().map_err(|error| error.to_string())?;
+    println!("gpu-verify: adapter={}", stepper.adapter_name());
+    let create = || {
+        World::with_settings_v2(WorldSeed::new(2_000), settings)
+            .map_err(|error| format!("create gpu-verify world: {error}"))
+    };
+    let (mut cpu, mut gpu) = (create()?, create()?);
+    let (mut cpu_time, mut gpu_time) = (Duration::ZERO, Duration::ZERO);
+    let mut final_hash = 0;
+    for tick in 1..=ticks {
+        let started = Instant::now();
+        let expected = cpu.step().state_hash();
+        cpu_time += started.elapsed();
+        let started = Instant::now();
+        let actual = gpu
+            .step_with_brains(&mut stepper)
+            .map_err(|error| format!("gpu-verify tick {tick}: {error}"))?
+            .state_hash();
+        gpu_time += started.elapsed();
+        if actual != expected {
+            return Err(format!(
+                "gpu-verify: diverged at tick {tick}: cpu={expected:016x} gpu={actual:016x}"
+            ));
+        }
+        final_hash = actual;
+    }
+    println!(
+        "gpu-verify: ticks={ticks}, living={}, final_hash={final_hash:016x}, identical=true, \
+         cpu_ticks_per_second={:.1}, gpu_brain_ticks_per_second={:.1}",
+        gpu.agent_count(),
+        f64::from(ticks) / cpu_time.as_secs_f64(),
+        f64::from(ticks) / gpu_time.as_secs_f64(),
+    );
+    Ok(())
+}
+
+#[cfg(not(feature = "gpu"))]
+fn gpu_verify(_: &[String]) -> Result<(), String> {
+    Err(
+        "gpu-verify needs a GPU build: cargo run -p sim-cli --features gpu -- gpu-verify"
+            .to_owned(),
+    )
 }
 
 fn save_checkpoint(arguments: &[String]) -> Result<(), String> {

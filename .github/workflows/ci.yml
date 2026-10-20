@@ -23,6 +23,8 @@ jobs:
           components: clippy,rustfmt
       - name: Format
         run: cargo fmt --all -- --check
+      - name: Committed GPU shader matches kernel sources
+        run: sh crates/sim-shaders/build-shaders.sh --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Test
