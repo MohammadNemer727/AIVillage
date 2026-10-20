@@ -1,0 +1,14 @@
+[package]
+name = "sim-kernels"
+description = "Single-source, allocation-free per-agent compute kernels shared by CPU and future GPU backends."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

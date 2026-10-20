@@ -14,10 +14,22 @@ use core::fmt;
 use std::error::Error;
 
 use serde::{Deserialize, Serialize};
+use sim_kernels::{
+    brain::{
+        BrainConfig, CONTINGENCY_ACTIONS, CONTINGENCY_FEATURES, EPISODE_CAPACITY, PredictiveBrain,
+    },
+    controller::{GENOME_WEIGHTS, HIDDEN, INPUTS, OUTPUTS, SIGNAL_CHANNELS},
+    derive, heading, integer_sqrt,
+    senses::noisy_receptor,
+};
 
 mod checkpoint;
 
 pub use checkpoint::{CheckpointError, WorldCheckpoint};
+pub use sim_kernels::{
+    brain::{EpisodicTrace, NEURONS as V2_BRAIN_NEURONS},
+    senses::{CHEMICAL_RECEPTOR_COUNT, RETINAL_RAY_COUNT, RawSensoryFrame, RetinalSample},
+};
 
 /// Time-domain exports for callers that prefer subsystem imports.
 pub mod time {
@@ -159,89 +171,9 @@ pub struct PhysiologySnapshot {
     pub pain: u16,
 }
 
-/// Number of fixed retinal samples exposed by the V2 raw sensory interface.
-pub const RETINAL_RAY_COUNT: usize = 16;
-/// Number of overlapping, adapting V2 chemical receptors.
-pub const CHEMICAL_RECEPTOR_COUNT: usize = 4;
-/// Baseline V2 brain size. The controller deliberately stays below the first-cycle 128-neuron
-/// ceiling so it remains feasible on the target laptop.
-pub const V2_BRAIN_NEURONS: usize = 64;
-const V2_BRAIN_RECEPTORS: usize = 16;
-const V2_BRAIN_INTERNEURONS: usize = 32;
-const V2_BRAIN_MOTORS: usize = 8;
-const V2_BRAIN_MODULATORS: usize = 8;
-const V2_EPISODE_CAPACITY: usize = 8;
-const V2_CONTINGENCY_ACTIONS: usize = 4;
-const V2_CONTINGENCY_FEATURES: usize = 4;
 const V2_RETINAL_RANGE_CELLS: i32 = 6;
 const V2_SENSOR_COST: u16 = 1;
 const V2_SENSOR_MAX_VALUE: u16 = 255;
-
-/// One broad-band sample from a retinal ray.
-///
-/// These are receptor amplitudes, not world facts: no identity, entity class, position,
-/// distance, edibility, or material label is present.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct RetinalSample {
-    /// Broad red-sensitive intensity.
-    pub red: u16,
-    /// Broad green-sensitive intensity.
-    pub green: u16,
-    /// Broad blue-sensitive intensity.
-    pub blue: u16,
-    /// Ambient/local luminance.
-    pub brightness: u16,
-    /// Signed apparent image motion, bounded to receptor range.
-    pub motion: i16,
-    /// Light blocked before the range limit, zero when unobstructed.
-    pub occlusion: u16,
-}
-
-/// Raw V2 receptor frame. It intentionally contains only bounded receptor amplitudes.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct RawSensoryFrame {
-    /// Fixed-geometry broad-band retinal amplitudes.
-    pub retinal: [RetinalSample; RETINAL_RAY_COUNT],
-    /// Overlapping, adapting local chemical concentrations.
-    pub chemicals: [u16; CHEMICAL_RECEPTOR_COUNT],
-    /// Local vibration amplitude from physical acoustic emissions, with range and masking.
-    pub vibration: u16,
-    /// Contact amplitude from zero to the receptor bound.
-    pub touch: u16,
-    /// Joint-angle proprioceptive amplitude.
-    pub joint_position: u16,
-    /// Muscle-tension proprioceptive amplitude.
-    pub muscle_tension: u16,
-    /// Signed body acceleration amplitude.
-    pub acceleration: i16,
-    /// Body orientation encoded as a bounded angular amplitude.
-    pub orientation: u16,
-    /// Noisy metabolic-energy interoceptive amplitude.
-    pub energy: u16,
-    /// Noisy gut-pressure interoceptive amplitude.
-    pub gut_pressure: u16,
-    /// Noisy toxin-stress interoceptive amplitude.
-    pub toxin_stress: u16,
-    /// Noisy hydration interoceptive amplitude.
-    pub hydration: u16,
-    /// Noisy fatigue interoceptive amplitude.
-    pub fatigue: u16,
-    /// Noisy damage interoceptive amplitude.
-    pub damage: u16,
-}
-
-/// A deliberately compact, non-inherited V2 episodic trace.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct EpisodicTrace {
-    /// Compressed receptor/interoceptive context.
-    pub context: [i16; 4],
-    /// The motor action bin active when the episode was recorded.
-    pub action: u8,
-    /// Subsequent compressed sensory/physiological change.
-    pub subsequent_change: [i16; 4],
-    /// Remaining deterministic retention ticks.
-    pub retention: u16,
-}
 
 /// Read-only bounded V2 brain diagnostics for inspectors and experiment fixtures.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -253,9 +185,9 @@ pub struct BrainSnapshot {
     /// Local next-sensation predictions, compressed to four channels.
     pub prediction: [i16; 4],
     /// Capacity-limited, decaying lifetime episodes.
-    pub episodes: [EpisodicTrace; V2_EPISODE_CAPACITY],
+    pub episodes: [EpisodicTrace; EPISODE_CAPACITY],
     /// Action-conditioned (rows) contingency estimates (columns).
-    pub contingencies: [[i16; V2_CONTINGENCY_FEATURES]; V2_CONTINGENCY_ACTIONS],
+    pub contingencies: [[i16; CONTINGENCY_FEATURES]; CONTINGENCY_ACTIONS],
 }
 
 /// Slow deterministic environmental layers for one V2 snapshot.
@@ -769,13 +701,10 @@ struct Intent {
     visual: u16,
 }
 
-const BLANK_SIGNAL_COUNT: usize = 7;
+const BLANK_SIGNAL_COUNT: usize = SIGNAL_CHANNELS;
+const _: () = assert!(BLANK_SIGNAL_COUNT == BlankSignal::COUNT as usize);
 const SIGNAL_RANGE: u16 = 2;
 const SIGNAL_COST: u16 = 1;
-const INPUTS: usize = 8 + BLANK_SIGNAL_COUNT;
-const HIDDEN: usize = 8;
-const OUTPUTS: usize = 8 + BLANK_SIGNAL_COUNT;
-const GENOME_WEIGHTS: usize = INPUTS * HIDDEN + HIDDEN * HIDDEN + HIDDEN * OUTPUTS;
 const MUTATION_RATE_MIN_PPM: u16 = 500;
 const MUTATION_RATE_MAX_PPM: u16 = 50_000;
 
@@ -859,40 +788,11 @@ const V2_PLANT_CAPACITY: u16 = 160;
 // toxin units against one unit of clearance, making the founder swallowing reflex
 // physiologically impossible to sustain.
 const V2_TOXIN_DOSE_PER_MOUTHFUL: u16 = 2;
-const V2_TOXIN_WITHDRAWAL_THRESHOLD: u16 = 12;
 const V2_TOXIN_INJURY_THRESHOLD: u16 = 20;
 const V2_INFECTION_INJURY_THRESHOLD: u16 = 18;
 const V2_MOUTHFUL: u16 = 8;
 const V2_ECOLOGY_TURNOVER: u16 = 6;
 const V2_OFFSPRING_INVESTMENT: u16 = 60;
-
-/// Mutable V2 lifetime state. It is reset at birth and intentionally has no genome field.
-#[derive(Clone, Debug)]
-struct PredictiveBrain {
-    activity: [i16; V2_BRAIN_NEURONS],
-    eligibility: [i16; V2_BRAIN_NEURONS],
-    learned_bias: [i16; V2_BRAIN_NEURONS],
-    prediction: [i16; 4],
-    previous_context: [i16; 4],
-    episodes: [EpisodicTrace; V2_EPISODE_CAPACITY],
-    next_episode: usize,
-    contingencies: [[i16; V2_CONTINGENCY_FEATURES]; V2_CONTINGENCY_ACTIONS],
-}
-
-impl Default for PredictiveBrain {
-    fn default() -> Self {
-        Self {
-            activity: [0; V2_BRAIN_NEURONS],
-            eligibility: [0; V2_BRAIN_NEURONS],
-            learned_bias: [0; V2_BRAIN_NEURONS],
-            prediction: [0; 4],
-            previous_context: [0; 4],
-            episodes: [EpisodicTrace::default(); V2_EPISODE_CAPACITY],
-            next_episode: 0,
-            contingencies: [[0; V2_CONTINGENCY_FEATURES]; V2_CONTINGENCY_ACTIONS],
-        }
-    }
-}
 
 /// Authoritative deterministic simulation state.
 #[derive(Debug)]
@@ -1133,25 +1033,7 @@ impl World {
         world.secondary_toxins = vec![0; world.slots.len()];
         world.tissues = vec![[V2_TISSUE_FULL; 3]; world.slots.len()];
         world.chemical_adaptation = vec![[0; CHEMICAL_RECEPTOR_COUNT]; world.slots.len()];
-        world.last_raw_senses = vec![
-            RawSensoryFrame {
-                retinal: [RetinalSample::default(); RETINAL_RAY_COUNT],
-                chemicals: [0; CHEMICAL_RECEPTOR_COUNT],
-                vibration: 0,
-                touch: 0,
-                joint_position: 0,
-                muscle_tension: 0,
-                acceleration: 0,
-                orientation: 0,
-                energy: 0,
-                gut_pressure: 0,
-                toxin_stress: 0,
-                hydration: 0,
-                fatigue: 0,
-                damage: 0,
-            };
-            world.slots.len()
-        ];
+        world.last_raw_senses = vec![RawSensoryFrame::EMPTY; world.slots.len()];
         world.initial_v2_matter = world.v2_matter_total();
         for index in 0..world.positions.len() {
             world.physics_positions[index] = Position {
@@ -1427,7 +1309,7 @@ impl World {
             self.acoustic_emissions.push(0);
             self.chemical_emissions.push(0);
             self.visual_displays.push(0);
-            self.last_raw_senses.push(empty_raw_senses());
+            self.last_raw_senses.push(RawSensoryFrame::EMPTY);
             self.predictive_brains.push(PredictiveBrain::default());
             self.developmental_genomes
                 .push(self.seeded_developmental_genome(u64::from(slot)));
@@ -1468,7 +1350,7 @@ impl World {
         self.acoustic_emissions[index] = 0;
         self.chemical_emissions[index] = 0;
         self.visual_displays[index] = 0;
-        self.last_raw_senses[index] = empty_raw_senses();
+        self.last_raw_senses[index] = RawSensoryFrame::EMPTY;
         self.predictive_brains[index] = PredictiveBrain::default();
         if self.developmental_genomes.len() > index {
             self.developmental_genomes[index] = self.seeded_developmental_genome(u64::from(slot));
@@ -1831,7 +1713,13 @@ impl World {
                 if self.model_version == ModelVersion::V2Physics {
                     let frame = self.sample_raw_senses(index);
                     self.last_raw_senses[index] = frame;
-                    (raw_controller_projection(&frame), 0, 0, 0, 0)
+                    (
+                        sim_kernels::controller::raw_controller_projection(&frame),
+                        0,
+                        0,
+                        0,
+                        0,
+                    )
                 } else {
                     let food_here = self.resources[self.cell_index(position)];
                     let material_here = self.materials[self.cell_index(position)];
@@ -1853,11 +1741,13 @@ impl World {
                 let frame = self.last_raw_senses[index];
                 self.evaluate_predictive_brain(index, &frame)
             } else {
-                let outputs = evaluate_controller(
-                    &self.genomes[index],
+                let genome = &self.genomes[index];
+                let outputs = sim_kernels::controller::evaluate_controller(
+                    &genome.weights,
+                    &genome.biases,
                     &self.plastic_biases[index],
                     &mut self.recurrent_states[index],
-                    sensing,
+                    &sensing,
                 );
                 self.apply_lifetime_plasticity(index, &outputs);
                 outputs
@@ -1963,7 +1853,7 @@ impl World {
             self.orientations[index].0 = self.orientations[index].0.wrapping_add_signed(
                 i8::try_from(turn.clamp(-8, 8)).expect("clamped turn fits i8"),
             );
-            let (forward_x, forward_y) = heading(self.orientations[index]);
+            let (forward_x, forward_y) = heading(self.orientations[index].turns());
             let thrust = i32::from(intent.thrust) * THRUST_SCALE / 256;
             let terrain_traction = if self.blocks[self.cell_index(self.positions[index])] > 0 {
                 3
@@ -3090,7 +2980,7 @@ impl World {
         for (ray, sample) in retinal.iter_mut().enumerate() {
             let ray = u8::try_from(ray).expect("ray count fits u8");
             let angle = Angle(orientation.0.wrapping_add(ray.wrapping_mul(16)));
-            let (dx, dy) = heading(angle);
+            let (dx, dy) = heading(angle.turns());
             let mut selected_cell = self.positions[index];
             let mut occlusion = 0;
             for step in 1..=V2_RETINAL_RANGE_CELLS {
@@ -3171,6 +3061,10 @@ impl World {
         let speed = self.velocities[index].x.raw().unsigned_abs()
             + self.velocities[index].y.raw().unsigned_abs();
         let vibration = self.vibration_at(index);
+        let receptor_cell = self.cell_index(self.positions[index]) as u64;
+        let interoception = |value, tag| {
+            noisy_receptor(value, self.seed.get(), self.tick.get(), receptor_cell, tag)
+        };
         RawSensoryFrame {
             retinal,
             chemicals,
@@ -3191,50 +3085,17 @@ impl World {
                 .try_into()
                 .expect("acceleration is bounded"),
             orientation: u16::from(orientation.0),
-            energy: noisy_receptor(
-                self.energies[index],
-                self.seed,
-                self.tick,
-                self.cell_index(self.positions[index]),
-                0x454E_4552,
-            ),
-            gut_pressure: noisy_receptor(
-                self.guts[index],
-                self.seed,
-                self.tick,
-                self.cell_index(self.positions[index]),
-                0x4755_5421,
-            ),
-            toxin_stress: noisy_receptor(
+            energy: interoception(self.energies[index], 0x454E_4552),
+            gut_pressure: interoception(self.guts[index], 0x4755_5421),
+            toxin_stress: interoception(
                 self.toxins[index]
                     .saturating_add(self.secondary_toxins[index])
                     .saturating_add(self.infections[index] / 2),
-                self.seed,
-                self.tick,
-                self.cell_index(self.positions[index]),
                 0x544F_584E,
             ),
-            hydration: noisy_receptor(
-                self.hydrations[index],
-                self.seed,
-                self.tick,
-                self.cell_index(self.positions[index]),
-                0x4859_4452,
-            ),
-            fatigue: noisy_receptor(
-                self.fatigues[index],
-                self.seed,
-                self.tick,
-                self.cell_index(self.positions[index]),
-                0x4641_5447,
-            ),
-            damage: noisy_receptor(
-                self.v2_pain(index),
-                self.seed,
-                self.tick,
-                self.cell_index(self.positions[index]),
-                0x4441_4D47,
-            ),
+            hydration: interoception(self.hydrations[index], 0x4859_4452),
+            fatigue: interoception(self.fatigues[index], 0x4641_5447),
+            damage: interoception(self.v2_pain(index), 0x4441_4D47),
         }
     }
 
@@ -3463,186 +3324,38 @@ impl World {
         }
     }
 
-    /// Evaluates the bounded sparse V2 controller and applies only local, endogenous learning.
-    #[allow(
-        clippy::too_many_lines,
-        reason = "The coupled bounded recurrent and local-learning update is auditable together."
-    )]
+    /// Runs the V2 predictive-brain kernel with this agent's developmental parameters and the
+    /// current experiment switches.
     fn evaluate_predictive_brain(
         &mut self,
         index: usize,
         frame: &RawSensoryFrame,
     ) -> [i16; OUTPUTS] {
-        let context = compressed_brain_context(frame);
         let development = &self.developmental_genomes[index];
-        let connection_stride = 1 + usize::from(development.locus(6) % 15);
-        let plasticity_scale = 1 + i32::from(development.locus(13) / 16);
-        let brain = &mut self.predictive_brains[index];
-        let previous = brain.activity;
-
-        for (node, value) in brain.activity[..V2_BRAIN_RECEPTORS].iter_mut().enumerate() {
-            *value = context[node % context.len()].clamp(-512, 512);
-        }
-        for node in V2_BRAIN_RECEPTORS..(V2_BRAIN_RECEPTORS + V2_BRAIN_INTERNEURONS) {
-            let local = node - V2_BRAIN_RECEPTORS;
-            let mut sum = i32::from(brain.learned_bias[node]);
-            sum += i32::from(brain.activity[local % V2_BRAIN_RECEPTORS]);
-            // Four deterministic local recurrent inputs: no dense matrix allocation or traversal.
-            for offset in [1_usize, 7, 13, 29] {
-                let offset = offset + connection_stride;
-                sum += i32::from(previous[(node + offset) % V2_BRAIN_NEURONS]) / 4;
-            }
-            let time_constant = 1 + i32::try_from(local % 4).expect("bounded time constant");
-            let target = sum.clamp(-1_024, 1_024);
-            brain.activity[node] = ((i32::from(previous[node]) * (time_constant - 1) + target)
-                / time_constant)
-                .try_into()
-                .expect("bounded recurrent rate fits i16");
-        }
-        for node in (V2_BRAIN_RECEPTORS + V2_BRAIN_INTERNEURONS)
-            ..(V2_BRAIN_RECEPTORS + V2_BRAIN_INTERNEURONS + V2_BRAIN_MOTORS)
-        {
-            let local = node - (V2_BRAIN_RECEPTORS + V2_BRAIN_INTERNEURONS);
-            let sum = i32::from(brain.learned_bias[node])
-                + i32::from(
-                    brain.activity[V2_BRAIN_RECEPTORS + (local * 5) % V2_BRAIN_INTERNEURONS],
-                )
-                + i32::from(previous[(node + 11) % V2_BRAIN_NEURONS]) / 3;
-            brain.activity[node] = sum
-                .clamp(-512, 512)
-                .try_into()
-                .expect("motor rate fits i16");
-        }
-
-        let surprise = brain
-            .prediction
-            .iter()
-            .zip(context)
-            .map(|(prediction, sensed)| i32::from((*prediction - sensed).unsigned_abs()))
-            .sum::<i32>()
-            / i32::try_from(context.len()).expect("fixed context length fits");
-        let metabolic_improvement = context[2] > brain.previous_context[2];
-        let damage_event = context[3] > brain.previous_context[3];
-        let endogenous_gate = i32::from(damage_event) * 2
-            + i32::from(metabolic_improvement)
-            + i32::from(surprise > 24);
-        for (node, previous_activity) in previous
-            .iter()
-            .enumerate()
-            .skip(V2_BRAIN_RECEPTORS + V2_BRAIN_INTERNEURONS + V2_BRAIN_MOTORS)
-            .take(V2_BRAIN_MODULATORS)
-        {
-            let local = node - (V2_BRAIN_RECEPTORS + V2_BRAIN_INTERNEURONS + V2_BRAIN_MOTORS);
-            let event_input = match local % 3 {
-                0 => {
-                    if damage_event {
-                        256
-                    } else {
-                        0
-                    }
-                }
-                1 => {
-                    if metabolic_improvement {
-                        256
-                    } else {
-                        0
-                    }
-                }
-                _ => surprise.clamp(0, 256),
-            };
-            brain.activity[node] = (i32::from(*previous_activity) * 3 / 4
-                + event_input
-                + i32::from(brain.learned_bias[node]))
-            .clamp(-512, 512)
-            .try_into()
-            .expect("modulatory rate fits i16");
-        }
-
-        for (trace, activity) in brain.eligibility.iter_mut().zip(brain.activity) {
-            *trace = (i32::from(*trace) * 7 / 8 + i32::from(activity) / 32)
-                .clamp(-128, 128)
-                .try_into()
-                .expect("eligibility is bounded");
-        }
-        // This is the only learned-weight update. Its third factor is exclusively damage,
-        // metabolic improvement, or local prediction surprise; no external reward enters here.
-        if self.brain_ablations.plasticity_enabled
-            && self.transmission_controls.plasticity_enabled
-            && endogenous_gate > 0
-        {
-            for (bias, trace) in brain.learned_bias.iter_mut().zip(brain.eligibility) {
-                *bias = (i32::from(*bias)
-                    + i32::from(trace) * endogenous_gate * plasticity_scale / 32)
-                    .clamp(-96, 96)
-                    .try_into()
-                    .expect("learned bias is bounded");
-            }
+        let config = BrainConfig {
+            connection_stride: 1 + usize::from(development.locus(6) % 15),
+            plasticity_scale: 1 + i32::from(development.locus(13) / 16),
+            plasticity_enabled: self.brain_ablations.plasticity_enabled
+                && self.transmission_controls.plasticity_enabled,
+            episodic_memory_enabled: self.brain_ablations.episodic_memory_enabled,
+            action_contingency_enabled: self.brain_ablations.action_contingency_enabled,
+            prediction_enabled: self.brain_ablations.prediction_enabled,
+        };
+        let step = self.predictive_brains[index].step(&config, frame);
+        if step.learned {
             self.learning_updates = self.learning_updates.saturating_add(1);
         }
-
-        let action = brain.activity[V2_BRAIN_RECEPTORS + V2_BRAIN_INTERNEURONS
-            ..V2_BRAIN_RECEPTORS + V2_BRAIN_INTERNEURONS + V2_BRAIN_MOTORS]
-            .iter()
-            .enumerate()
-            .max_by_key(|(motor, value)| (**value, std::cmp::Reverse(*motor)))
-            .map_or(0, |(motor, _)| motor % V2_CONTINGENCY_ACTIONS);
-        let change = core::array::from_fn(|channel| {
-            (context[channel] - brain.previous_context[channel]).clamp(-255, 255)
-        });
-        if self.brain_ablations.episodic_memory_enabled {
-            brain.episodes[brain.next_episode] = EpisodicTrace {
-                context: brain.previous_context,
-                action: u8::try_from(action).expect("action bin fits u8"),
-                subsequent_change: change,
-                retention: 256,
-            };
-            brain.next_episode = (brain.next_episode + 1) % V2_EPISODE_CAPACITY;
-            for episode in &mut brain.episodes {
-                episode.retention = episode.retention.saturating_sub(1);
-            }
-        }
-        if self.brain_ablations.action_contingency_enabled {
-            update_action_contingency(brain, action, change);
-        }
-        if self.brain_ablations.prediction_enabled {
-            brain.prediction = context;
-        }
-        brain.previous_context = context;
-        let mut outputs = [0; OUTPUTS];
-        outputs[..V2_BRAIN_MOTORS].copy_from_slice(
-            &brain.activity[V2_BRAIN_RECEPTORS + V2_BRAIN_INTERNEURONS
-                ..V2_BRAIN_RECEPTORS + V2_BRAIN_INTERNEURONS + V2_BRAIN_MOTORS],
-        );
-        // Founders retain only a physical swallowing reflex while their raw gut-pressure
-        // receptor is low. This is not an edible label or fitness schedule; local chemistry
-        // may carry delayed toxin and still enters the predictive brain unchanged.
-        if frame.toxin_stress >= V2_TOXIN_WITHDRAWAL_THRESHOLD {
-            // Withdrawal overrides arbitrary untrained motor activity until raw interoception
-            // recovers; this keeps founders from repeatedly swallowing one toxic patch.
-            outputs[4] = 0;
-        } else if frame.gut_pressure < 96 {
-            outputs[4] = outputs[4].max(160);
-        }
-        // A low-amplitude forward reflex lets non-learning founders sample space. It is gated
-        // only by noisy interoception and leaves turning and long-term action selection to the
-        // inherited predictive controller.
-        if frame.energy < 96 {
-            outputs[1] = outputs[1].max(48);
-        }
-        if frame.toxin_stress >= 5 {
-            outputs[3] = outputs[3].max(160);
-        }
-        outputs
+        step.outputs
     }
 
     fn apply_lifetime_plasticity(&mut self, index: usize, outputs: &[i16; OUTPUTS]) {
         if !self.transmission_controls.plasticity_enabled {
             return;
         }
-        for (node, adjustment) in self.plastic_biases[index].iter_mut().enumerate() {
-            let delta = (outputs[node % OUTPUTS] / 128).clamp(-1, 1);
-            *adjustment = adjustment.saturating_add(delta).clamp(-32, 32);
-        }
+        sim_kernels::controller::apply_lifetime_plasticity(
+            &mut self.plastic_biases[index],
+            outputs,
+        );
         self.learning_updates = self.learning_updates.saturating_add(1);
     }
 }
@@ -3973,49 +3686,6 @@ fn blank_signal_key(signal: Option<BlankSignal>) -> u64 {
     })
 }
 
-fn heading(angle: Angle) -> (i32, i32) {
-    // Sixteen integer unit vectors, scaled by 256. Quantized heading is intentional: it is
-    // deterministic across targets and avoids libm in the authoritative simulation.
-    const DIRECTIONS: [(i32, i32); 16] = [
-        (256, 0),
-        (237, 98),
-        (181, 181),
-        (98, 237),
-        (0, 256),
-        (-98, 237),
-        (-181, 181),
-        (-237, 98),
-        (-256, 0),
-        (-237, -98),
-        (-181, -181),
-        (-98, -237),
-        (0, -256),
-        (98, -237),
-        (181, -181),
-        (237, -98),
-    ];
-    DIRECTIONS[usize::from(angle.turns() >> 4)]
-}
-
-fn integer_sqrt(value: u64) -> u64 {
-    let mut remainder = value;
-    let mut root = 0_u64;
-    let mut bit = 1_u64 << 62;
-    while bit > remainder {
-        bit >>= 2;
-    }
-    while bit != 0 {
-        if remainder >= root + bit {
-            remainder -= root + bit;
-            root = (root >> 1) + bit;
-        } else {
-            root >>= 1;
-        }
-        bit >>= 2;
-    }
-    root
-}
-
 fn derived_weight(seed: u64, genome: u64, index: u64) -> i16 {
     let value = derive(seed, 0, genome, 0x57_45_49_47 ^ index);
     i16::try_from(value % 257).expect("bounded weight fits i16") - 128
@@ -4023,163 +3693,6 @@ fn derived_weight(seed: u64, genome: u64, index: u64) -> i16 {
 
 fn mutation_delta(value: u64) -> i16 {
     i16::try_from(value % 17).expect("bounded delta fits i16") - 8
-}
-
-const fn empty_raw_senses() -> RawSensoryFrame {
-    RawSensoryFrame {
-        retinal: [RetinalSample {
-            red: 0,
-            green: 0,
-            blue: 0,
-            brightness: 0,
-            motion: 0,
-            occlusion: 0,
-        }; RETINAL_RAY_COUNT],
-        chemicals: [0; CHEMICAL_RECEPTOR_COUNT],
-        vibration: 0,
-        touch: 0,
-        joint_position: 0,
-        muscle_tension: 0,
-        acceleration: 0,
-        orientation: 0,
-        energy: 0,
-        gut_pressure: 0,
-        toxin_stress: 0,
-        hydration: 0,
-        fatigue: 0,
-        damage: 0,
-    }
-}
-
-/// Projects all receptor amplitudes into the pre-brain controller's fixed V2 compatibility
-/// width. This is deliberately lossy but contains no semantic field or world coordinate.
-fn raw_controller_projection(frame: &RawSensoryFrame) -> [i16; INPUTS] {
-    let mut inputs = [0_i16; INPUTS];
-    let mut channel = 0_usize;
-    for ray in frame.retinal {
-        for value in [ray.red, ray.green, ray.blue, ray.brightness, ray.occlusion] {
-            inputs[channel % INPUTS] = inputs[channel % INPUTS]
-                .saturating_add(i16::try_from(value).expect("receptor bounded") / 4);
-            channel += 1;
-        }
-        inputs[channel % INPUTS] = inputs[channel % INPUTS].saturating_add(ray.motion / 4);
-        channel += 1;
-    }
-    for value in frame.chemicals {
-        inputs[channel % INPUTS] = inputs[channel % INPUTS]
-            .saturating_add(i16::try_from(value).expect("receptor bounded"));
-        channel += 1;
-    }
-    inputs[channel % INPUTS] = inputs[channel % INPUTS]
-        .saturating_add(i16::try_from(frame.vibration).expect("receptor bounded"));
-    channel += 1;
-    for value in [
-        frame.touch,
-        frame.joint_position,
-        frame.muscle_tension,
-        frame.orientation,
-        frame.energy,
-        frame.gut_pressure,
-        frame.toxin_stress,
-        frame.hydration,
-        frame.fatigue,
-        frame.damage,
-    ] {
-        inputs[channel % INPUTS] = inputs[channel % INPUTS]
-            .saturating_add(i16::try_from(value).expect("receptor bounded"));
-        channel += 1;
-    }
-    inputs[channel % INPUTS] = inputs[channel % INPUTS].saturating_add(frame.acceleration);
-    inputs
-}
-
-/// Compresses only receptor amplitudes into local predictive-learning channels.
-fn compressed_brain_context(frame: &RawSensoryFrame) -> [i16; 4] {
-    let vision = frame
-        .retinal
-        .iter()
-        .map(|ray| u32::from(ray.brightness) + u32::from(ray.green))
-        .sum::<u32>()
-        / u32::try_from(RETINAL_RAY_COUNT * 2).expect("retinal geometry fits u32");
-    let chemistry = frame
-        .chemicals
-        .iter()
-        .map(|value| u32::from(*value))
-        .sum::<u32>()
-        / u32::try_from(CHEMICAL_RECEPTOR_COUNT).expect("chemical geometry fits u32");
-    [
-        i16::try_from(vision).expect("receptor average fits i16"),
-        i16::try_from(chemistry).expect("receptor average fits i16"),
-        i16::try_from(frame.energy).expect("receptor amplitude fits i16")
-            - i16::try_from(frame.gut_pressure).expect("receptor amplitude fits i16"),
-        i16::try_from(frame.damage).expect("receptor amplitude fits i16")
-            + i16::try_from(frame.toxin_stress).expect("receptor amplitude fits i16"),
-    ]
-}
-
-/// Updates only the row associated with an emitted motor-action bin.
-///
-/// Keeping this local update separate makes action-versus-observation and contingency-degradation
-/// controls testable without granting agents any labeled outcome input.
-fn update_action_contingency(
-    brain: &mut PredictiveBrain,
-    action: usize,
-    observed_change: [i16; V2_CONTINGENCY_FEATURES],
-) {
-    for (estimate, observed) in brain.contingencies[action].iter_mut().zip(observed_change) {
-        *estimate = (i32::from(*estimate) * 7 / 8 + i32::from(observed) / 8)
-            .clamp(-255, 255)
-            .try_into()
-            .expect("contingency is bounded");
-    }
-}
-
-fn noisy_receptor(value: u16, seed: WorldSeed, tick: Tick, index: usize, tag: u64) -> u16 {
-    let noise = (derive(seed.get(), tick.get(), index as u64, tag) % 9) as i16 - 4;
-    (i16::try_from(value).expect("store bounded") + noise)
-        .clamp(0, 255)
-        .cast_unsigned()
-}
-
-fn evaluate_controller(
-    genome: &Genome,
-    plastic_biases: &[i16; HIDDEN + OUTPUTS],
-    recurrent: &mut [i16; HIDDEN],
-    inputs: [i16; INPUTS],
-) -> [i16; OUTPUTS] {
-    let previous = *recurrent;
-    let mut hidden = [0_i16; HIDDEN];
-    for (node, value) in hidden.iter_mut().enumerate() {
-        let mut sum = i32::from(genome.biases[node]) + i32::from(plastic_biases[node]);
-        for (input, input_value) in inputs.iter().enumerate() {
-            sum += i32::from(*input_value) * i32::from(genome.weights[node * INPUTS + input]) / 128;
-        }
-        let recurrent_offset = INPUTS * HIDDEN + node * HIDDEN;
-        for (source, state) in previous.iter().enumerate() {
-            sum += i32::from(*state) * i32::from(genome.weights[recurrent_offset + source]) / 128;
-        }
-        *value = sum
-            .clamp(-512, 512)
-            .try_into()
-            .expect("clamped activation fits i16");
-    }
-    *recurrent = hidden;
-    let mut outputs = [0_i16; OUTPUTS];
-    let output_offset = INPUTS * HIDDEN + HIDDEN * HIDDEN;
-    for (node, value) in outputs.iter_mut().enumerate() {
-        let mut sum =
-            i32::from(genome.biases[HIDDEN + node]) + i32::from(plastic_biases[HIDDEN + node]);
-        for (source, state) in hidden.iter().enumerate() {
-            sum += i32::from(*state)
-                * i32::from(genome.weights[output_offset + node * HIDDEN + source])
-                / 128;
-        }
-        *value = sum
-            .clamp(-512, 512)
-            .try_into()
-            .expect("clamped activation fits i16");
-    }
-    outputs
 }
 
 fn genome_signature(genome: &Genome) -> u64 {
@@ -4225,15 +3738,6 @@ fn plastic_signature(state: &[i16; HIDDEN + OUTPUTS]) -> u64 {
             0x50_4C_41_53,
         )
     })
-}
-
-fn derive(seed: u64, tick: u64, id: u64, subsystem: u64) -> u64 {
-    let mut value = seed ^ tick.rotate_left(17) ^ id.rotate_left(33) ^ subsystem;
-    value ^= value >> 30;
-    value = value.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    value ^= value >> 27;
-    value = value.wrapping_mul(0x94d0_49bb_1331_11eb);
-    value ^ (value >> 31)
 }
 
 #[cfg(test)]
@@ -4943,7 +4447,7 @@ mod tests {
         assert_eq!(first_frame, second_frame);
         assert_eq!(
             first.raw_senses_of(observer),
-            Some(super::empty_raw_senses())
+            Some(super::RawSensoryFrame::EMPTY)
         );
     }
 
@@ -5036,7 +4540,7 @@ mod tests {
             chemicals: [brightness; super::CHEMICAL_RECEPTOR_COUNT],
             energy,
             damage,
-            ..super::empty_raw_senses()
+            ..super::RawSensoryFrame::EMPTY
         }
     }
 
@@ -5053,7 +4557,7 @@ mod tests {
         assert_ne!(before, learning.predictive_brains[0].prediction);
         assert_eq!(
             learning.predictive_brains[0].prediction,
-            super::compressed_brain_context(&remapped)
+            sim_kernels::brain::compressed_brain_context(&remapped)
         );
 
         let mut ablated = World::with_settings_v2(WorldSeed::new(918), settings).unwrap();
@@ -5100,7 +4604,7 @@ mod tests {
     #[test]
     fn controlled_contingency_fixtures_degrade_and_require_action_record() {
         let mut brain = super::PredictiveBrain::default();
-        super::update_action_contingency(&mut brain, 2, [96, 0, -96, 0]);
+        brain.update_action_contingency(2, [96, 0, -96, 0]);
         assert!(brain.contingencies[2].iter().any(|value| *value != 0));
         assert!(brain.contingencies[1].iter().all(|value| *value == 0));
         let learned_strength: i32 = brain.contingencies[2]
@@ -5108,7 +4612,7 @@ mod tests {
             .map(|value| i32::from(value.unsigned_abs()))
             .sum();
         for _ in 0..16 {
-            super::update_action_contingency(&mut brain, 2, [0; super::V2_CONTINGENCY_FEATURES]);
+            brain.update_action_contingency(2, [0; super::CONTINGENCY_FEATURES]);
         }
         let degraded_strength: i32 = brain.contingencies[2]
             .iter()

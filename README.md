@@ -42,6 +42,9 @@ cargo run -p sim-cli --locked -- resume /tmp/village-v1.toml 500
 ## Workspace
 
 - `sim-core`: authoritative, deterministic simulation domain with no renderer dependency.
+- `sim-kernels`: `no_std`, allocation-free, integer-only per-agent kernels (controller,
+  predictive brain, receptor transforms). Written once and shared by the CPU path and a future
+  GPU backend; `sim-core` owns the world and calls these with explicit per-agent state.
 - `sim-format`: versioned configurations, snapshots, and event-log data structures.
 - `sim-app`: Bevy desktop shell for loading, running, pausing, and inspecting worlds.
 - `sim-cli`: headless experiment, soak, and golden-replay verification.

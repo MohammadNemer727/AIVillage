@@ -301,7 +301,7 @@ impl World {
         world.acoustic_emissions = vec![0; slot_count];
         world.chemical_emissions = vec![0; slot_count];
         world.visual_displays = vec![0; slot_count];
-        world.last_raw_senses = vec![crate::empty_raw_senses(); slot_count];
+        world.last_raw_senses = vec![crate::RawSensoryFrame::EMPTY; slot_count];
         world.predictive_brains = vec![crate::PredictiveBrain::default(); slot_count];
         world.developmental_genomes = (0..slot_count)
             .map(|index| {
