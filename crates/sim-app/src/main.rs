@@ -9,13 +9,17 @@
     reason = "Bevy systems must receive ECS parameters by value."
 )]
 
-use std::collections::{HashMap, VecDeque};
+use std::{
+    collections::{HashMap, VecDeque},
+    time::Duration,
+};
 
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
     input::mouse::MouseWheel,
     prelude::*,
     render::view::screenshot::{Screenshot, save_to_disk},
+    winit::{UpdateMode, WinitSettings},
 };
 use sim_core::{
     AgentId, AgentSnapshot, CulturalTransmissionControls, FIXED_SCALE, World, WorldSeed,
@@ -29,6 +33,10 @@ const CAMERA_SPEED: f32 = 520.0;
 const MIN_ZOOM: f32 = 0.25;
 const MAX_ZOOM: f32 = 4.0;
 const HISTORY_SAMPLES: usize = 180;
+/// Redraw ceiling while paused and focused; keeps held-key panning usable without spinning at vsync.
+const PAUSED_FOCUSED_WAIT: Duration = Duration::from_millis(33);
+/// Redraw ceiling while paused and unfocused.
+const PAUSED_UNFOCUSED_WAIT: Duration = Duration::from_secs(5);
 
 /// Application lifecycle states retained from the Bevy 2D template pattern.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, States)]
@@ -142,6 +150,7 @@ fn main() {
             ..default()
         }))
         .add_plugins(FrameTimeDiagnosticsPlugin::default())
+        .insert_resource(WinitSettings::game())
         .insert_resource(ClearColor(Color::srgb(0.02, 0.04, 0.07)))
         .init_state::<AppState>()
         .insert_resource(Time::<Fixed>::from_hz(TICKS_PER_SECOND))
@@ -152,6 +161,8 @@ fn main() {
         .init_resource::<History>()
         .init_resource::<OverlaySettings>()
         .add_systems(Startup, setup_scene)
+        .add_systems(OnEnter(AppState::Paused), enter_low_power_redraw)
+        .add_systems(OnExit(AppState::Paused), exit_low_power_redraw)
         .add_systems(
             FixedUpdate,
             advance_authoritative_world.run_if(in_state(AppState::Running)),
@@ -257,6 +268,18 @@ fn setup_scene(mut commands: Commands, bridge: Res<SimulationBridge>) {
 
 fn state_is_interactive(state: Res<State<AppState>>) -> bool {
     matches!(*state.get(), AppState::Running | AppState::Paused)
+}
+
+/// While paused nothing changes between frames, so only redraw on input or a slow timeout.
+fn enter_low_power_redraw(mut winit: ResMut<WinitSettings>) {
+    *winit = WinitSettings {
+        focused_mode: UpdateMode::reactive(PAUSED_FOCUSED_WAIT),
+        unfocused_mode: UpdateMode::reactive_low_power(PAUSED_UNFOCUSED_WAIT),
+    };
+}
+
+fn exit_low_power_redraw(mut winit: ResMut<WinitSettings>) {
+    *winit = WinitSettings::game();
 }
 
 /// One-shot capture when `AI_VILLAGE_VERIFY_SCREENSHOT=/path.png` is set (debug/verify only).

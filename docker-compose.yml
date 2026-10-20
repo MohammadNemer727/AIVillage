@@ -1,0 +1,12 @@
+# CPU-only headless environment. Checkpoints and reports go to ./out on the host.
+#   docker compose run --rm sim golden
+#   docker compose run --rm sim save /out/village-v1.toml 500
+#
+# A GPU service belongs here only once sim-core has a GPU kernel to run; it would reuse
+# this image with `gpus: all` under a `gpu` profile.
+services:
+  sim:
+    build: .
+    image: ai-village-sim:cpu
+    volumes:
+      - ./out:/out

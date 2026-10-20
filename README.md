@@ -53,6 +53,17 @@ install a C toolchain and the platform libraries required by winit/wgpu before b
 desktop application. If the host lacks a C compiler, the Flatpak SDK
 `org.freedesktop.Sdk` can provide one for headless `sim-core` / `sim-cli` builds.
 
+## Docker (headless, CPU-only)
+
+The image builds only `sim-cli` (no Bevy, no display). Results match a native build bit for bit.
+
+```sh
+docker compose build
+docker compose run --rm sim golden
+docker compose run --rm sim save /out/village-v1.toml 500   # written to ./out on the host
+docker compose run --rm sim resume /out/village-v1.toml 500
+```
+
 ## Checks
 
 ```sh
