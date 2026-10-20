@@ -2,7 +2,10 @@
 
 use crate::{
     controller::OUTPUTS,
-    math::{amplitude, clamp_i16},
+    math::{
+        amplitude, clamp_i16, saturate_u32_to_i16, saturating_add_i16, saturating_sub_i16,
+        small_i32, small_u8,
+    },
     senses::{CHEMICAL_RECEPTOR_COUNT, RETINAL_RAY_COUNT, RawSensoryFrame},
 };
 
@@ -27,8 +30,11 @@ pub const CONTINGENCY_FEATURES: usize = 4;
 pub const TOXIN_WITHDRAWAL_THRESHOLD: u16 = 12;
 
 const MOTOR_START: usize = RECEPTORS + INTERNEURONS;
+/// Sparse recurrent input offsets for each interneuron, before the developmental stride.
+const RECURRENT_OFFSETS: [usize; 4] = [1, 7, 13, 29];
 const MODULATOR_START: usize = MOTOR_START + MOTORS;
-const CONTEXT_CHANNELS: usize = 4;
+/// Width of the compressed sensory context the brain predicts and records.
+pub const CONTEXT_CHANNELS: usize = 4;
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
@@ -158,7 +164,9 @@ impl PredictiveBrain {
         self.record_outcome(context, config);
 
         let mut outputs = [0; OUTPUTS];
-        outputs[..MOTORS].copy_from_slice(&self.activity[MOTOR_START..MODULATOR_START]);
+        for motor in 0..MOTORS {
+            outputs[motor] = self.activity[MOTOR_START + motor];
+        }
         apply_reflexes(&mut outputs, frame);
         BrainStep { outputs, learned }
     }
@@ -170,19 +178,19 @@ impl PredictiveBrain {
         context: [i16; CONTEXT_CHANNELS],
         connection_stride: usize,
     ) {
-        for (node, value) in self.activity[..RECEPTORS].iter_mut().enumerate() {
-            *value = context[node % CONTEXT_CHANNELS].clamp(-512, 512);
+        for node in 0..RECEPTORS {
+            self.activity[node] = context[node % CONTEXT_CHANNELS].clamp(-512, 512);
         }
         for node in RECEPTORS..MOTOR_START {
             let local = node - RECEPTORS;
             let mut sum = i32::from(self.learned_bias[node]);
             sum += i32::from(self.activity[local % RECEPTORS]);
             // Four deterministic local recurrent inputs: no dense matrix allocation or traversal.
-            for offset in [1_usize, 7, 13, 29] {
-                let offset = offset + connection_stride;
+            for input in 0..RECURRENT_OFFSETS.len() {
+                let offset = RECURRENT_OFFSETS[input] + connection_stride;
                 sum += i32::from(previous[(node + offset) % NEURONS]) / 4;
             }
-            let time_constant = 1 + i32::try_from(local % 4).unwrap_or(0);
+            let time_constant = 1 + small_i32(local % 4);
             let target = sum.clamp(-1_024, 1_024);
             self.activity[node] = clamp_i16(
                 (i32::from(previous[node]) * (time_constant - 1) + target) / time_constant,
@@ -201,34 +209,27 @@ impl PredictiveBrain {
 
     /// Compares the new context with the prediction and previous context.
     fn detect_events(&self, context: [i16; CONTEXT_CHANNELS]) -> EndogenousEvents {
-        let surprise = self
-            .prediction
-            .iter()
-            .zip(context)
-            .map(|(prediction, sensed)| (i32::from(*prediction) - i32::from(sensed)).abs())
-            .sum::<i32>()
-            / CONTEXT_DIVISOR;
+        let mut total_error = 0;
+        for channel in 0..CONTEXT_CHANNELS {
+            total_error +=
+                (i32::from(self.prediction[channel]) - i32::from(context[channel])).abs();
+        }
         EndogenousEvents {
-            surprise,
+            surprise: total_error / CONTEXT_DIVISOR,
             metabolic_improvement: context[2] > self.previous_context[2],
             damage: context[3] > self.previous_context[3],
         }
     }
 
     fn update_modulators(&mut self, previous: &[i16; NEURONS], events: EndogenousEvents) {
-        for (node, previous_activity) in previous
-            .iter()
-            .enumerate()
-            .skip(MODULATOR_START)
-            .take(MODULATORS)
-        {
+        for node in MODULATOR_START..NEURONS {
             let event_input = match (node - MODULATOR_START) % 3 {
                 0 => i32::from(events.damage) * 256,
                 1 => i32::from(events.metabolic_improvement) * 256,
                 _ => events.surprise.clamp(0, 256),
             };
             self.activity[node] = clamp_i16(
-                i32::from(*previous_activity) * 3 / 4
+                i32::from(previous[node]) * 3 / 4
                     + event_input
                     + i32::from(self.learned_bias[node]),
                 -512,
@@ -239,9 +240,9 @@ impl PredictiveBrain {
 
     /// Decays eligibility traces and, when gated, applies the learned-bias update.
     fn learn(&mut self, events: EndogenousEvents, config: &BrainConfig) -> bool {
-        for (trace, activity) in self.eligibility.iter_mut().zip(self.activity) {
-            *trace = clamp_i16(
-                i32::from(*trace) * 7 / 8 + i32::from(activity) / 32,
+        for node in 0..NEURONS {
+            self.eligibility[node] = clamp_i16(
+                i32::from(self.eligibility[node]) * 7 / 8 + i32::from(self.activity[node]) / 32,
                 -128,
                 128,
             );
@@ -252,9 +253,10 @@ impl PredictiveBrain {
         if !config.plasticity_enabled || gate == 0 {
             return false;
         }
-        for (bias, trace) in self.learned_bias.iter_mut().zip(self.eligibility) {
-            *bias = clamp_i16(
-                i32::from(*bias) + i32::from(trace) * gate * config.plasticity_scale / 32,
+        for node in 0..NEURONS {
+            self.learned_bias[node] = clamp_i16(
+                i32::from(self.learned_bias[node])
+                    + i32::from(self.eligibility[node]) * gate * config.plasticity_scale / 32,
                 -96,
                 96,
             );
@@ -265,28 +267,33 @@ impl PredictiveBrain {
     /// Records the emitted action and observed change into episodic memory, contingencies,
     /// and prediction.
     fn record_outcome(&mut self, context: [i16; CONTEXT_CHANNELS], config: &BrainConfig) {
-        let action = self.activity[MOTOR_START..MODULATOR_START]
-            .iter()
-            .enumerate()
-            .max_by_key(|(motor, value)| (**value, core::cmp::Reverse(*motor)))
-            .map_or(0, |(motor, _)| motor % CONTINGENCY_ACTIONS);
-        let change = core::array::from_fn(|channel| {
-            clamp_i16(
+        // The most active motor wins; ties go to the lowest index.
+        let mut winner = 0;
+        for motor in 1..MOTORS {
+            if self.activity[MOTOR_START + motor] > self.activity[MOTOR_START + winner] {
+                winner = motor;
+            }
+        }
+        let action = winner % CONTINGENCY_ACTIONS;
+        let mut change = [0; CONTEXT_CHANNELS];
+        for channel in 0..CONTEXT_CHANNELS {
+            change[channel] = clamp_i16(
                 i32::from(context[channel]) - i32::from(self.previous_context[channel]),
                 -255,
                 255,
-            )
-        });
+            );
+        }
         if config.episodic_memory_enabled {
             self.episodes[self.next_episode] = EpisodicTrace {
                 context: self.previous_context,
-                action: u8::try_from(action).unwrap_or(0),
+                action: small_u8(action),
                 subsequent_change: change,
                 retention: 256,
             };
             self.next_episode = (self.next_episode + 1) % EPISODE_CAPACITY;
-            for episode in &mut self.episodes {
-                episode.retention = episode.retention.saturating_sub(1);
+            for episode in 0..EPISODE_CAPACITY {
+                let retention = self.episodes[episode].retention;
+                self.episodes[episode].retention = if retention > 0 { retention - 1 } else { 0 };
             }
         }
         if config.action_contingency_enabled {
@@ -307,9 +314,10 @@ impl PredictiveBrain {
         action: usize,
         observed_change: [i16; CONTINGENCY_FEATURES],
     ) {
-        for (estimate, observed) in self.contingencies[action].iter_mut().zip(observed_change) {
-            *estimate = clamp_i16(
-                i32::from(*estimate) * 7 / 8 + i32::from(observed) / 8,
+        for feature in 0..CONTINGENCY_FEATURES {
+            self.contingencies[action][feature] = clamp_i16(
+                i32::from(self.contingencies[action][feature]) * 7 / 8
+                    + i32::from(observed_change[feature]) / 8,
                 -255,
                 255,
             );
@@ -344,23 +352,19 @@ fn apply_reflexes(outputs: &mut [i16; OUTPUTS], frame: &RawSensoryFrame) {
 /// mean vision, mean chemistry, energy minus gut pressure, and damage plus toxin stress.
 #[must_use]
 pub fn compressed_brain_context(frame: &RawSensoryFrame) -> [i16; CONTEXT_CHANNELS] {
-    let vision = frame
-        .retinal
-        .iter()
-        .map(|ray| u32::from(ray.brightness) + u32::from(ray.green))
-        .sum::<u32>()
-        / VISION_DIVISOR;
-    let chemistry = frame
-        .chemicals
-        .iter()
-        .map(|value| u32::from(*value))
-        .sum::<u32>()
-        / CHEMISTRY_DIVISOR;
+    let mut vision = 0_u32;
+    for ray in 0..RETINAL_RAY_COUNT {
+        vision += u32::from(frame.retinal[ray].brightness) + u32::from(frame.retinal[ray].green);
+    }
+    let mut chemistry = 0_u32;
+    for receptor in 0..CHEMICAL_RECEPTOR_COUNT {
+        chemistry += u32::from(frame.chemicals[receptor]);
+    }
     [
-        i16::try_from(vision).unwrap_or(i16::MAX),
-        i16::try_from(chemistry).unwrap_or(i16::MAX),
-        amplitude(frame.energy).saturating_sub(amplitude(frame.gut_pressure)),
-        amplitude(frame.damage).saturating_add(amplitude(frame.toxin_stress)),
+        saturate_u32_to_i16(vision / VISION_DIVISOR),
+        saturate_u32_to_i16(chemistry / CHEMISTRY_DIVISOR),
+        saturating_sub_i16(amplitude(frame.energy), amplitude(frame.gut_pressure)),
+        saturating_add_i16(amplitude(frame.damage), amplitude(frame.toxin_stress)),
     ]
 }
 

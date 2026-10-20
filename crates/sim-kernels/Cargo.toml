@@ -12,3 +12,8 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+bytemuck = { workspace = true, optional = true }
+
+[features]
+# Derives bytemuck::Pod for the GPU buffer layouts so hosts can upload them directly.
+bytemuck = ["dep:bytemuck"]

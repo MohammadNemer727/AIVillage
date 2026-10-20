@@ -1,0 +1,7 @@
+[
+  {
+    "source_path": "../sim-gpu/shaders/sim_shaders.spv",
+    "entry_point": "brain_step",
+    "wgsl_entry_point": "brain_step"
+  }
+]

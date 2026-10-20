@@ -4115,6 +4115,9 @@ dependencies = [
 [[package]]
 name = "sim-kernels"
 version = "0.1.0"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "simd-adler32"

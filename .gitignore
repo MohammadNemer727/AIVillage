@@ -2,3 +2,4 @@
 *.swp
 .DS_Store
 out/
+crates/sim-shaders/target/

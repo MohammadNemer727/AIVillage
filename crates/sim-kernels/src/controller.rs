@@ -1,8 +1,8 @@
 //! Fixed-topology quantized recurrent controller used by V1 agents and the V2 projection.
 
 use crate::{
-    math::{amplitude, clamp_i16},
-    senses::RawSensoryFrame,
+    math::{amplitude, clamp_i16, saturating_add_i16},
+    senses::{CHEMICAL_RECEPTOR_COUNT, RETINAL_RAY_COUNT, RawSensoryFrame},
 };
 
 /// Width of the blank, ungrounded signal alphabet carried on controller inputs and outputs.
@@ -32,26 +32,28 @@ pub fn evaluate_controller(
 ) -> [i16; OUTPUTS] {
     let previous = *recurrent;
     let mut hidden = [0_i16; HIDDEN];
-    for (node, value) in hidden.iter_mut().enumerate() {
+    for node in 0..HIDDEN {
         let mut sum = i32::from(biases[node]) + i32::from(plastic_biases[node]);
-        for (input, input_value) in inputs.iter().enumerate() {
-            sum += i32::from(*input_value) * i32::from(weights[node * INPUTS + input]) / 128;
+        for input in 0..INPUTS {
+            sum += i32::from(inputs[input]) * i32::from(weights[node * INPUTS + input]) / 128;
         }
         let recurrent_offset = RECURRENT_OFFSET + node * HIDDEN;
-        for (source, state) in previous.iter().enumerate() {
-            sum += i32::from(*state) * i32::from(weights[recurrent_offset + source]) / 128;
+        for source in 0..HIDDEN {
+            sum +=
+                i32::from(previous[source]) * i32::from(weights[recurrent_offset + source]) / 128;
         }
-        *value = clamp_i16(sum, -512, 512);
+        hidden[node] = clamp_i16(sum, -512, 512);
     }
     *recurrent = hidden;
     let mut outputs = [0_i16; OUTPUTS];
-    for (node, value) in outputs.iter_mut().enumerate() {
+    for node in 0..OUTPUTS {
         let mut sum = i32::from(biases[HIDDEN + node]) + i32::from(plastic_biases[HIDDEN + node]);
-        for (source, state) in hidden.iter().enumerate() {
-            sum += i32::from(*state) * i32::from(weights[OUTPUT_OFFSET + node * HIDDEN + source])
+        for source in 0..HIDDEN {
+            sum += i32::from(hidden[source])
+                * i32::from(weights[OUTPUT_OFFSET + node * HIDDEN + source])
                 / 128;
         }
-        *value = clamp_i16(sum, -512, 512);
+        outputs[node] = clamp_i16(sum, -512, 512);
     }
     outputs
 }
@@ -63,9 +65,23 @@ pub fn apply_lifetime_plasticity(
     plastic_biases: &mut [i16; HIDDEN + OUTPUTS],
     outputs: &[i16; OUTPUTS],
 ) {
-    for (node, adjustment) in plastic_biases.iter_mut().enumerate() {
+    for node in 0..HIDDEN + OUTPUTS {
         let delta = (outputs[node % OUTPUTS] / 128).clamp(-1, 1);
-        *adjustment = adjustment.saturating_add(delta).clamp(-32, 32);
+        plastic_biases[node] = saturating_add_i16(plastic_biases[node], delta).clamp(-32, 32);
+    }
+}
+
+/// Saturating fan-in of receptor amplitudes onto controller inputs, cycling through channels.
+struct Projection {
+    inputs: [i16; INPUTS],
+    channel: usize,
+}
+
+impl Projection {
+    fn add(&mut self, value: i16) {
+        let channel = self.channel % INPUTS;
+        self.inputs[channel] = saturating_add_i16(self.inputs[channel], value);
+        self.channel += 1;
     }
 }
 
@@ -74,38 +90,35 @@ pub fn apply_lifetime_plasticity(
 /// This is deliberately lossy but contains no semantic field or world coordinate.
 #[must_use]
 pub fn raw_controller_projection(frame: &RawSensoryFrame) -> [i16; INPUTS] {
-    let mut inputs = [0_i16; INPUTS];
-    let mut channel = 0_usize;
-    let mut accumulate = |value: i16| {
-        inputs[channel % INPUTS] = inputs[channel % INPUTS].saturating_add(value);
-        channel += 1;
+    let mut projection = Projection {
+        inputs: [0; INPUTS],
+        channel: 0,
     };
-    for ray in frame.retinal {
-        for value in [ray.red, ray.green, ray.blue, ray.brightness, ray.occlusion] {
-            accumulate(amplitude(value) / 4);
-        }
-        accumulate(ray.motion / 4);
+    for ray in 0..RETINAL_RAY_COUNT {
+        let sample = &frame.retinal[ray];
+        projection.add(amplitude(sample.red) / 4);
+        projection.add(amplitude(sample.green) / 4);
+        projection.add(amplitude(sample.blue) / 4);
+        projection.add(amplitude(sample.brightness) / 4);
+        projection.add(amplitude(sample.occlusion) / 4);
+        projection.add(sample.motion / 4);
     }
-    for value in frame.chemicals {
-        accumulate(amplitude(value));
+    for receptor in 0..CHEMICAL_RECEPTOR_COUNT {
+        projection.add(amplitude(frame.chemicals[receptor]));
     }
-    for value in [
-        frame.vibration,
-        frame.touch,
-        frame.joint_position,
-        frame.muscle_tension,
-        frame.orientation,
-        frame.energy,
-        frame.gut_pressure,
-        frame.toxin_stress,
-        frame.hydration,
-        frame.fatigue,
-        frame.damage,
-    ] {
-        accumulate(amplitude(value));
-    }
-    accumulate(frame.acceleration);
-    inputs
+    projection.add(amplitude(frame.vibration));
+    projection.add(amplitude(frame.touch));
+    projection.add(amplitude(frame.joint_position));
+    projection.add(amplitude(frame.muscle_tension));
+    projection.add(amplitude(frame.orientation));
+    projection.add(amplitude(frame.energy));
+    projection.add(amplitude(frame.gut_pressure));
+    projection.add(amplitude(frame.toxin_stress));
+    projection.add(amplitude(frame.hydration));
+    projection.add(amplitude(frame.fatigue));
+    projection.add(amplitude(frame.damage));
+    projection.add(frame.acceleration);
+    projection.inputs
 }
 
 #[cfg(test)]

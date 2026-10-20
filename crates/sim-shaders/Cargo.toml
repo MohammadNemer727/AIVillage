@@ -1,0 +1,18 @@
+[package]
+name = "sim-shaders"
+description = "rust-gpu compute entry points that run sim-kernels unchanged on the GPU."
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# Built by `cargo gpu` with its own pinned nightly toolchain, so it stays out of the stable
+# workspace. Rebuild with `crates/sim-shaders/build-shaders.sh`.
+[workspace]
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+sim-kernels = { path = "../sim-kernels" }
+spirv-std = "0.11.0"
