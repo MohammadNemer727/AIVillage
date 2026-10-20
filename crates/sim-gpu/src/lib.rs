@@ -7,6 +7,7 @@
 
 use std::{error::Error, fmt};
 
+use sim_core::{BrainBackendError, BrainConfig, BrainStep, PredictiveBrain, RawSensoryFrame};
 use sim_kernels::gpu::{GpuBrain, GpuBrainConfig, GpuBrainStep, GpuFrame, WORKGROUP_SIZE};
 use wgpu::util::DeviceExt;
 
@@ -279,6 +280,27 @@ impl GpuBrainStepper {
         drop(mapped);
         readback.unmap();
         Ok(steps)
+    }
+}
+
+/// Lets [`sim_core::World::step_with_brains`] run V2 brains on the GPU.
+impl sim_core::BrainBackend for GpuBrainStepper {
+    fn step_brains(
+        &mut self,
+        brains: &mut [PredictiveBrain],
+        frames: &[RawSensoryFrame],
+        configs: &[BrainConfig],
+    ) -> Result<Vec<BrainStep>, BrainBackendError> {
+        let mut packed: Vec<GpuBrain> = brains.iter().map(GpuBrain::pack).collect();
+        let frames: Vec<GpuFrame> = frames.iter().map(GpuFrame::pack).collect();
+        let configs: Vec<GpuBrainConfig> = configs.iter().map(GpuBrainConfig::pack).collect();
+        let steps = self
+            .step(&mut packed, &frames, &configs)
+            .map_err(BrainBackendError::new)?;
+        for (brain, packed) in brains.iter_mut().zip(&packed) {
+            *brain = packed.unpack();
+        }
+        Ok(steps.iter().map(GpuBrainStep::unpack).collect())
     }
 }
 

@@ -16,9 +16,7 @@ use std::error::Error;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sim_kernels::{
-    brain::{
-        BrainConfig, CONTINGENCY_ACTIONS, CONTINGENCY_FEATURES, EPISODE_CAPACITY, PredictiveBrain,
-    },
+    brain::{CONTINGENCY_ACTIONS, CONTINGENCY_FEATURES, EPISODE_CAPACITY},
     controller::{GENOME_WEIGHTS, HIDDEN, INPUTS, OUTPUTS, SIGNAL_CHANNELS},
     derive, heading, integer_sqrt,
     senses::noisy_receptor,
@@ -28,7 +26,7 @@ mod checkpoint;
 
 pub use checkpoint::{CheckpointError, WorldCheckpoint};
 pub use sim_kernels::{
-    brain::{EpisodicTrace, NEURONS as V2_BRAIN_NEURONS},
+    brain::{BrainConfig, BrainStep, EpisodicTrace, NEURONS as V2_BRAIN_NEURONS, PredictiveBrain},
     senses::{CHEMICAL_RECEPTOR_COUNT, RETINAL_RAY_COUNT, RawSensoryFrame, RetinalSample},
 };
 
@@ -675,6 +673,48 @@ impl WorldSnapshot {
 struct AgentSlot {
     generation: u32,
     alive: bool,
+}
+
+/// Executes V2 predictive-brain steps for a batch of agents, for example on a GPU.
+///
+/// Implementations must be bit-identical to [`PredictiveBrain::step`] applied to each agent;
+/// `sim-gpu` verifies this for its GPU backend. Pass one to [`World::step_with_brains`].
+pub trait BrainBackend {
+    /// Advances `brains[i]` with `frames[i]` and `configs[i]`, returning each agent's step in
+    /// the same order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the batch could not be executed.
+    fn step_brains(
+        &mut self,
+        brains: &mut [PredictiveBrain],
+        frames: &[RawSensoryFrame],
+        configs: &[BrainConfig],
+    ) -> Result<Vec<BrainStep>, BrainBackendError>;
+}
+
+/// A [`BrainBackend`] failure. The tick it occurred in left no state changes.
+#[derive(Debug)]
+pub struct BrainBackendError(Box<dyn Error + Send + Sync>);
+
+impl BrainBackendError {
+    /// Wraps a backend-specific error or message.
+    pub fn new(error: impl Into<Box<dyn Error + Send + Sync>>) -> Self {
+        Self(error.into())
+    }
+}
+
+impl fmt::Display for BrainBackendError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "brain backend failed: {}", self.0)
+    }
+}
+
+impl Error for BrainBackendError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.0.as_ref())
+    }
 }
 
 /// Living agents bucketed by grid cell, in stable slot order within each cell.
@@ -1533,10 +1573,35 @@ impl World {
     /// Advances one authoritative fixed tick and publishes an owned immutable snapshot.
     #[must_use]
     pub fn step(&mut self) -> WorldSnapshot {
+        match self.advance(None) {
+            Ok(snapshot) => snapshot,
+            Err(error) => unreachable!("the built-in CPU brain path cannot fail: {error}"),
+        }
+    }
+
+    /// Advances one tick like [`World::step`], but runs V2 predictive brains on `brains`.
+    ///
+    /// A conforming backend is bit-identical to the built-in CPU kernels, so histories match
+    /// [`World::step`] exactly. V1 worlds have no predictive brains and ignore the backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns the backend's error, in which case no simulation state has changed.
+    pub fn step_with_brains(
+        &mut self,
+        brains: &mut dyn BrainBackend,
+    ) -> Result<WorldSnapshot, BrainBackendError> {
+        self.advance(Some(brains))
+    }
+
+    fn advance(
+        &mut self,
+        brains: Option<&mut dyn BrainBackend>,
+    ) -> Result<WorldSnapshot, BrainBackendError> {
         // Sense: immutable spatial index was built by the preceding tick.
         self.rebuild_spatial_index();
         // Evaluate and emit intents from only immutable local observations.
-        let intents = self.evaluate_intents();
+        let intents = self.evaluate_intents(brains)?;
         // Resolve: all moves/actions see the same pre-tick world.
         if self.model_version == ModelVersion::V2Physics {
             self.resolve_physics(&intents);
@@ -1547,7 +1612,7 @@ impl World {
         self.tick = Tick::new(self.tick.get().saturating_add(1));
         // Publish: index and an owned snapshot reflect the completed tick.
         self.rebuild_spatial_index();
-        self.snapshot()
+        Ok(self.snapshot())
     }
 
     /// Returns an immutable snapshot without advancing time.
@@ -1796,12 +1861,20 @@ impl World {
     /// Every agent senses the same immutable pre-tick world and then updates only its own
     /// lifetime state, so both phases run in parallel. Shared counters and intents are then
     /// assembled in stable slot order, which keeps the result independent of thread count.
-    fn evaluate_intents(&mut self) -> Vec<Intent> {
+    fn evaluate_intents(
+        &mut self,
+        brains: Option<&mut dyn BrainBackend>,
+    ) -> Result<Vec<Intent>, BrainBackendError> {
         let perceptions: Vec<Option<Perception>> = (0..self.slots.len())
             .into_par_iter()
             .map(|index| self.slots[index].alive.then(|| self.perceive(index)))
             .collect();
-        let thoughts = self.think(&perceptions);
+        let thoughts = match brains {
+            Some(backend) if self.model_version == ModelVersion::V2Physics => {
+                self.think_with_backend(&perceptions, backend)?
+            }
+            _ => self.think(&perceptions),
+        };
         let mut intents = Vec::with_capacity(self.agent_count());
         for (index, (perception, thought)) in perceptions.iter().zip(&thoughts).enumerate() {
             let (Some(perception), Some(thought)) = (perception, thought) else {
@@ -1822,7 +1895,7 @@ impl World {
             }
             intents.push(self.intent_for(index, perception, &thought.outputs));
         }
-        intents
+        Ok(intents)
     }
 
     /// Samples one living agent's receptors without mutating the world.
@@ -1856,6 +1929,60 @@ impl World {
             nearby_agents,
             observed_signal,
         })
+    }
+
+    /// Runs every V2 brain through an external backend in one batch.
+    ///
+    /// Brain state is copied out, stepped, and written back only after the backend succeeds,
+    /// so a failure leaves the world untouched.
+    fn think_with_backend(
+        &mut self,
+        perceptions: &[Option<Perception>],
+        backend: &mut dyn BrainBackend,
+    ) -> Result<Vec<Option<Thought>>, BrainBackendError> {
+        let bodies: Vec<(usize, &BodyPerception)> = perceptions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, perception)| match perception {
+                Some(Perception::Body(body)) => Some((index, body)),
+                _ => None,
+            })
+            .collect();
+        let mut brains: Vec<PredictiveBrain> = bodies
+            .iter()
+            .map(|(index, _)| self.predictive_brains[*index].clone())
+            .collect();
+        let frames: Vec<RawSensoryFrame> = bodies.iter().map(|(_, body)| body.frame).collect();
+        let configs: Vec<BrainConfig> = bodies
+            .iter()
+            .map(|(index, _)| {
+                brain_config(
+                    &self.developmental_genomes[*index],
+                    self.brain_ablations,
+                    self.transmission_controls,
+                )
+            })
+            .collect();
+        let steps = backend.step_brains(&mut brains, &frames, &configs)?;
+        if steps.len() != bodies.len() {
+            return Err(BrainBackendError::new(format!(
+                "brain backend returned {} steps for {} agents",
+                steps.len(),
+                bodies.len()
+            )));
+        }
+        let mut thoughts: Vec<Option<Thought>> = (0..perceptions.len()).map(|_| None).collect();
+        for ((index, body), (brain, step)) in bodies.into_iter().zip(brains.into_iter().zip(steps))
+        {
+            self.predictive_brains[index] = brain;
+            self.last_raw_senses[index] = body.frame;
+            self.chemical_adaptation[index] = body.chemical_adaptation;
+            thoughts[index] = Some(Thought {
+                outputs: step.outputs,
+                learned: step.learned,
+            });
+        }
+        Ok(thoughts)
     }
 
     /// Runs each agent's controller or brain on its own perception, in parallel. Only that

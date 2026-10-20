@@ -23,8 +23,6 @@ module_name_repetitions = "allow"
 [dependencies]
 bytemuck.workspace = true
 pollster = "1.0.1"
+sim-core = { path = "../sim-core" }
 sim-kernels = { path = "../sim-kernels", features = ["bytemuck"] }
 wgpu = "30.0.1"
-
-[dev-dependencies]
-sim-core = { path = "../sim-core" }

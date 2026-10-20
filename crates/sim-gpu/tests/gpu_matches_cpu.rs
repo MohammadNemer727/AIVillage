@@ -158,3 +158,23 @@ fn mismatched_inputs_are_rejected() {
         Err(GpuError::LengthMismatch)
     ));
 }
+
+#[test]
+fn world_history_with_gpu_brains_matches_cpu() {
+    let Some(mut stepper) = stepper() else { return };
+    let settings = WorldSettings::new(48, 48, 300).expect("valid settings");
+    let mut cpu = World::with_settings_v2(WorldSeed::new(2_026), settings).expect("valid V2 world");
+    let mut gpu = World::with_settings_v2(WorldSeed::new(2_026), settings).expect("valid V2 world");
+    for tick in 0..300 {
+        let expected = cpu.step().state_hash();
+        let actual = gpu
+            .step_with_brains(&mut stepper)
+            .expect("GPU tick succeeds")
+            .state_hash();
+        assert_eq!(actual, expected, "state hash diverged at tick {tick}");
+    }
+    assert!(
+        gpu.agent_count() > 0,
+        "population survived, so brains were exercised"
+    );
+}
