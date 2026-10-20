@@ -1,0 +1,17 @@
+[package]
+name = "sim-format"
+description = "Versioned configuration and interchange types for AI Village."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+sim-core = { path = "../sim-core" }
+toml.workspace = true

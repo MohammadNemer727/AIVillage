@@ -1,0 +1,67 @@
+[workspace]
+members = [
+    "crates/sim-app",
+    "crates/sim-cli",
+    "crates/sim-core",
+    "crates/sim-format",
+]
+resolver = "3"
+
+[workspace.package]
+authors = ["AI Village contributors"]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://example.invalid/ai-village"
+rust-version = "1.99"
+version = "0.1.0"
+
+[workspace.dependencies]
+bevy = { version = "0.20.0", default-features = false, features = [
+    "bevy_asset",
+    "bevy_core_pipeline",
+    "bevy_gizmos",
+    "bevy_log",
+    "bevy_picking",
+    "bevy_post_process",
+    "bevy_render",
+    "bevy_sprite",
+    "bevy_sprite_render",
+    "bevy_state",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_window",
+    "bevy_winit",
+    "default_font",
+    "multi_threaded",
+    "png",
+    "wayland",
+    "x11",
+] }
+serde = { version = "1.0.228", features = ["derive"] }
+toml = "0.9.8"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+must_use_candidate = "allow"
+module_name_repetitions = "allow"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+debug = 1
+strip = "none"
+
+[profile.release-optimized]
+inherits = "release"
+codegen-units = 1
+lto = "thin"

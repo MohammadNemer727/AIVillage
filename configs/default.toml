@@ -1,0 +1,18 @@
+# AI Village V1 freeze configuration (sim-format schema_version = 1).
+# Golden replay fixtures: tests/fixtures/v1_golden_replay.toml
+# Reproduce hashes: cargo run -p sim-cli -- golden
+#
+# Schema version for forward-compatible configuration migrations.
+schema_version = 1
+# Reproducible initial world seed.
+seed = 0
+# Authoritative simulation rate; rendering is intentionally independent.
+ticks_per_second = 20
+
+# Controls are recorded so channel-removal experiments are reproducible.
+# They isolate candidate transmission mechanisms; they do not by themselves demonstrate culture.
+[transmission]
+genetic_mutation_enabled = true
+plasticity_enabled = true
+signals_enabled = true
+artifacts_enabled = true

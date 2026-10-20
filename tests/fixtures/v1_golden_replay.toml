@@ -1,0 +1,72 @@
+# Frozen V1 golden replay: seed → tick → state_hash.
+# Regenerate expected hashes with:
+#   cargo run -p sim-cli --locked -- golden-print
+# Verify with:
+#   cargo run -p sim-cli --locked -- golden
+#
+# schema_version matches sim-format::CONFIG_SCHEMA_VERSION.
+# state_hash_version matches sim_core::STATE_HASH_VERSION.
+
+schema_version = 1
+state_hash_version = 1
+
+[[cases]]
+name = "replay-small"
+seed = 42
+width = 16
+height = 8
+initial_agents = 12
+
+[[cases.hashes]]
+tick = 0
+state_hash = "085a03ef673fb24f"
+
+[[cases.hashes]]
+tick = 1
+state_hash = "c0d08d30b4d99b22"
+
+[[cases.hashes]]
+tick = 10
+state_hash = "e3142b1ef84a58e5"
+
+[[cases.hashes]]
+tick = 100
+state_hash = "d4c25a48a94bbdf2"
+
+[[cases]]
+name = "default-config-seed"
+seed = 0
+width = 32
+height = 32
+initial_agents = 128
+
+[[cases.hashes]]
+tick = 0
+state_hash = "8d19148dcb489302"
+
+[[cases.hashes]]
+tick = 20
+state_hash = "f837d162689d0161"
+
+[[cases.hashes]]
+tick = 200
+state_hash = "1204db6e2f6f88e5"
+
+[[cases]]
+name = "genealogy-stress"
+seed = 8
+width = 24
+height = 24
+initial_agents = 64
+
+[[cases.hashes]]
+tick = 0
+state_hash = "771336d2ffbc38a0"
+
+[[cases.hashes]]
+tick = 50
+state_hash = "a74fd896355d9ae3"
+
+[[cases.hashes]]
+tick = 500
+state_hash = "a2815fedee37f45d"
