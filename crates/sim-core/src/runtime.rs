@@ -19,7 +19,7 @@ use crate::{
 mod perception;
 mod situations;
 
-pub use perception::{MAX_SCENES, SENSE_DIMENSIONS, ScenePerception};
+pub use perception::{MAX_SCENES, RETINA_SENSE_DIMENSIONS, SENSE_DIMENSIONS, ScenePerception};
 pub use situations::{ActionSituations, MAX_ACTION_SITUATIONS, SituationStats};
 
 /// Explicit action-selection policy for a standalone founder.
@@ -1651,6 +1651,10 @@ impl AgentRuntime {
     ///
     /// Returns [`RuntimeError::UnexpectedSequence`] for a duplicate, stale, or future
     /// observation, leaving the runtime unchanged.
+    #[allow(
+        clippy::large_types_passed_by_value,
+        reason = "the observation is recorded by value in the returned transition"
+    )]
     pub fn step(
         &mut self,
         observation: EnvironmentObservation,
@@ -2099,6 +2103,7 @@ impl EnvironmentAdapter for FakeEnvironment {
                 },
             },
             transport: self.fault,
+            retina: None,
         };
         self.fault = TransportStatus::Healthy;
         self.sequence += 1;

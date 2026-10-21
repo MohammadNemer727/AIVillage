@@ -18,12 +18,12 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | LearnedSituations | late | 8.4 | 13.9 | 18.5 | 18.5 |
 | PerActionSituations | early | 8.3 | 12.9 | 12.5 | 12.5 |
 | PerActionSituations | late | 10.0 | 13.2 | 20.2 | 20.2 |
-| SceneSituations | early | 8.3 | 13.0 | 16.6 | 16.6 |
-| SceneSituations | late | 9.6 | 15.2 | 26.8 | 26.8 |
-| ScenePlanner | early | 9.5 | 22.0 | 35.5 | 35.5 |
-| ScenePlanner | late | 11.3 | 31.3 | 48.5 | 48.5 |
-| FovealPlanner | early | 8.2 | 17.1 | 25.0 | 25.0 |
-| FovealPlanner | late | 10.8 | 28.8 | 43.8 | 43.8 |
+| SceneSituations | early | 8.0 | 11.5 | 14.4 | 14.4 |
+| SceneSituations | late | 9.5 | 15.1 | 22.4 | 22.4 |
+| ScenePlanner | early | 9.2 | 17.8 | 29.1 | 29.1 |
+| ScenePlanner | late | 9.3 | 20.1 | 33.8 | 33.8 |
+| FovealPlanner | early | 7.6 | 12.3 | 19.3 | 19.3 |
+| FovealPlanner | late | 8.2 | 16.9 | 31.7 | 31.7 |
 
 ## Late-phase hit rate per seed (%)
 
@@ -35,9 +35,9 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | ExpectileDiscovery | 17.8 · 21.1 · 11.1 · 16.6 · 30.3 · 14.8 · 17.2 · 14.2 |
 | LearnedSituations | 16.6 · 33.3 · 20.9 · 15.3 · 19.7 · 14.8 · 13.9 · 13.7 |
 | PerActionSituations | 29.3 · 36.8 · 15.6 · 34.6 · 10.4 · 5.2 · 16.6 · 3.7 |
-| SceneSituations | 41.3 · 42.6 · 16.1 · 25.6 · 18.5 · 22.6 · 24.2 · 32.3 |
-| ScenePlanner | 51.3 · 53.1 · 35.9 · 57.1 · 56.4 · 69.2 · 30.6 · 31.7 |
-| FovealPlanner | 49.4 · 53.3 · 30.2 · 41.9 · 36.0 · 50.4 · 54.5 · 40.2 |
+| SceneSituations | 34.3 · 28.1 · 0.0 · 28.5 · 12.1 · 13.2 · 34.4 · 20.9 |
+| ScenePlanner | 13.7 · 47.5 · 50.8 · 43.3 · 33.3 · 26.8 · 26.3 · 0.0 |
+| FovealPlanner | 39.7 · 30.5 · 0.0 · 40.6 · 39.7 · 13.4 · 56.3 · 11.6 |
 
 ## LearnedSituations: shared situations
 
@@ -75,11 +75,11 @@ Sense facts each seed split on, in order.
 
 | seed | facts |
 |---:|---|
-| 7 | scene 5 |
-| 19 | scene 3 |
-| 43 | scene 2, scene 6, scene 5 |
-| 91 | scene 3, scene 2, scene 5 |
-| 131 | scene 4, scene 0, scene 3, scene 7 |
-| 173 | scene 0, scene 2 |
-| 211 | scene 0, scene 1 |
-| 251 | scene 5, scene 7 |
+| 7 | scene 3, scene 6 |
+| 19 | scene 7, scene 2 |
+| 43 | none |
+| 91 | scene 0, scene 1, scene 3 |
+| 131 | scene 0, scene 5, scene 6 |
+| 173 | scene 4, scene 6, scene 3 |
+| 211 | scene 2, scene 3 |
+| 251 | scene 3, scene 5 |

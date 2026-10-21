@@ -212,6 +212,58 @@ local entity_colours = {
   ["ai_bridge:test_object"] = {176, 176, 176}, -- average of ai_bridge_generic_cc0.png
 }
 
+-- Casts one eye ray into `sample`: colour, light and nearness of the first ray-visible node or
+-- entity within six nodes, and the apparent closing speed along the ray. `vertical` includes
+-- vertical motion in that speed (the forward retina); the legacy rays use horizontal motion only.
+local function cast_eye_ray(self, eye, direction, velocity, sample, vertical)
+  local hit, rgb, light, hit_velocity
+  for pointed in minetest.raycast(eye, vector.add(eye, vector.multiply(direction, 6)), true, false) do
+    if pointed.type == "node" then
+      hit, rgb = pointed, palette[minetest.get_node(pointed.under).name] or {120, 170, 255}
+      light = minetest.get_node_light(pointed.above, 0.5) or 0
+      break
+    end
+    local entity = pointed.ref ~= self.object and pointed.ref:get_luaentity()
+    local colour = entity and entity_colours[entity.name]
+    if colour then
+      hit, rgb, hit_velocity = pointed, colour, pointed.ref:get_velocity()
+      light = minetest.get_node_light(vector.round(pointed.ref:get_pos()), 0.5) or 0
+      break
+    end
+  end
+  if hit then
+    local distance = vector.length(vector.subtract(hit.intersection_point, eye))
+    sample.red, sample.green, sample.blue = rgb[1], rgb[2], rgb[3]
+    sample.brightness = byte(light * 17)
+    sample.occlusion = byte(255 * (1 - clamp(distance, 0, 6) / 6))
+  end
+  -- Apparent closing speed along the ray: own motion, minus the motion of a seen object.
+  local seen = hit_velocity or {x = 0, y = 0, z = 0}
+  local closing = (velocity.x - seen.x) * direction.x + (velocity.z - seen.z) * direction.z
+  if vertical then closing = closing + (velocity.y - (seen.y or 0)) * direction.y end
+  sample.motion = signed(closing * 255 / 4)
+end
+
+-- The forward retina (body contract version 4): 24 columns 7.5 degrees apart and 5 rows 20
+-- degrees apart, turned and tilted with the gaze. Point row * 24 + column looks
+-- (column - 11.5) * 7.5 degrees left of the gaze and (row - 2) * 20 degrees above it.
+local retina_columns, retina_rows = 24, 5
+local function sense_retina(self, eye, v2_angle, pitch, velocity)
+  local points = {}
+  for row = 0, retina_rows - 1 do
+    local elevation = pitch + (row - 2) * math.rad(20)
+    for column = 0, retina_columns - 1 do
+      local angle = v2_angle + (column - (retina_columns - 1) / 2) * math.rad(7.5)
+      local direction = {x = math.cos(angle) * math.cos(elevation), y = math.sin(elevation),
+        z = math.sin(angle) * math.cos(elevation)}
+      local sample = {red = 120, green = 170, blue = 255, brightness = 204, motion = 0, occlusion = 0}
+      cast_eye_ray(self, eye, direction, velocity, sample, true)
+      points[#points + 1] = sample
+    end
+  end
+  return points
+end
+
 local function sense(self, dt)
   local senses, pos = empty_senses(), self.object:get_pos()
   local velocity, yaw = self.object:get_velocity(), self.object:get_yaw()
@@ -221,33 +273,9 @@ local function sense(self, dt)
   for index = 0, 15 do
     local angle = v2_angle + index * (2 * math.pi / 16)
     local direction = {x = math.cos(angle) * math.cos(pitch), y = math.sin(pitch), z = math.sin(angle) * math.cos(pitch)}
-    local hit, rgb, light, hit_velocity
-    for pointed in minetest.raycast(eye, vector.add(eye, vector.multiply(direction, 6)), true, false) do
-      if pointed.type == "node" then
-        hit, rgb = pointed, palette[minetest.get_node(pointed.under).name] or {120, 170, 255}
-        light = minetest.get_node_light(pointed.above, 0.5) or 0
-        break
-      end
-      local entity = pointed.ref ~= self.object and pointed.ref:get_luaentity()
-      local colour = entity and entity_colours[entity.name]
-      if colour then
-        hit, rgb, hit_velocity = pointed, colour, pointed.ref:get_velocity()
-        light = minetest.get_node_light(vector.round(pointed.ref:get_pos()), 0.5) or 0
-        break
-      end
-    end
-    local sample = senses.retinal[index + 1]
-    if hit then
-      local delta = vector.subtract(hit.intersection_point, eye)
-      local distance = vector.length(delta)
-      sample.red, sample.green, sample.blue = rgb[1], rgb[2], rgb[3]
-      sample.brightness = byte(light * 17)
-      sample.occlusion = byte(255 * (1 - clamp(distance, 0, 6) / 6))
-    end
-    -- Apparent closing speed along the ray: own motion, minus the motion of a seen object.
-    local seen = hit_velocity or {x = 0, z = 0}
-    sample.motion = signed(((velocity.x - seen.x) * direction.x + (velocity.z - seen.z) * direction.z) * 255 / 4)
+    cast_eye_ray(self, eye, direction, velocity, senses.retinal[index + 1], false)
   end
+  state.retina = sense_retina(self, eye, v2_angle, pitch, velocity)
   senses.touch = byte(state.touch)
   senses.joint_position = byte((((v2_angle % (2 * math.pi)) * 256) / (2 * math.pi)))
   senses.orientation = senses.joint_position
@@ -324,9 +352,12 @@ end
 local function send_transition(self, dt)
   if not http then zero_action("disconnected") return end
   local velocity = self.object:get_velocity()
-  local observation = { sequence = state.sequence, senses = sense(self, dt),
+  -- Sense first: it also fills the forward retina sent beside the legacy rays.
+  local senses = sense(self, dt)
+  local observation = { sequence = state.sequence, senses = senses,
     body = { eye_pitch = byte(state.eye_pitch + 128), grounded = state.grounded, vertical_motion = signed(velocity.y * 64), hand_contact = state.hand_contact },
-    capabilities = { body_contract_version = 3, checkpoint_resume = false, dead = { chemicals = {true,true,true,true}, vibration = true,
+    retina = state.retina,
+    capabilities = { body_contract_version = 4, checkpoint_resume = false, dead = { chemicals = {true,true,true,true}, vibration = true,
       touch = false, joint_position = false, muscle_tension = false, acceleration = false, orientation = false } },
     transport = transport_name[state.status] or "Disconnected" }
   local body = minetest.write_json({ protocol = protocol, agent_id = agent_id, observation = observation,

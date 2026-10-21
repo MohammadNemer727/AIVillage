@@ -10,13 +10,16 @@
 use serde::{Deserialize, Serialize};
 
 use super::{EnvironmentObservation, RETINAL_RAY_COUNT};
+use crate::environment::{RETINA_COLUMNS, RETINA_POINTS};
 
 /// Channels per eye ray: red, green, blue, brightness, distance (occlusion) and motion.
 const RAY_CHANNELS: usize = 6;
 /// Body channels: touch, hand contact, eye pitch, grounded, vertical motion, acceleration.
 const BODY_CHANNELS: usize = 6;
-/// Length of a sense vector.
+/// Length of a sense vector from the legacy eye rays.
 pub const SENSE_DIMENSIONS: usize = RETINAL_RAY_COUNT * RAY_CHANNELS + BODY_CHANNELS;
+/// Length of a sense vector from the forward retina.
+pub const RETINA_SENSE_DIMENSIONS: usize = RETINA_POINTS * RAY_CHANNELS + BODY_CHANNELS;
 /// Most scenes the founder distinguishes.
 pub const MAX_SCENES: usize = 8;
 /// Sense vectors seen before scenes are formed, so the running spreads have settled.
@@ -31,13 +34,22 @@ const STATS_HORIZON: i32 = 64;
 const PROTOTYPE_HORIZON: u32 = 32;
 /// Weight of a sense dimension under foveated vision: eye rays count more the nearer they look
 /// to straight ahead (four times at the centre, three, two, then once in the periphery), as a
-/// fovea sees the centre of the visual field most sharply; body senses count twice.
-fn foveal_weight(dimension: usize) -> i32 {
-    if dimension >= RETINAL_RAY_COUNT * RAY_CHANNELS {
+/// fovea sees the centre of the visual field most sharply; body senses count twice. With a
+/// forward retina, nearness is measured in columns from the centre of gaze, three columns per
+/// step.
+fn foveal_weight(dimension: usize, dimensions: usize) -> i32 {
+    if dimension >= dimensions - BODY_CHANNELS {
         return 2;
     }
-    let ray = dimension / RAY_CHANNELS;
-    match ray.min(RETINAL_RAY_COUNT - ray) {
+    let point = dimension / RAY_CHANNELS;
+    let steps = if dimensions == RETINA_SENSE_DIMENSIONS {
+        let column = point % RETINA_COLUMNS;
+        let from_edge = column.min(RETINA_COLUMNS - 1 - column);
+        (RETINA_COLUMNS / 2 - 1 - from_edge) / 3
+    } else {
+        point.min(RETINAL_RAY_COUNT - point)
+    };
+    match steps {
         0 => 4,
         1 => 3,
         2 => 2,
@@ -68,10 +80,15 @@ pub struct ScenePerception {
     pub current: usize,
 }
 
-/// The raw sense vector of an observation, in receptor units.
+/// The raw sense vector of an observation, in receptor units: the forward retina when the body
+/// has one, otherwise the legacy eye rays, then the body senses.
 fn sense_vector(observation: &EnvironmentObservation) -> Vec<i32> {
-    let mut vector = Vec::with_capacity(SENSE_DIMENSIONS);
-    for sample in &observation.senses.retinal {
+    let eye: &[_] = observation
+        .retina
+        .as_ref()
+        .map_or(&observation.senses.retinal[..], |retina| &retina.points[..]);
+    let mut vector = Vec::with_capacity(eye.len() * RAY_CHANNELS + BODY_CHANNELS);
+    for sample in eye {
         vector.extend([
             i32::from(sample.red),
             i32::from(sample.green),
@@ -95,15 +112,15 @@ fn sense_vector(observation: &EnvironmentObservation) -> Vec<i32> {
 
 impl ScenePerception {
     pub(super) fn is_valid(&self) -> bool {
-        let dimensions = |values: usize| values == 0 || values == SENSE_DIMENSIONS;
-        dimensions(self.mean.len())
-            && self.mean.len() == self.spread.len()
+        let dimensions = self.mean.len();
+        matches!(dimensions, 0 | SENSE_DIMENSIONS | RETINA_SENSE_DIMENSIONS)
+            && self.spread.len() == dimensions
             && self.prototypes.len() <= MAX_SCENES
             && self.prototypes.len() == self.members.len()
             && self
                 .prototypes
                 .iter()
-                .all(|prototype| prototype.len() == SENSE_DIMENSIONS)
+                .all(|prototype| prototype.len() == dimensions)
             && (self.prototypes.is_empty() || self.current < self.prototypes.len())
     }
 
@@ -116,7 +133,12 @@ impl ScenePerception {
         let raw = sense_vector(observation);
         if self.mean.is_empty() {
             self.mean = raw.iter().map(|value| value * 16).collect();
-            self.spread = vec![SPREAD_FLOOR * 16; SENSE_DIMENSIONS];
+            self.spread = vec![SPREAD_FLOOR * 16; raw.len()];
+        }
+        if raw.len() != self.mean.len() {
+            // The body's eyes changed kind mid-life; scenes learned with the other eyes cannot
+            // place this view.
+            return None;
         }
         for ((value, mean), spread) in raw.iter().zip(&mut self.mean).zip(&mut self.spread) {
             let scaled = value * 16;
@@ -135,7 +157,7 @@ impl ScenePerception {
             .map(|(dimension, ((value, mean), spread))| {
                 let units = (value * 16 - mean) * SPREAD_UNIT / (*spread).max(SPREAD_FLOOR * 16);
                 let weight = if foveated {
-                    foveal_weight(dimension)
+                    foveal_weight(dimension, raw.len())
                 } else {
                     1
                 };
@@ -169,8 +191,7 @@ impl ScenePerception {
         };
         if self.typical_distance == 0 {
             // Before any comparison, judge novelty against the first scene's spread of values.
-            self.typical_distance =
-                i64::try_from(SENSE_DIMENSIONS).unwrap_or(1) * i64::from(SPREAD_UNIT);
+            self.typical_distance = i64::try_from(raw.len()).unwrap_or(1) * i64::from(SPREAD_UNIT);
         }
         self.current = scene;
         Some(scene)

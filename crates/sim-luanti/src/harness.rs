@@ -19,7 +19,10 @@ use std::ops::Range;
 use serde::Serialize;
 use sim_core::{
     RETINAL_RAY_COUNT, RetinalSample,
-    environment::{BodyProprioception, PrimitiveAction},
+    environment::{
+        BodyProprioception, EnvironmentObservation, PrimitiveAction, RETINA_COLUMNS, RETINA_POINTS,
+        RETINA_ROWS, Retina,
+    },
     runtime::{
         AFFORDANCE_ACTIONS, AffordanceConfig, AgentRuntime, ContextMode, ExperimentMode,
         HAND_CONTACT_FEATURE, OutcomeModel, Perception, ScoringRule, VISUAL_CHANGE_FEATURE,
@@ -259,15 +262,19 @@ pub fn phase_ranges(phases: &[Phase]) -> Vec<Range<usize>> {
         .collect()
 }
 
-/// Draws the object on the eye rays: toward it at eye height for a facing object, or straight
-/// ahead for an object that is only seen.
+/// Draws the object on the eye rays: toward it at eye height for a facing object, also on the
+/// forward retina, or straight ahead for an object that is only seen.
 fn show_object(
-    retinal: &mut [RetinalSample; RETINAL_RAY_COUNT],
+    sensed: &mut EnvironmentObservation,
     object: Object,
     heading: usize,
     level: u16,
     previous_level: u16,
 ) {
+    if object.facing {
+        sensed.retina = Some(facing_retina(heading));
+    }
+    let retinal = &mut sensed.senses.retinal;
     if object.facing {
         // Increasing ray index turns left, and each heading step turned left puts the
         // object one step further to the right.
@@ -292,6 +299,33 @@ fn show_object(
             ray.motion = (i32::from(level) - i32::from(previous_level)) as i16;
         }
     }
+}
+
+/// The forward retina of a turning body: the object, about 17 degrees wide at eye height, appears
+/// on the middle row in the columns toward it, and not at all when it is behind.
+fn facing_retina(heading: usize) -> Retina {
+    let mut retina = Retina {
+        points: [RetinalSample::default(); RETINA_POINTS],
+    };
+    // Each heading step turned left puts the object 45 degrees further right.
+    let mut bearing = -45 * i32::try_from(heading).unwrap_or_default();
+    if bearing <= -180 {
+        bearing += 360;
+    }
+    // Column of the bearing, in tenths: 11.5 at straight ahead, 7.5 degrees per column.
+    let centre = 115 + bearing * 10 * 10 / 75;
+    let row = RETINA_ROWS / 2;
+    for column in 0..RETINA_COLUMNS {
+        let tenths = i32::try_from(column).unwrap_or_default() * 10;
+        if (tenths - centre).abs() <= 12 {
+            let point = &mut retina.points[row * RETINA_COLUMNS + column];
+            point.red = SEEN_COLOUR;
+            point.green = SEEN_COLOUR;
+            point.blue = SEEN_COLOUR;
+            point.occlusion = REACHABLE_OCCLUSION;
+        }
+    }
+    retina
 }
 
 /// Runs one seed through every phase. Yoked phases replay `partner`'s levels.
@@ -345,13 +379,7 @@ pub fn run(
         }
         let mut sensed = observation(tick, body, body.hand_contact);
         sensed.senses.acceleration = acceleration;
-        show_object(
-            &mut sensed.senses.retinal,
-            object,
-            heading,
-            level,
-            previous_level,
-        );
+        show_object(&mut sensed, object, heading, level, previous_level);
         let transition = runtime.step(sensed).expect("fixture sequence");
         let action = match controller {
             Controller::Random => random_action(seed, tick),

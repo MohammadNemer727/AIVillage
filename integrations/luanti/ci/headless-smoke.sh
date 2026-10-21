@@ -83,6 +83,15 @@ for index, record in enumerate(records):
         assert all(0 <= sample[key] <= 255 for key in ("red", "green", "blue", "brightness", "occlusion"))
         assert -255 <= sample["motion"] <= 255
     assert -255 <= request["observation"]["senses"]["acceleration"] <= 255
+for record in records:
+    retina = record["request"]["observation"].get("retina")
+    assert retina is not None and len(retina) == 120, "observation lacks the 120-point forward retina"
+    assert all(0 <= point[key] <= 255 for point in retina for key in ("red", "green", "blue", "brightness", "occlusion"))
+    assert all(-255 <= point["motion"] <= 255 for point in retina)
+assert any(
+    point["occlusion"] > 0 and (point["red"], point["green"], point["blue"]) != (120, 170, 255)
+    for record in records for point in record["request"]["observation"]["retina"]
+), "the forward retina never saw the room"
 assert any(
     sample["occlusion"] > 0 and (sample["red"], sample["green"], sample["blue"]) != (120, 170, 255)
     for record in records for sample in record["request"]["observation"]["senses"]["retinal"]

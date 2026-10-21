@@ -47,6 +47,15 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | free / planner-32 / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 20.9 |
 | free / planner-32 / turned | connected | 4000 | 11.4 | 26.8 | 16.9 | 16.9 | 31.3 |
 | free / planner-32 / turned | extinction | 800 | 11.2 | 0.0 | 0.2 | 0.0 | 29.5 |
+| free / retina-foveal / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 19.2 |
+| free / retina-foveal / turned | connected | 4000 | 11.5 | 32.5 | 16.0 | 17.0 | 32.6 |
+| free / retina-foveal / turned | extinction | 800 | 9.2 | 0.0 | 0.0 | 0.0 | 27.9 |
+| free / retina-planner / turned | baseline | 800 | 6.6 | 0.0 | 0.0 | 0.0 | 22.0 |
+| free / retina-planner / turned | connected | 4000 | 13.1 | 33.1 | 13.5 | 17.2 | 24.1 |
+| free / retina-planner / turned | extinction | 800 | 12.4 | 0.0 | 0.2 | 0.0 | 7.6 |
+| free / retina-scenes / turned | baseline | 800 | 7.0 | 0.0 | 0.0 | 0.0 | 23.4 |
+| free / retina-scenes / turned | connected | 4000 | 13.5 | 26.6 | 14.3 | 14.6 | 23.9 |
+| free / retina-scenes / turned | extinction | 800 | 14.2 | 0.0 | 0.0 | 0.0 | 16.5 |
 | free / scenes-slowfade / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 20.6 |
 | free / scenes-slowfade / turned | connected | 4000 | 11.9 | 30.6 | 17.1 | 21.4 | 25.9 |
 | free / scenes-slowfade / turned | extinction | 800 | 10.9 | 0.0 | 0.2 | 0.0 | 31.1 |
@@ -74,6 +83,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | inert / planner-32 / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 24.6 |
 | inert / planner-32 / turned | connected | 4000 | 7.5 | 0.0 | 16.8 | 13.3 | 29.6 |
 | inert / planner-32 / turned | extinction | 800 | 7.0 | 0.0 | 0.0 | 0.0 | 23.5 |
+| inert / retina-foveal / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 19.1 |
+| inert / retina-foveal / turned | connected | 4000 | 7.2 | 0.0 | 14.5 | 10.5 | 32.1 |
+| inert / retina-foveal / turned | extinction | 800 | 7.6 | 0.0 | 0.1 | 0.0 | 42.9 |
 | inert / scenes-slowfade / turned | baseline | 800 | 7.4 | 0.0 | 0.0 | 0.0 | 20.6 |
 | inert / scenes-slowfade / turned | connected | 4000 | 7.4 | 0.0 | 21.6 | 25.4 | 27.4 |
 | inert / scenes-slowfade / turned | extinction | 800 | 6.8 | 0.0 | 0.1 | 0.0 | 24.6 |
@@ -154,3 +166,19 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | fp-inert-seed2 | inert / foveal-planner / turned | 2 | 6.0 | 8.3 | 8.0 |
 | fp-inert-seed3 | inert / foveal-planner / turned | 3 | 7.5 | 7.8 | 9.5 |
 | fp-inert-seed4 | inert / foveal-planner / turned | 4 | 7.5 | 7.7 | 5.0 |
+| retina-foveal-free-seed1 | free / retina-foveal / turned | 1 | 6.0 | 11.4 | 7.5 |
+| retina-foveal-free-seed2 | free / retina-foveal / turned | 2 | 7.5 | 12.1 | 10.5 |
+| retina-foveal-free-seed3 | free / retina-foveal / turned | 3 | 7.5 | 11.6 | 12.0 |
+| retina-foveal-free-seed4 | free / retina-foveal / turned | 4 | 6.0 | 10.8 | 7.0 |
+| retina-foveal-inert-seed1 | inert / retina-foveal / turned | 1 | 7.5 | 7.4 | 7.5 |
+| retina-foveal-inert-seed2 | inert / retina-foveal / turned | 2 | 7.5 | 6.9 | 6.0 |
+| retina-foveal-inert-seed3 | inert / retina-foveal / turned | 3 | 6.0 | 7.4 | 8.0 |
+| retina-foveal-inert-seed4 | inert / retina-foveal / turned | 4 | 6.0 | 6.9 | 9.0 |
+| retina-planner-free-seed1 | free / retina-planner / turned | 1 | 7.5 | 13.8 | 16.0 |
+| retina-planner-free-seed2 | free / retina-planner / turned | 2 | 7.0 | 14.7 | 11.5 |
+| retina-planner-free-seed3 | free / retina-planner / turned | 3 | 6.0 | 11.9 | 10.0 |
+| retina-planner-free-seed4 | free / retina-planner / turned | 4 | 6.0 | 11.8 | 12.0 |
+| retina-scenes-free-seed1 | free / retina-scenes / turned | 1 | 7.5 | 13.2 | 15.0 |
+| retina-scenes-free-seed2 | free / retina-scenes / turned | 2 | 7.0 | 16.0 | 13.5 |
+| retina-scenes-free-seed3 | free / retina-scenes / turned | 3 | 7.5 | 12.6 | 15.0 |
+| retina-scenes-free-seed4 | free / retina-scenes / turned | 4 | 6.0 | 12.3 | 13.5 |

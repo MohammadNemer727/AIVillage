@@ -91,6 +91,7 @@ pub(crate) fn observation(
             dead: DeadChannels::default(),
         },
         transport: TransportStatus::Healthy,
+        retina: None,
     }
 }
 pub(crate) fn random_action(seed: u64, tick: u64) -> PrimitiveAction {

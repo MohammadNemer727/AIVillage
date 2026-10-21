@@ -136,6 +136,8 @@ SIM_LUANTI_SEED=1 LEARN_OBJECT=inert sh integrations/luanti/ci/learning-run.sh /
 python3 integrations/luanti/tools/analyze_learning.py docs/luanti-learning-run.md /tmp/learn/*
 ```
 
+The founder's body (contract version 4) also sends a forward retina of 24 x 5 eye rays beside
+the legacy 16; the smoke test checks every request carries 120 bounded points that see the room.
 In learning runs the cube hangs at the founder's eye height. `LEARN_FACING=turned` starts each
 trial facing one of eight directions instead of the cube (the reaching test), and
 `SIM_LUANTI_AFFORDANCE='{"context":"SenseBits"}' LEARN_LABEL=context` runs the context-conditioned

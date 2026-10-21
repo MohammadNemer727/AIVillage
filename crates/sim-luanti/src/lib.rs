@@ -508,6 +508,7 @@ mod tests {
                 body: BodyProprioception::default(),
                 capabilities: EnvironmentCapabilities::default(),
                 transport: TransportStatus::Healthy,
+                retina: None,
             },
             trace: ApplicationTrace {
                 applied_server_step: 10,

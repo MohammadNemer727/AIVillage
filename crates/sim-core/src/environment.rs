@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CHEMICAL_RECEPTOR_COUNT, RawSensoryFrame};
+use crate::{CHEMICAL_RECEPTOR_COUNT, RawSensoryFrame, RetinalSample};
 
 /// Number of blank signal outputs recorded alongside the primitive motors.
 pub use sim_kernels::controller::SIGNAL_CHANNELS;
@@ -106,6 +106,90 @@ pub enum TransportStatus {
     Disconnected,
 }
 
+/// Columns of the forward retina, 7.5 degrees apart, spanning about 180 degrees.
+pub const RETINA_COLUMNS: usize = 24;
+/// Rows of the forward retina, 20 degrees apart, spanning about 80 degrees.
+pub const RETINA_ROWS: usize = 5;
+/// Points of the forward retina.
+pub const RETINA_POINTS: usize = RETINA_COLUMNS * RETINA_ROWS;
+
+/// A forward-facing grid of eye rays (body contract version 4), turned and tilted with the
+/// gaze like an eye's field of view. Point `row * RETINA_COLUMNS + column` looks
+/// `(column - 11.5) * 7.5` degrees to the left of the gaze and `(row - 2) * 20` degrees above it,
+/// so column 0 is the far right and row 0 the lowest. Each point carries the same bounded
+/// receptor amplitudes as a legacy eye ray, and no identity or position.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(try_from = "Vec<RetinaPoint>", into = "Vec<RetinaPoint>")]
+pub struct Retina {
+    /// Receptor amplitudes of every point.
+    pub points: [RetinalSample; RETINA_POINTS],
+}
+
+/// Wire form of one retina point.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct RetinaPoint {
+    red: u16,
+    green: u16,
+    blue: u16,
+    brightness: u16,
+    motion: i16,
+    occlusion: u16,
+}
+
+impl TryFrom<Vec<RetinaPoint>> for Retina {
+    type Error = String;
+
+    fn try_from(points: Vec<RetinaPoint>) -> Result<Self, Self::Error> {
+        if points.len() != RETINA_POINTS {
+            return Err(format!(
+                "retina has {} points, not {RETINA_POINTS}",
+                points.len()
+            ));
+        }
+        let mut retina = Self {
+            points: [RetinalSample::default(); RETINA_POINTS],
+        };
+        for (sample, point) in retina.points.iter_mut().zip(points) {
+            let channels = [
+                point.red,
+                point.green,
+                point.blue,
+                point.brightness,
+                point.occlusion,
+            ];
+            if channels.iter().any(|value| *value > 255) || point.motion.unsigned_abs() > 255 {
+                return Err("retina amplitude is out of the receptor range".to_owned());
+            }
+            *sample = RetinalSample {
+                red: point.red,
+                green: point.green,
+                blue: point.blue,
+                brightness: point.brightness,
+                motion: point.motion,
+                occlusion: point.occlusion,
+            };
+        }
+        Ok(retina)
+    }
+}
+
+impl From<Retina> for Vec<RetinaPoint> {
+    fn from(retina: Retina) -> Self {
+        retina
+            .points
+            .iter()
+            .map(|sample| RetinaPoint {
+                red: sample.red,
+                green: sample.green,
+                blue: sample.blue,
+                brightness: sample.brightness,
+                motion: sample.motion,
+                occlusion: sample.occlusion,
+            })
+            .collect()
+    }
+}
+
 /// A bounded sensory observation at one sequence boundary.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EnvironmentObservation {
@@ -121,6 +205,10 @@ pub struct EnvironmentObservation {
     pub capabilities: EnvironmentCapabilities,
     /// Transport state for this boundary.
     pub transport: TransportStatus,
+    /// Forward retina, from endpoints implementing body contract version 4. The legacy eye
+    /// rays in `senses` remain for the founder's brain and older learners.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retina: Option<Retina>,
 }
 
 /// Primitive motor amplitudes emitted by the runtime.
