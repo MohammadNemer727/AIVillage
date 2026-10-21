@@ -45,10 +45,19 @@ python3 integrations/luanti/tools/generate_palette.py --check
 ```
 
 See [`../integrations/luanti/FEDORA_PACKAGES.md`](../integrations/luanti/FEDORA_PACKAGES.md) for
-the Fedora package/version lock and user-terminal-only install commands. With the pinned server
-available, start `cargo run -p sim-luanti`, then run `integrations/luanti/ci/headless-smoke.sh`.
-Set `SIM_LUANTI_TRACE=trace.ndjson` to record accepted post-action transitions for exact Rust
-runtime replay; live Luanti physics itself is not claimed to be bit-identical.
+the Fedora package/version lock and user-terminal-only install commands. The smoke script starts
+the bridge itself, runs the server, asserts the live behaviour, and replays the recorded trace:
+
+```sh
+sh integrations/luanti/ci/headless-smoke.sh                 # host luantiserver
+docker build -t ai-village-luanti integrations/luanti        # or the pinned image, as CI does
+LUANTI_SERVER_IMAGE=ai-village-luanti sh integrations/luanti/ci/headless-smoke.sh
+```
+
+With rootless Podman, build with `podman` and set `LUANTI_CONTAINER_RUNTIME=podman`. Set
+`SIM_LUANTI_TRACE=trace.ndjson` when running `cargo run -p sim-luanti` by hand to record accepted
+post-action transitions, and replay them with `cargo run -p sim-luanti -- replay trace.ndjson`;
+live Luanti physics itself is not claimed to be bit-identical.
 Acceleration is intentionally a bounded signed receptor: horizontal finite differences are scaled
 at 4 m/s² per full-scale unit and clamped to `[-255, 255]`. This can saturate during collisions or
 gravity-adjacent motion; changing the fixed receptor mapping requires a versioned V2 contract

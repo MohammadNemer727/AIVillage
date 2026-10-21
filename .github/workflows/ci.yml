@@ -33,3 +33,18 @@ jobs:
         run: cargo test --workspace --all-features --locked
       - name: Rustdoc
         run: cargo doc --workspace --all-features --no-deps
+
+  luanti-smoke:
+    name: Headless Luanti bridge smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.1
+      - name: Build pinned Luanti server image
+        run: docker build -t ai-village-luanti integrations/luanti
+      - name: Smoke the bridge against the pinned server and replay its trace
+        env:
+          LUANTI_SERVER_IMAGE: ai-village-luanti
+        run: sh integrations/luanti/ci/headless-smoke.sh "$RUNNER_TEMP/luanti-smoke"

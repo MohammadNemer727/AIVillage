@@ -1,5 +1,7 @@
 #!/usr/bin/env sh
-# Runs the loopback bridge and a clean, isolated Fedora Luanti server.
+# Runs the loopback bridge and a clean, isolated Luanti server: the host's `luantiserver` by
+# default, or the image named by LUANTI_SERVER_IMAGE (built from integrations/luanti/Dockerfile)
+# through LUANTI_CONTAINER_RUNTIME (default: docker).
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -27,7 +29,11 @@ server_log="$world/server.log"
 SIM_LUANTI_TRACE="$trace" SIM_LUANTI_STALL_SEQUENCE=12 SIM_LUANTI_STALL_MS=750 \
   cargo run --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml" >"$bridge_log" 2>&1 &
 bridge_pid=$!
+container=ai-village-smoke-$$
 cleanup() {
+  if [ -n "${LUANTI_SERVER_IMAGE:-}" ]; then
+    "${LUANTI_CONTAINER_RUNTIME:-docker}" rm -f "$container" >/dev/null 2>&1 || true
+  fi
   kill "$bridge_pid" 2>/dev/null || true
   wait "$bridge_pid" 2>/dev/null || true
 }
@@ -39,8 +45,20 @@ for _ in $(seq 1 120); do
   sleep 0.25
 done
 [ "$ready" -eq 1 ] || { cat "$bridge_log"; exit 1; }
-server_bin=$(command -v luantiserver || command -v minetestserver)
-LUANTI_GAME_PATH="$root/games" timeout 20s "$server_bin" --gameid ai_village --world "$world" --config "$config" >"$server_log" 2>&1
+if [ -n "${LUANTI_SERVER_IMAGE:-}" ]; then
+  runtime=${LUANTI_CONTAINER_RUNTIME:-docker}
+  # Host networking reaches the loopback-only bridge; the world is mounted at the same path and
+  # written as the invoking user. Rootless podman needs keep-id for that user mapping.
+  userns=
+  [ "$runtime" = podman ] && userns=--userns=keep-id
+  timeout 30s "$runtime" run --rm --name "$container" --network host $userns \
+    --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$world:$world:Z" \
+    "$LUANTI_SERVER_IMAGE" --world "$world" --config "$config" >"$server_log" 2>&1
+else
+  server_bin=$(command -v luantiserver || command -v minetestserver)
+  LUANTI_GAME_PATH="$root/games" timeout 20s "$server_bin" --gameid ai_village --world "$world" \
+    --config "$config" >"$server_log" 2>&1
+fi
 python3 - "$trace" "$server_log" <<'PY'
 import json, math, pathlib, sys
 records = [json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines()]
