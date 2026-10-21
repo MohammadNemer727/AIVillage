@@ -66,13 +66,15 @@ pub enum Controller {
     PerActionSituations,
     /// Per-experiment situations split on scenes the founder learns from its raw senses.
     SceneSituations,
+    /// Learned scenes plus planning over where experiments lead.
+    ScenePlanner,
 }
 
 impl Controller {
     /// Settings of the affordance learner this controller runs, if it runs one.
     #[must_use]
     pub fn learner(self) -> Option<AffordanceConfig> {
-        let perception = if self == Self::SceneSituations {
+        let perception = if matches!(self, Self::SceneSituations | Self::ScenePlanner) {
             Perception::Scenes
         } else {
             Perception::Designed
@@ -104,7 +106,7 @@ impl Controller {
                 ContextMode::Learned,
                 OutcomeModel::Moments,
             ),
-            Self::PerActionSituations | Self::SceneSituations => (
+            Self::PerActionSituations | Self::SceneSituations | Self::ScenePlanner => (
                 ScoringRule::Contingency,
                 ContextMode::PerAction,
                 OutcomeModel::Moments,
@@ -115,12 +117,13 @@ impl Controller {
             context,
             outcome_model,
             perception,
+            planning: self == Self::ScenePlanner,
             ..AffordanceConfig::default()
         })
     }
 }
 
-pub const CONTROLLERS: [Controller; 9] = [
+pub const CONTROLLERS: [Controller; 10] = [
     Controller::PredictiveBaseline,
     Controller::Random,
     Controller::AffordanceDiscovery,
@@ -130,6 +133,7 @@ pub const CONTROLLERS: [Controller; 9] = [
     Controller::LearnedSituations,
     Controller::PerActionSituations,
     Controller::SceneSituations,
+    Controller::ScenePlanner,
 ];
 
 /// How the founder senses the coupled object.

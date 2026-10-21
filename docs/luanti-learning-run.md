@@ -41,6 +41,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | free / per-action-8 / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 22.0 |
 | free / per-action-8 / turned | connected | 4000 | 11.9 | 20.8 | 13.7 | 11.7 | 32.5 |
 | free / per-action-8 / turned | extinction | 800 | 9.8 | 0.0 | 0.1 | 0.0 | 27.5 |
+| free / planner / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 23.1 |
+| free / planner / turned | connected | 4000 | 12.5 | 21.2 | 13.9 | 17.8 | 24.5 |
+| free / planner / turned | extinction | 800 | 11.5 | 0.0 | 0.2 | 0.0 | 29.5 |
 | free / scenes-slowfade / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 20.6 |
 | free / scenes-slowfade / turned | connected | 4000 | 11.9 | 30.6 | 17.1 | 21.4 | 25.9 |
 | free / scenes-slowfade / turned | extinction | 800 | 10.9 | 0.0 | 0.2 | 0.0 | 31.1 |
@@ -62,6 +65,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | inert / per-action-8 / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 23.2 |
 | inert / per-action-8 / turned | connected | 4000 | 8.0 | 0.0 | 14.9 | 19.6 | 28.8 |
 | inert / per-action-8 / turned | extinction | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 25.5 |
+| inert / planner / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 23.2 |
+| inert / planner / turned | connected | 4000 | 8.0 | 0.0 | 15.9 | 15.3 | 25.6 |
+| inert / planner / turned | extinction | 800 | 8.6 | 0.0 | 0.1 | 0.0 | 29.5 |
 | inert / scenes-slowfade / turned | baseline | 800 | 7.4 | 0.0 | 0.0 | 0.0 | 20.6 |
 | inert / scenes-slowfade / turned | connected | 4000 | 7.4 | 0.0 | 21.6 | 25.4 | 27.4 |
 | inert / scenes-slowfade / turned | extinction | 800 | 6.8 | 0.0 | 0.1 | 0.0 | 24.6 |
@@ -126,3 +132,11 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | ss-inert-seed2 | inert / scenes-slowfade / turned | 2 | 7.0 | 7.3 | 7.5 |
 | ss-inert-seed3 | inert / scenes-slowfade / turned | 3 | 7.5 | 8.7 | 7.5 |
 | ss-inert-seed4 | inert / scenes-slowfade / turned | 4 | 7.5 | 6.9 | 6.0 |
+| pl-free-seed1 | free / planner / turned | 1 | 7.5 | 9.6 | 9.0 |
+| pl-free-seed2 | free / planner / turned | 2 | 6.0 | 12.0 | 12.0 |
+| pl-free-seed3 | free / planner / turned | 3 | 7.5 | 12.3 | 12.0 |
+| pl-free-seed4 | free / planner / turned | 4 | 6.0 | 16.2 | 13.0 |
+| pl-inert-seed1 | inert / planner / turned | 1 | 9.0 | 7.5 | 7.5 |
+| pl-inert-seed2 | inert / planner / turned | 2 | 6.0 | 6.9 | 7.5 |
+| pl-inert-seed3 | inert / planner / turned | 3 | 6.0 | 8.1 | 9.0 |
+| pl-inert-seed4 | inert / planner / turned | 4 | 6.0 | 9.6 | 10.5 |

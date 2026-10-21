@@ -26,6 +26,8 @@ Anticipation is the learner's expected contact after a hand pulse, as distance f
 | Standard | PerActionSituations | Yoked | 5.8 | 7.0 | 4.6 | 6.2 | 129 | 0 → 22 → 26 → 3 |
 | Standard | SceneSituations | Contingent | 5.8 | 17.9 | 14.0 | 7.8 | 138 | 0 → 95 → 60 → 4 |
 | Standard | SceneSituations | Yoked | 5.8 | 7.0 | 7.8 | 7.8 | 138 | 0 → 24 → 32 → 4 |
+| Standard | ScenePlanner | Contingent | 5.8 | 17.9 | 14.0 | 7.8 | 138 | 0 → 95 → 60 → 4 |
+| Standard | ScenePlanner | Yoked | 5.8 | 7.0 | 7.8 | 7.8 | 138 | 0 → 24 → 32 → 4 |
 | Inverted | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Inverted | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Inverted | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
@@ -44,6 +46,8 @@ Anticipation is the learner's expected contact after a hand pulse, as distance f
 | Inverted | PerActionSituations | Yoked | 5.8 | 7.0 | 4.6 | 6.2 | 129 | 0 → 23 → 27 → 4 |
 | Inverted | SceneSituations | Contingent | 5.8 | 17.9 | 14.0 | 7.8 | 138 | 0 → 96 → 61 → 5 |
 | Inverted | SceneSituations | Yoked | 5.8 | 7.0 | 7.8 | 7.8 | 138 | 0 → 25 → 33 → 5 |
+| Inverted | ScenePlanner | Contingent | 5.8 | 17.9 | 14.0 | 7.8 | 138 | 0 → 96 → 61 → 5 |
+| Inverted | ScenePlanner | Yoked | 5.8 | 7.0 | 7.8 | 7.8 | 138 | 0 → 25 → 33 → 5 |
 | Bimodal | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Bimodal | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Bimodal | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
@@ -62,6 +66,8 @@ Anticipation is the learner's expected contact after a hand pulse, as distance f
 | Bimodal | PerActionSituations | Yoked | 5.8 | 7.0 | 5.4 | 7.0 | 150 | 0 → 3 → 4 → 1 |
 | Bimodal | SceneSituations | Contingent | 5.8 | 19.9 | 14.8 | 6.2 | 153 | 0 → 13 → 10 → 1 |
 | Bimodal | SceneSituations | Yoked | 5.8 | 7.8 | 8.5 | 5.4 | 153 | 0 → 4 → 6 → 1 |
+| Bimodal | ScenePlanner | Contingent | 5.8 | 22.6 | 15.6 | 7.0 | 174 | 0 → 14 → 7 → 1 |
+| Bimodal | ScenePlanner | Yoked | 5.8 | 7.4 | 6.2 | 5.4 | 174 | 0 → 4 → 3 → 0 |
 | Seen | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Seen | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Seen | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
@@ -80,6 +86,8 @@ Anticipation is the learner's expected contact after a hand pulse, as distance f
 | Seen | PerActionSituations | Yoked | 6.2 | 7.0 | 3.1 | 5.4 | 78 | 9 → 3 → 3 → 0 |
 | Seen | SceneSituations | Contingent | 6.2 | 10.9 | 10.1 | 6.2 | 84 | 9 → 12 → 8 → 0 |
 | Seen | SceneSituations | Yoked | 6.2 | 6.6 | 6.2 | 4.6 | 84 | 9 → 3 → 4 → 0 |
+| Seen | ScenePlanner | Contingent | 6.2 | 10.9 | 10.1 | 7.0 | 84 | 9 → 12 → 8 → 0 |
+| Seen | ScenePlanner | Yoked | 6.2 | 6.6 | 6.2 | 4.6 | 84 | 9 → 3 → 4 → 0 |
 
 ## Verdicts
 
@@ -96,6 +104,7 @@ A run shows contingency when connected-phase pulses are at least 1.5× both base
 | Standard | LearnedSituations | true | 7/8 |
 | Standard | PerActionSituations | true | 8/8 |
 | Standard | SceneSituations | true | 8/8 |
+| Standard | ScenePlanner | true | 8/8 |
 | Inverted | PredictiveBaseline | false | 0/8 |
 | Inverted | Random | false | 0/8 |
 | Inverted | AffordanceDiscovery | true | 8/8 |
@@ -105,6 +114,7 @@ A run shows contingency when connected-phase pulses are at least 1.5× both base
 | Inverted | LearnedSituations | true | 7/8 |
 | Inverted | PerActionSituations | true | 8/8 |
 | Inverted | SceneSituations | true | 8/8 |
+| Inverted | ScenePlanner | true | 8/8 |
 | Bimodal | PredictiveBaseline | false | 0/8 |
 | Bimodal | Random | false | 0/8 |
 | Bimodal | AffordanceDiscovery | true | 8/8 |
@@ -114,6 +124,7 @@ A run shows contingency when connected-phase pulses are at least 1.5× both base
 | Bimodal | LearnedSituations | true | 7/8 |
 | Bimodal | PerActionSituations | true | 8/8 |
 | Bimodal | SceneSituations | true | 7/8 |
+| Bimodal | ScenePlanner | true | 8/8 |
 | Seen | PredictiveBaseline | false | 0/8 |
 | Seen | Random | false | 0/8 |
 | Seen | AffordanceDiscovery | true | 6/8 |
@@ -123,6 +134,7 @@ A run shows contingency when connected-phase pulses are at least 1.5× both base
 | Seen | LearnedSituations | true | 7/8 |
 | Seen | PerActionSituations | false | 5/8 |
 | Seen | SceneSituations | true | 6/8 |
+| Seen | ScenePlanner | true | 5/8 |
 
 ## Delayed consequences
 

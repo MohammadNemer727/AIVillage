@@ -141,6 +141,10 @@ pub struct AffordanceConfig {
     pub outcome_model: OutcomeModel,
     /// What learned situations are split on.
     pub perception: Perception,
+    /// Whether the founder plans over its learned scenes: it learns where each experiment leads
+    /// and values an experiment also by the scenes it leads to, so it can do one thing in order
+    /// to do another (means-end behaviour). Needs [`Perception::Scenes`].
+    pub planning: bool,
 }
 
 impl Default for AffordanceConfig {
@@ -158,6 +162,7 @@ impl Default for AffordanceConfig {
             context_prior: 8,
             outcome_model: OutcomeModel::Moments,
             perception: Perception::Designed,
+            planning: false,
         }
     }
 }
@@ -179,6 +184,9 @@ impl AffordanceConfig {
             return Err(format!(
                 "eligibility span must be between 1 and {MAX_ELIGIBILITY_SPAN}"
             ));
+        }
+        if self.planning && self.perception != Perception::Scenes {
+            return Err("planning needs learned scenes".to_owned());
         }
         if self.recency_cap > u64::from(u32::MAX / 4) {
             return Err("recency cap is out of range".to_owned());
@@ -453,6 +461,27 @@ const LOOKING_UP_ABOVE: u16 = 144;
 pub const EXPERIENCE_MEMORY: usize = 256;
 /// Decisions between attempts to split a situation.
 const SPLIT_INTERVAL: u64 = 32;
+/// A transition row's counts halve once they exceed this total.
+const TRANSITION_MEMORY: u32 = 64;
+/// Tries of an experiment in a scene before the planner trusts where it leads.
+const PLAN_MIN_TRIES: u32 = 4;
+/// Steps of lookahead when valuing scenes.
+const PLAN_DEPTH: usize = 3;
+/// Weight of an expected scene improvement against immediate interest.
+const PLAN_WEIGHT: u32 = 4;
+/// Quarters of a reachable scene's value a scene inherits per step of lookahead.
+const PLAN_DISCOUNT: u32 = 3;
+
+/// Expected value under scene `chances` scaled to 256.
+fn expected(chances: &[u32; MAX_SCENES], values: &[u32; MAX_SCENES]) -> u32 {
+    let total: u64 = chances
+        .iter()
+        .zip(values)
+        .map(|(chance, value)| u64::from(*chance) * u64::from(*value))
+        .sum();
+    u32::try_from(total / 256).unwrap_or(u32::MAX)
+}
+
 /// How many times slower an experiment's memory fades in situations the founder is not in.
 const DISTANT_FORGETTING: u16 = 4;
 /// Experiences each side of a split needs before the split is judged.
@@ -644,6 +673,17 @@ pub struct AffordanceLearner {
     /// Scenes learned from raw senses, under [`Perception::Scenes`].
     #[serde(default)]
     pub scenes: ScenePerception,
+    /// With planning, how often each experiment in each scene led to each scene: row
+    /// `scene * AFFORDANCE_ACTIONS + experiment`, column the following scene.
+    #[serde(default)]
+    pub transitions: Vec<[u16; MAX_SCENES]>,
+    /// The scene the last experiment was chosen in, once scenes have formed.
+    #[serde(default)]
+    pub decision_scene: Option<u8>,
+    /// With planning, each experiment's outcome statistics in each scene: index
+    /// `scene * AFFORDANCE_ACTIONS + experiment`. They tell the planner what can be done where.
+    #[serde(default)]
+    pub scene_stats: Vec<SituationStats>,
     /// Previous retinal view, so the next outcome can report how much the view changed.
     #[serde(default)]
     pub previous_view: [[u16; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
@@ -694,6 +734,17 @@ impl AffordanceLearner {
             },
             recent_facts: [0; MAX_ELIGIBILITY_SPAN],
             scenes: ScenePerception::default(),
+            transitions: if config.planning {
+                vec![[0; MAX_SCENES]; MAX_SCENES * AFFORDANCE_ACTIONS]
+            } else {
+                Vec::new()
+            },
+            decision_scene: None,
+            scene_stats: if config.planning {
+                vec![SituationStats::default(); MAX_SCENES * AFFORDANCE_ACTIONS]
+            } else {
+                Vec::new()
+            },
             previous_view: [[0; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
             bout_remaining: 0,
         }
@@ -744,7 +795,20 @@ impl AffordanceLearner {
                     .per_action
                     .iter()
                     .all(|situations| situations.is_valid(SENSE_FACTS)));
-        if !splits_valid || !experiences_valid || !per_action_valid || !self.scenes.is_valid() {
+        let planning_valid = if self.config.planning {
+            self.transitions.len() == MAX_SCENES * AFFORDANCE_ACTIONS
+                && self.scene_stats.len() == MAX_SCENES * AFFORDANCE_ACTIONS
+        } else {
+            self.transitions.is_empty() && self.scene_stats.is_empty()
+        } && self
+            .decision_scene
+            .is_none_or(|scene| usize::from(scene) < MAX_SCENES);
+        if !splits_valid
+            || !experiences_valid
+            || !per_action_valid
+            || !planning_valid
+            || !self.scenes.is_valid()
+        {
             return Err("learned situations are out of range".to_owned());
         }
         Ok(())
@@ -870,6 +934,9 @@ impl AffordanceLearner {
                 self.try_split();
                 self.current_context = self.situation_of(self.current_facts);
             }
+        }
+        if config.planning {
+            self.learn_transition(action, &now);
         }
         if config.context == ContextMode::PerAction {
             self.learn_per_action(previous_facts, action, &now);
@@ -1159,6 +1226,113 @@ impl AffordanceLearner {
         }
     }
 
+    /// The founder's current learned scene, if scenes have formed.
+    fn current_scene(&self) -> Option<usize> {
+        (self.config.perception == Perception::Scenes && self.current_facts != 0)
+            .then(|| self.current_facts.trailing_zeros() as usize)
+    }
+
+    /// Counts that `action`, chosen in the remembered scene, led to the current scene. Old
+    /// counts halve as a row fills, so the model keeps tracking a changing world.
+    fn learn_transition(&mut self, action: usize, now: &[i32; OUTCOME_FEATURES]) {
+        let Some(from) = self.decision_scene.map(usize::from) else {
+            return;
+        };
+        // What follows each experiment in the scene it was chosen in, with the same averages,
+        // spreads and fading as situation statistics.
+        let config = self.config;
+        let distant = AffordanceConfig {
+            forgetting_horizon: config.forgetting_horizon.saturating_mul(DISTANT_FORGETTING),
+            ..config
+        };
+        let direct = &mut self.scene_stats[from * AFFORDANCE_ACTIONS + action];
+        direct.visits = direct.visits.saturating_add(1);
+        direct.credit(0, now, &config);
+        for (index, stats) in self.scene_stats.iter_mut().enumerate() {
+            let (scene, experiment) = (index / AFFORDANCE_ACTIONS, index % AFFORDANCE_ACTIONS);
+            if scene == from {
+                stats.observe_overall(now, &config);
+                if experiment != action {
+                    stats.forget(&config);
+                }
+            } else {
+                stats.forget(&distant);
+            }
+        }
+        let Some(to) = self.current_scene() else {
+            return;
+        };
+        let row = &mut self.transitions[from * AFFORDANCE_ACTIONS + action];
+        row[to] = row[to].saturating_add(1);
+        if row.iter().map(|count| u32::from(*count)).sum::<u32>() > TRANSITION_MEMORY {
+            for count in row.iter_mut() {
+                *count /= 2;
+            }
+        }
+    }
+
+    /// Contingency of `action` from its own statistics in `scene`, once tried there enough to
+    /// trust; zero before.
+    fn scene_contingency(&self, action: usize, scene: usize) -> u32 {
+        let stats = &self.scene_stats[scene * AFFORDANCE_ACTIONS + action];
+        if u32::from(stats.visits) >= PLAN_MIN_TRIES {
+            stats.contingency()
+        } else {
+            0
+        }
+    }
+
+    /// Where `action` in `scene` leads, as probabilities scaled to 256, once tried enough.
+    fn leads_to(&self, scene: usize, action: usize) -> Option<[u32; MAX_SCENES]> {
+        let row = &self.transitions[scene * AFFORDANCE_ACTIONS + action];
+        let total: u32 = row.iter().map(|count| u32::from(*count)).sum();
+        (total >= PLAN_MIN_TRIES).then(|| row.map(|count| u32::from(count) * 256 / total))
+    }
+
+    /// Value of each scene: what is special about it, the most any experiment's own contingency
+    /// there exceeds its contingency in general, or, discounted, the value of the scenes some
+    /// experiment there leads to. Experiments that work the same everywhere, such as turning,
+    /// make no scene more valuable than another.
+    fn scene_values(&self) -> [u32; MAX_SCENES] {
+        let scenes = self.scenes.prototypes.len();
+        let model = self.config.outcome_model;
+        let mut values = [0_u32; MAX_SCENES];
+        for (scene, value) in values.iter_mut().enumerate().take(scenes) {
+            *value = (0..AFFORDANCE_ACTIONS)
+                .map(|action| {
+                    self.scene_contingency(action, scene)
+                        .saturating_sub(self.pooled.contingency(action, model))
+                })
+                .max()
+                .unwrap_or(0);
+        }
+        let own = values;
+        for _ in 0..PLAN_DEPTH {
+            let previous = values;
+            for scene in 0..scenes {
+                let reachable = (0..AFFORDANCE_ACTIONS)
+                    .filter_map(|action| self.leads_to(scene, action))
+                    .map(|chances| expected(&chances, &previous))
+                    .max()
+                    .unwrap_or(0);
+                values[scene] = own[scene].max(reachable * PLAN_DISCOUNT / 4);
+            }
+        }
+        values
+    }
+
+    /// How much `action` is expected to improve the founder's scene, judged by `values`.
+    fn planning_bonus(&self, action: usize, values: &[u32; MAX_SCENES]) -> u32 {
+        let Some(scene) = self.current_scene() else {
+            return 0;
+        };
+        self.leads_to(scene, action).map_or(0, |chances| {
+            expected(&chances, values)
+                .saturating_sub(values[scene])
+                .saturating_mul(PLAN_WEIGHT)
+        })
+    }
+
     fn remember_choice(&mut self, action: usize, tick: u64) {
         self.recent_actions.rotate_right(1);
         self.recent_actions[0] = action;
@@ -1166,6 +1340,9 @@ impl AffordanceLearner {
         self.recent_contexts[0] = self.current_context;
         self.recent_facts.rotate_right(1);
         self.recent_facts[0] = self.current_facts;
+        self.decision_scene = self
+            .current_scene()
+            .map(|scene| u8::try_from(scene).unwrap_or_default());
         self.last_tried[action] = tick;
         self.last_tried_in[self.current_context][action] = tick;
         if let Some(situations) = self.per_action.get_mut(action) {
@@ -1183,6 +1360,7 @@ impl AffordanceLearner {
             self.remember_choice(held, tick);
             return (affordance_action(held), self.interest(held));
         }
+        let values = config.planning.then(|| self.scene_values());
         let mut best = 0;
         let mut best_score = 0_u32;
         for candidate in 0..AFFORDANCE_ACTIONS {
@@ -1212,8 +1390,12 @@ impl AffordanceLearner {
             let curiosity = u32::try_from(since.min(config.recency_cap)).unwrap_or_default();
             // Seed-keyed tie breaking is endogenous deterministic initialization, not a schedule.
             let tie = (derive(seed, tick, candidate as u64, 0x4146_464F) & 0xff) as u32;
+            let planned = values
+                .as_ref()
+                .map_or(0, |values| self.planning_bonus(candidate, values));
             let score = self
                 .interest(candidate)
+                .saturating_add(planned)
                 .saturating_add(curiosity)
                 .saturating_add(tie);
             if score > best_score {
@@ -1542,6 +1724,8 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
         u64::from(config.context_prior),
         u64::from(config.outcome_model == OutcomeModel::Expectiles),
         u64::from(config.perception == Perception::Scenes),
+        u64::from(config.planning),
+        learner.decision_scene.map_or(u64::MAX, u64::from),
         u64::from(learner.bout_remaining),
         learner.current_context as u64,
     ]
@@ -1639,6 +1823,13 @@ fn per_action_fingerprint(learner: &AffordanceLearner, mut fingerprint: u64) -> 
     fingerprint
 }
 
+fn transitions_fingerprint(transitions: &[[u16; MAX_SCENES]], mut fingerprint: u64) -> u64 {
+    for (index, count) in transitions.iter().flatten().enumerate() {
+        fingerprint = derive(fingerprint, u64::from(*count), index as u64, 0x5452_414E);
+    }
+    fingerprint
+}
+
 fn scenes_fingerprint(scenes: &ScenePerception, mut fingerprint: u64) -> u64 {
     let words = [
         i64::from(scenes.seen),
@@ -1670,6 +1861,22 @@ fn scenes_fingerprint(scenes: &ScenePerception, mut fingerprint: u64) -> u64 {
 fn learned_situations_fingerprint(learner: &AffordanceLearner, mut fingerprint: u64) -> u64 {
     if learner.config.perception == Perception::Scenes {
         fingerprint = scenes_fingerprint(&learner.scenes, fingerprint);
+    }
+    if learner.config.planning {
+        fingerprint = transitions_fingerprint(&learner.transitions, fingerprint);
+        for (index, value) in learner
+            .scene_stats
+            .iter()
+            .flat_map(SituationStats::words)
+            .enumerate()
+        {
+            fingerprint = derive(
+                fingerprint,
+                value.cast_unsigned(),
+                index as u64,
+                0x5353_5441,
+            );
+        }
     }
     for split in &learner.splits {
         let word =
