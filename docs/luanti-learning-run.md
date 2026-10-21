@@ -35,6 +35,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | free / default / turned | baseline | 800 | 7.5 | 0.0 | 0.0 | 0.0 | 25.1 |
 | free / default / turned | connected | 4000 | 11.8 | 29.5 | 15.1 | 21.1 | 25.3 |
 | free / default / turned | extinction | 800 | 7.0 | 0.0 | 0.1 | 0.0 | 14.9 |
+| free / learned / turned | baseline | 800 | 6.4 | 0.0 | 0.0 | 0.0 | 17.8 |
+| free / learned / turned | connected | 4000 | 9.7 | 25.1 | 13.9 | 15.2 | 25.4 |
+| free / learned / turned | extinction | 800 | 6.8 | 0.0 | 0.1 | 0.0 | 22.4 |
 | inert / context / toward | baseline | 800 | 8.6 | 0.0 | 0.0 | 0.0 | 22.5 |
 | inert / context / toward | connected | 4000 | 8.0 | 0.0 | 39.6 | 36.5 | 34.7 |
 | inert / context / toward | extinction | 800 | 7.9 | 0.0 | 0.1 | 0.0 | 31.5 |
@@ -47,6 +50,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | inert / default / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 24.2 |
 | inert / default / turned | connected | 4000 | 7.7 | 0.0 | 16.0 | 14.7 | 22.3 |
 | inert / default / turned | extinction | 800 | 8.1 | 0.0 | 0.1 | 0.0 | 25.1 |
+| inert / learned / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 17.6 |
+| inert / learned / turned | connected | 4000 | 7.8 | 0.0 | 14.4 | 13.8 | 25.3 |
+| inert / learned / turned | extinction | 800 | 8.6 | 0.0 | 0.1 | 0.0 | 33.8 |
 
 ## Per run (hand pulses per 100 decisions)
 
@@ -84,3 +90,11 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | default-inert-seed2 | inert / default / turned | 2 | 7.5 | 7.5 | 6.0 |
 | default-inert-seed3 | inert / default / turned | 3 | 6.0 | 9.0 | 10.5 |
 | default-inert-seed4 | inert / default / turned | 4 | 6.0 | 7.8 | 10.0 |
+| learned-free-seed1 | free / learned / turned | 1 | 6.0 | 9.0 | 7.5 |
+| learned-free-seed2 | free / learned / turned | 2 | 6.0 | 10.8 | 6.0 |
+| learned-free-seed3 | free / learned / turned | 3 | 7.5 | 9.3 | 7.5 |
+| learned-free-seed4 | free / learned / turned | 4 | 6.0 | 9.6 | 6.0 |
+| learned-inert-seed1 | inert / learned / turned | 1 | 9.0 | 7.2 | 9.0 |
+| learned-inert-seed2 | inert / learned / turned | 2 | 6.0 | 7.8 | 7.5 |
+| learned-inert-seed3 | inert / learned / turned | 3 | 7.5 | 8.1 | 9.0 |
+| learned-inert-seed4 | inert / learned / turned | 4 | 6.0 | 8.1 | 9.0 |

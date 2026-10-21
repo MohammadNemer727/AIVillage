@@ -16,6 +16,7 @@
 )]
 
 use serde::Serialize;
+use sim_core::runtime::sense_fact_name;
 
 use crate::harness::{
     self, Controller, Coupling, HAND_PULSE, Object, Phase, PhaseSummary, SEEDS, Sense, Trace, rate,
@@ -43,11 +44,12 @@ pub const OBJECT: Object = Object {
     facing: true,
 };
 
-pub const REACHING_CONTROLLERS: [Controller; 4] = [
+pub const REACHING_CONTROLLERS: [Controller; 5] = [
     Controller::Random,
     Controller::AffordanceDiscovery,
     Controller::ContextDiscovery,
     Controller::ExpectileDiscovery,
+    Controller::LearnedSituations,
 ];
 
 /// One controller over every seed.
@@ -58,6 +60,8 @@ pub struct Row {
     pub phases: Vec<PhaseSummary>,
     /// Late-phase hit rate of each seed, in tenths of a percent of its pushes.
     pub late_hit_rates: Vec<u32>,
+    /// Sense facts each seed's learner split on, in order.
+    pub learned_facts: Vec<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -101,10 +105,21 @@ pub fn run() -> ReachingReport {
                     hit_rate(&harness::summarize(&PHASES, OBJECT, std::slice::from_ref(trace))[1])
                 })
                 .collect();
+            let learned_facts = traces
+                .iter()
+                .map(|trace| {
+                    trace
+                        .splits
+                        .iter()
+                        .map(|(fact, _)| sense_fact_name(*fact))
+                        .collect()
+                })
+                .collect();
             Row {
                 controller: *controller,
                 phases: harness::summarize(&PHASES, OBJECT, &traces),
                 late_hit_rates,
+                learned_facts,
             }
         })
         .collect();
@@ -165,6 +180,19 @@ pub fn markdown(report: &ReachingReport) -> String {
             seeds.join(" · ")
         ));
     }
+    let learned = report.row(Controller::LearnedSituations);
+    text.push_str(
+        "\n## Situations LearnedSituations chose\n\nSense facts each seed split on, in order.\n\n\
+         | seed | facts |\n|---:|---|\n",
+    );
+    for (seed, facts) in report.seeds.iter().zip(&learned.learned_facts) {
+        let facts = if facts.is_empty() {
+            "none".to_owned()
+        } else {
+            facts.join(", ")
+        };
+        text.push_str(&format!("| {seed} | {facts} |\n"));
+    }
     text
 }
 
@@ -194,5 +222,18 @@ mod tests {
         let late = |controller| hit_rate(&report.row(controller).phases[1]);
         assert!(late(Controller::ContextDiscovery) > late(Controller::AffordanceDiscovery));
         assert!(late(Controller::ContextDiscovery) > late(Controller::Random));
+    }
+
+    #[test]
+    fn learned_situations_discover_what_is_ahead() {
+        let report = run();
+        let learned = report.row(Controller::LearnedSituations);
+        for facts in &learned.learned_facts {
+            assert!(facts.iter().any(|fact| fact == "near ahead"), "{facts:?}");
+        }
+        assert!(
+            hit_rate(&learned.phases[1])
+                > hit_rate(&report.row(Controller::AffordanceDiscovery).phases[1])
+        );
     }
 }

@@ -60,6 +60,8 @@ pub enum Controller {
     ContextDiscovery,
     /// The affordance learner judging contingency by full outcome distributions (expectiles).
     ExpectileDiscovery,
+    /// The affordance learner judging contingency within situations it discovers itself.
+    LearnedSituations,
 }
 
 impl Controller {
@@ -88,6 +90,11 @@ impl Controller {
                 ContextMode::None,
                 OutcomeModel::Expectiles,
             ),
+            Self::LearnedSituations => (
+                ScoringRule::Contingency,
+                ContextMode::Learned,
+                OutcomeModel::Moments,
+            ),
         };
         Some(AffordanceConfig {
             rule,
@@ -98,13 +105,14 @@ impl Controller {
     }
 }
 
-pub const CONTROLLERS: [Controller; 6] = [
+pub const CONTROLLERS: [Controller; 7] = [
     Controller::PredictiveBaseline,
     Controller::Random,
     Controller::AffordanceDiscovery,
     Controller::LearningProgress,
     Controller::ContextDiscovery,
     Controller::ExpectileDiscovery,
+    Controller::LearnedSituations,
 ];
 
 /// How the founder senses the coupled object.
@@ -181,6 +189,8 @@ pub struct Trace {
     pub expected: Vec<Option<u16>>,
     /// Whether the founder faced the object at each decision; always true without facing.
     pub facing: Vec<bool>,
+    /// Situations the learner split on by the end of the run, as (sense fact, outcomes seen).
+    pub splits: Vec<(usize, u64)>,
 }
 
 /// Maps an action to its experiment slot, in the learner's primitive order.
@@ -286,6 +296,7 @@ pub fn run(
         levels: Vec::with_capacity(total as usize),
         expected: Vec::with_capacity(total as usize),
         facing: Vec::with_capacity(total as usize),
+        splits: Vec::new(),
     };
     let ranges = phase_ranges(phases);
     let mut heading = 0;
@@ -350,6 +361,13 @@ pub fn run(
         body.vertical_motion = if action.jump > 0 { 255 } else { 0 };
         acceleration = (action.thrust / 2).clamp(-255, 255);
     }
+    trace.splits = runtime
+        .state()
+        .affordance
+        .splits
+        .iter()
+        .map(|split| (usize::from(split.fact), split.at))
+        .collect();
     trace
 }
 

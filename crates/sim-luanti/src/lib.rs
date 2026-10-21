@@ -308,7 +308,11 @@ fn mean_modulator_activity(runtime: &AgentRuntime) -> u16 {
 /// # Errors
 ///
 /// Returns an error if any recorded response cannot be reproduced exactly.
-pub fn replay_trace(seed: u64, agent_id: u64, records: &[TraceRecord]) -> Result<(), BridgeError> {
+pub fn replay_trace(
+    seed: u64,
+    agent_id: u64,
+    records: &[TraceRecord],
+) -> Result<AgentRuntime, BridgeError> {
     let (mode, affordance) =
         records
             .first()
@@ -339,7 +343,7 @@ pub fn replay_trace(seed: u64, agent_id: u64, records: &[TraceRecord]) -> Result
             return Err(BridgeError::Replay);
         }
     }
-    Ok(())
+    Ok(runtime)
 }
 
 /// Binds an HTTP server exclusively to `127.0.0.1`.

@@ -37,6 +37,31 @@ fn write_report(
     Ok(())
 }
 
+/// Replays a recorded trace exactly and reports the situations the founder learned in it.
+fn replay(
+    seed: u64,
+    agent_id: u64,
+    path: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let records = std::fs::read_to_string(path)?
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<Result<Vec<TraceRecord>, _>>()?;
+    let runtime = replay_trace(seed, agent_id, &records)?;
+    println!("replayed {} recorded transitions exactly", records.len());
+    let learner = &runtime.state().affordance;
+    for split in &learner.splits {
+        println!(
+            "learned situation {} from {} where {} (after {} outcomes)",
+            split.child,
+            split.parent,
+            sim_core::runtime::sense_fact_name(usize::from(split.fact)),
+            split.at
+        );
+    }
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let port = std::env::var("SIM_LUANTI_PORT")
         .ok()
@@ -73,13 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     .into(),
             );
         };
-        let records = std::fs::read_to_string(&path)?
-            .lines()
-            .map(serde_json::from_str)
-            .collect::<Result<Vec<TraceRecord>, _>>()?;
-        replay_trace(seed, agent_id, &records)?;
-        println!("replayed {} recorded transitions exactly", records.len());
-        return Ok(());
+        return replay(seed, agent_id, &path);
     }
     let server = bind_loopback(port)?;
     eprintln!("sim-luanti listening on 127.0.0.1:{port}");

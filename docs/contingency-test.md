@@ -20,6 +20,8 @@ Anticipation is the learner's expected contact after a hand pulse, as distance f
 | Standard | ContextDiscovery | Yoked | 5.8 | 8.2 | 6.2 | 7.0 | 156 | 0 → 26 → 32 → 4 |
 | Standard | ExpectileDiscovery | Contingent | 6.2 | 13.2 | 12.5 | 7.8 | 102 | 0 → 77 → 49 → 4 |
 | Standard | ExpectileDiscovery | Yoked | 6.2 | 7.0 | 7.8 | 7.8 | 102 | 0 → 16 → 24 → 2 |
+| Standard | LearnedSituations | Contingent | 5.8 | 15.6 | 11.7 | 8.5 | 120 | 0 → 92 → 50 → 4 |
+| Standard | LearnedSituations | Yoked | 5.8 | 6.2 | 6.2 | 8.5 | 120 | 0 → 19 → 21 → 3 |
 | Inverted | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Inverted | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Inverted | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
@@ -32,6 +34,8 @@ Anticipation is the learner's expected contact after a hand pulse, as distance f
 | Inverted | ContextDiscovery | Yoked | 5.8 | 8.2 | 6.2 | 7.0 | 156 | 0 → 27 → 33 → 5 |
 | Inverted | ExpectileDiscovery | Contingent | 6.2 | 13.2 | 12.5 | 7.8 | 102 | 0 → 78 → 50 → 5 |
 | Inverted | ExpectileDiscovery | Yoked | 6.2 | 7.0 | 7.8 | 7.8 | 102 | 0 → 17 → 25 → 3 |
+| Inverted | LearnedSituations | Contingent | 5.8 | 15.6 | 11.7 | 8.5 | 120 | 0 → 93 → 51 → 5 |
+| Inverted | LearnedSituations | Yoked | 5.8 | 6.2 | 6.2 | 8.5 | 120 | 0 → 20 → 22 → 4 |
 | Bimodal | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Bimodal | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Bimodal | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
@@ -44,6 +48,8 @@ Anticipation is the learner's expected contact after a hand pulse, as distance f
 | Bimodal | ContextDiscovery | Yoked | 5.8 | 7.0 | 8.5 | 6.2 | 141 | 0 → 3 → 5 → 0 |
 | Bimodal | ExpectileDiscovery | Contingent | 6.2 | 11.3 | 8.5 | 7.0 | 87 | 0 → 13 → 11 → 1 |
 | Bimodal | ExpectileDiscovery | Yoked | 6.2 | 7.8 | 7.0 | 7.0 | 87 | 0 → 2 → 5 → 1 |
+| Bimodal | LearnedSituations | Contingent | 5.8 | 17.9 | 9.3 | 8.5 | 138 | 0 → 12 → 7 → 1 |
+| Bimodal | LearnedSituations | Yoked | 5.8 | 6.6 | 5.4 | 7.0 | 138 | 0 → 1 → 2 → 0 |
 | Seen | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Seen | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Seen | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
@@ -56,6 +62,8 @@ Anticipation is the learner's expected contact after a hand pulse, as distance f
 | Seen | ContextDiscovery | Yoked | 6.2 | 6.2 | 7.0 | 4.6 | 99 | 6 → 3 → 6 → 0 |
 | Seen | ExpectileDiscovery | Contingent | 6.2 | 8.9 | 7.0 | 6.2 | 69 | 9 → 11 → 7 → 0 |
 | Seen | ExpectileDiscovery | Yoked | 6.2 | 7.8 | 7.8 | 6.2 | 69 | 9 → 4 → 3 → 0 |
+| Seen | LearnedSituations | Contingent | 6.2 | 9.3 | 8.5 | 6.2 | 72 | 9 → 11 → 7 → 0 |
+| Seen | LearnedSituations | Yoked | 6.2 | 5.8 | 6.2 | 6.2 | 72 | 9 → 3 → 3 → 0 |
 
 ## Verdicts
 
@@ -69,24 +77,28 @@ A run shows contingency when connected-phase pulses are at least 1.5× both base
 | Standard | LearningProgress | true | 5/8 |
 | Standard | ContextDiscovery | true | 6/8 |
 | Standard | ExpectileDiscovery | true | 6/8 |
+| Standard | LearnedSituations | true | 7/8 |
 | Inverted | PredictiveBaseline | false | 0/8 |
 | Inverted | Random | false | 0/8 |
 | Inverted | AffordanceDiscovery | true | 8/8 |
 | Inverted | LearningProgress | true | 5/8 |
 | Inverted | ContextDiscovery | true | 6/8 |
 | Inverted | ExpectileDiscovery | true | 6/8 |
+| Inverted | LearnedSituations | true | 7/8 |
 | Bimodal | PredictiveBaseline | false | 0/8 |
 | Bimodal | Random | false | 0/8 |
 | Bimodal | AffordanceDiscovery | true | 8/8 |
 | Bimodal | LearningProgress | true | 5/8 |
 | Bimodal | ContextDiscovery | true | 6/8 |
 | Bimodal | ExpectileDiscovery | false | 3/8 |
+| Bimodal | LearnedSituations | true | 8/8 |
 | Seen | PredictiveBaseline | false | 0/8 |
 | Seen | Random | false | 0/8 |
 | Seen | AffordanceDiscovery | true | 6/8 |
 | Seen | LearningProgress | true | 3/8 |
 | Seen | ContextDiscovery | true | 5/8 |
 | Seen | ExpectileDiscovery | false | 2/8 |
+| Seen | LearnedSituations | true | 3/8 |
 
 ## Delayed consequences
 
@@ -98,22 +110,27 @@ The standard paradigm with contact arriving `delay` decisions later than the nex
 | 0 | AffordanceDiscovery | 5.8 | 17.9 | 14.0 | 7.8 | 7.0 | 95 | 8/8 |
 | 0 | LearningProgress | 7.4 | 14.4 | 6.2 | 7.0 | 7.0 | 85 | 5/8 |
 | 0 | ExpectileDiscovery | 6.2 | 13.2 | 12.5 | 7.8 | 7.0 | 77 | 6/8 |
+| 0 | LearnedSituations | 5.8 | 15.6 | 11.7 | 8.5 | 6.2 | 92 | 7/8 |
 | 1 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 1 | AffordanceDiscovery | 5.8 | 18.3 | 14.0 | 7.0 | 7.8 | 105 | 8/8 |
 | 1 | LearningProgress | 7.4 | 15.2 | 9.3 | 4.6 | 6.2 | 90 | 7/8 |
 | 1 | ExpectileDiscovery | 6.2 | 13.6 | 14.0 | 7.8 | 7.0 | 83 | 6/8 |
+| 1 | LearnedSituations | 5.8 | 17.9 | 13.2 | 6.2 | 5.8 | 103 | 8/8 |
 | 2 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 2 | AffordanceDiscovery | 5.8 | 18.7 | 14.8 | 7.0 | 7.0 | 100 | 8/8 |
 | 2 | LearningProgress | 7.4 | 15.6 | 8.5 | 6.2 | 7.0 | 81 | 6/8 |
 | 2 | ExpectileDiscovery | 6.2 | 11.3 | 10.9 | 7.8 | 7.8 | 63 | 3/8 |
+| 2 | LearnedSituations | 5.8 | 16.7 | 11.7 | 11.7 | 7.0 | 94 | 7/8 |
 | 4 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 4 | AffordanceDiscovery | 5.8 | 7.8 | 6.2 | 7.8 | 8.9 | 15 | 2/8 |
 | 4 | LearningProgress | 7.4 | 6.6 | 8.5 | 8.5 | 6.2 | 12 | 1/8 |
 | 4 | ExpectileDiscovery | 6.2 | 7.8 | 7.0 | 6.2 | 6.6 | 14 | 3/8 |
+| 4 | LearnedSituations | 5.8 | 6.6 | 6.2 | 6.2 | 8.2 | 14 | 1/8 |
 | 8 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 8 | AffordanceDiscovery | 5.8 | 6.6 | 6.2 | 6.2 | 7.0 | 7 | 0/8 |
 | 8 | LearningProgress | 7.4 | 7.0 | 7.0 | 7.8 | 7.4 | 7 | 1/8 |
 | 8 | ExpectileDiscovery | 6.2 | 7.0 | 6.2 | 7.0 | 7.4 | 6 | 0/8 |
+| 8 | LearnedSituations | 5.8 | 5.8 | 6.2 | 5.4 | 7.4 | 9 | 0/8 |
 
 ## AffordanceDiscovery learning curves
 

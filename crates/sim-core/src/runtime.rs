@@ -8,7 +8,7 @@ use sim_kernels::{brain::EPISODE_CAPACITY, derive, gpu::GpuBrain, heading};
 
 use crate::{
     BrainConfig, CHEMICAL_RECEPTOR_COUNT, PredictiveBrain, RETINAL_RAY_COUNT, RawSensoryFrame,
-    adapt_chemical_receptors, compose_raw_sensory_frame, decode_motor_outputs,
+    RetinalSample, adapt_chemical_receptors, compose_raw_sensory_frame, decode_motor_outputs,
     environment::{
         DeadChannels, EnvironmentAdapter, EnvironmentCapabilities, EnvironmentObservation,
         EnvironmentTransition, PrimitiveAction, TransportStatus,
@@ -387,6 +387,130 @@ pub enum ContextMode {
     /// within the current situation, borrowing from the pooled statistics while a situation is
     /// still rarely seen.
     SenseBits,
+    /// Situations the founder discovers itself (after Oudeyer's IAC): it starts with one and
+    /// splits a situation on one of [`SENSE_FACTS`] generic sense facts only when the effect of
+    /// some experiment clearly differs between the two sides.
+    Learned,
+}
+
+/// Generic sense facts a learned-situation founder may split on: for each of four directions
+/// whether something is near, blocked within range, moving, or standing out in colour, and five
+/// body facts. They are fixed receptor thresholds that never name an object; the founder chooses
+/// which, if any, matter.
+pub const SENSE_FACTS: usize = 21;
+/// Eye rays of each direction: ahead, left, behind, right.
+const SECTORS: [[usize; 3]; 4] = [[15, 0, 1], [3, 4, 5], [7, 8, 9], [11, 12, 13]];
+const SECTOR_NAMES: [&str; 4] = ["ahead", "left", "behind", "right"];
+const SECTOR_FACT_NAMES: [&str; 4] = ["near", "blocked", "moving", "stands out"];
+const BODY_FACT_NAMES: [&str; 5] = [
+    "touch",
+    "hand contact",
+    "looking down",
+    "looking up",
+    "in the air",
+];
+/// Occlusion from which a ray counts as blocked within range (about 4.5 nodes away).
+const BLOCKED_OCCLUSION: u16 = 64;
+/// Colour difference (sum over red, green, blue) from the average of all rays from which a
+/// direction stands out.
+const COLOUR_CONTRAST: u32 = 96;
+/// Eye pitch above which the eyes count as tilted up (centred at 128).
+const LOOKING_UP_ABOVE: u16 = 144;
+/// Recent experiences kept for judging splits.
+pub const EXPERIENCE_MEMORY: usize = 256;
+/// Decisions between attempts to split a situation.
+const SPLIT_INTERVAL: u64 = 32;
+/// Experiences each side of a split needs before the split is judged.
+const SPLIT_MIN_SIDE: i64 = 16;
+/// Tries of an experiment each side of a split needs for the experiment to count.
+const SPLIT_MIN_TRIES: i64 = 4;
+/// Score points by which an experiment's effect must differ between the two sides.
+const SPLIT_GAIN: i64 = 128;
+
+/// The [`SENSE_FACTS`] an observation makes true, one bit each.
+#[must_use]
+pub fn sense_facts(observation: &EnvironmentObservation) -> u32 {
+    let retinal = &observation.senses.retinal;
+    let colour = |sample: &RetinalSample| {
+        u32::from(sample.red) + u32::from(sample.green) + u32::from(sample.blue)
+    };
+    let rays = u32::try_from(RETINAL_RAY_COUNT).unwrap_or(u32::MAX);
+    let average = retinal.iter().map(colour).sum::<u32>() / rays;
+    let mut facts = 0;
+    for (sector, rays) in SECTORS.iter().enumerate() {
+        let samples = rays.map(|ray| retinal[ray]);
+        let checks = [
+            samples
+                .iter()
+                .any(|sample| sample.occlusion >= CLOSE_OCCLUSION),
+            samples
+                .iter()
+                .any(|sample| sample.occlusion >= BLOCKED_OCCLUSION),
+            samples
+                .iter()
+                .any(|sample| sample.motion.unsigned_abs() >= NOTICEABLE_MOTION),
+            samples
+                .iter()
+                .any(|sample| colour(sample).abs_diff(average) >= COLOUR_CONTRAST),
+        ];
+        for (index, check) in checks.into_iter().enumerate() {
+            facts |= u32::from(check) << (sector * 4 + index);
+        }
+    }
+    let body = observation.body;
+    let checks = [
+        observation.senses.touch > 0,
+        body.hand_contact > 0,
+        body.eye_pitch < LOOKING_DOWN_BELOW,
+        body.eye_pitch > LOOKING_UP_ABOVE,
+        body.grounded == 0,
+    ];
+    for (index, check) in checks.into_iter().enumerate() {
+        facts |= u32::from(check) << (16 + index);
+    }
+    facts
+}
+
+/// A readable name for sense fact `fact`, for reports.
+#[must_use]
+pub fn sense_fact_name(fact: usize) -> String {
+    if fact < 16 {
+        format!("{} {}", SECTOR_FACT_NAMES[fact % 4], SECTOR_NAMES[fact / 4])
+    } else {
+        BODY_FACT_NAMES
+            .get(fact - 16)
+            .copied()
+            .unwrap_or("unknown")
+            .to_owned()
+    }
+}
+
+/// One remembered decision: the sense facts it was made in, its situation, the experiment, and
+/// the outcome that followed, in receptor units.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Experience {
+    /// Sense facts true when the decision was made.
+    pub facts: u32,
+    /// Learned situation the decision was made in.
+    pub situation: u8,
+    /// Experiment chosen.
+    pub action: u8,
+    /// Outcome that followed, in receptor units.
+    pub outcome: [i16; OUTCOME_FEATURES],
+}
+
+/// A situation the founder split on a sense fact: decisions in `parent` where `fact` holds
+/// belong to `child` from then on.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Split {
+    /// Situation that was split.
+    pub parent: u8,
+    /// Sense fact it was split on.
+    pub fact: u8,
+    /// New situation for decisions where the fact holds.
+    pub child: u8,
+    /// Outcomes seen when the split was made.
+    pub at: u64,
 }
 
 /// The situation an observation puts the founder in, as a [`context_bits`] combination.
@@ -423,7 +547,7 @@ pub fn sense_context(observation: &EnvironmentObservation) -> usize {
 /// spread. Each outcome is judged in units of its own overall spread, so a small visual change
 /// can matter as much as a large change of body posture. An effect that follows regardless of
 /// action, or that stops following, carries no contingency, so neither keeps attracting
-/// experiments. With [`ContextMode::SenseBits`] the same is judged within the current
+/// experiments. With a [`ContextMode`] other than `None` the same is judged within the current
 /// situation as well.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AffordanceLearner {
@@ -433,7 +557,7 @@ pub struct AffordanceLearner {
     /// Statistics pooled over every situation.
     pub pooled: Statistics,
     /// Statistics within each of the [`CONTEXTS`] situations, used with
-    /// [`ContextMode::SenseBits`]. Held on the heap: together they are large.
+    /// a [`ContextMode`] other than `None`. Held on the heap: together they are large.
     #[serde(default = "blank_contexts")]
     pub contexts: Box<[Statistics]>,
     /// Recent prediction error of each experiment's direct outcome over a short window, in
@@ -447,7 +571,7 @@ pub struct AffordanceLearner {
     /// Decision tick at which each experiment was last selected.
     pub last_tried: [u64; AFFORDANCE_ACTIONS],
     /// Decision tick at which each experiment was last selected in each situation, so curiosity
-    /// is per situation under [`ContextMode::SenseBits`].
+    /// is per situation under a [`ContextMode`] other than `None`.
     #[serde(default)]
     pub last_tried_in: [[u64; AFFORDANCE_ACTIONS]; CONTEXTS],
     /// Last selected experiment, whose outcome the next observation reports.
@@ -461,6 +585,21 @@ pub struct AffordanceLearner {
     /// The situation the latest observation puts the founder in.
     #[serde(default)]
     pub current_context: usize,
+    /// The sense facts of the latest observation, under [`ContextMode::Learned`].
+    #[serde(default)]
+    pub current_facts: u32,
+    /// The splits the founder has made, in order, under [`ContextMode::Learned`].
+    #[serde(default)]
+    pub splits: Vec<Split>,
+    /// Recent experiences for judging splits, a ring of at most [`EXPERIENCE_MEMORY`].
+    #[serde(default)]
+    pub experiences: Vec<Experience>,
+    /// Where the next experience is written once the ring is full.
+    #[serde(default)]
+    pub next_experience: usize,
+    /// Outcomes observed so far.
+    #[serde(default)]
+    pub outcomes_seen: u64,
     /// Previous retinal view, so the next outcome can report how much the view changed.
     #[serde(default)]
     pub previous_view: [[u16; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
@@ -499,6 +638,11 @@ impl AffordanceLearner {
             recent_actions: no_recent_actions(),
             recent_contexts: [0; MAX_ELIGIBILITY_SPAN],
             current_context: 0,
+            current_facts: 0,
+            splits: Vec::new(),
+            experiences: Vec::new(),
+            next_experience: 0,
+            outcomes_seen: 0,
             previous_view: [[0; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
             bout_remaining: 0,
         }
@@ -529,6 +673,21 @@ impl AffordanceLearner {
                 .any(|context| *context >= CONTEXTS)
         {
             return Err("affordance situation index is out of range".to_owned());
+        }
+        let splits_valid = self.splits.len() < CONTEXTS
+            && self.splits.iter().enumerate().all(|(index, split)| {
+                usize::from(split.child) == index + 1
+                    && split.parent < split.child
+                    && usize::from(split.fact) < SENSE_FACTS
+            });
+        let experiences_valid = self.experiences.len() <= EXPERIENCE_MEMORY
+            && self.next_experience < EXPERIENCE_MEMORY
+            && self.experiences.iter().all(|experience| {
+                usize::from(experience.situation) <= self.splits.len()
+                    && usize::from(experience.action) < AFFORDANCE_ACTIONS
+            });
+        if !splits_valid || !experiences_valid {
+            return Err("learned situations are out of range".to_owned());
         }
         Ok(())
     }
@@ -580,9 +739,14 @@ impl AffordanceLearner {
     fn observe(&mut self, observation: &EnvironmentObservation) {
         let now = self.outcome(observation);
         let previous_context = self.current_context;
+        let previous_facts = self.current_facts;
+        if self.config.context == ContextMode::Learned {
+            self.current_facts = sense_facts(observation);
+        }
         self.current_context = match self.config.context {
             ContextMode::None => 0,
             ContextMode::SenseBits => sense_context(observation),
+            ContextMode::Learned => self.situation_of(self.current_facts),
         };
         if self.previous_action >= AFFORDANCE_ACTIONS {
             self.pooled.prime(&now);
@@ -618,7 +782,7 @@ impl AffordanceLearner {
         }
         self.pooled.observe_overall(&now, &config);
         self.pooled.forget(action, &config);
-        if config.context == ContextMode::SenseBits {
+        if config.context != ContextMode::None {
             // The direct outcome belongs to the situation the last experiment was chosen in.
             let situation = &mut self.contexts[previous_context];
             situation.visits[action] = situation.visits[action].saturating_add(1);
@@ -628,6 +792,125 @@ impl AffordanceLearner {
             let situation = &mut self.contexts[previous_context];
             situation.observe_overall(&now, &config);
             situation.forget(action, &config);
+        }
+        self.outcomes_seen += 1;
+        if config.context == ContextMode::Learned {
+            self.remember(previous_facts, previous_context, action, &now);
+            if self.outcomes_seen.is_multiple_of(SPLIT_INTERVAL) {
+                self.try_split();
+                self.current_context = self.situation_of(self.current_facts);
+            }
+        }
+    }
+
+    /// The learned situation of an observation with `facts`: splits refine situations in the
+    /// order they were made.
+    fn situation_of(&self, facts: u32) -> usize {
+        self.splits.iter().fold(0, |situation, split| {
+            if situation == usize::from(split.parent) && facts & (1 << split.fact) != 0 {
+                usize::from(split.child)
+            } else {
+                situation
+            }
+        })
+    }
+
+    fn remember(
+        &mut self,
+        facts: u32,
+        situation: usize,
+        action: usize,
+        now: &[i32; OUTCOME_FEATURES],
+    ) {
+        let experience = Experience {
+            facts,
+            situation: u8::try_from(situation).unwrap_or_default(),
+            action: u8::try_from(action).unwrap_or_default(),
+            outcome: now.map(|value| i16::try_from(value / OUTCOME_SCALE).unwrap_or_default()),
+        };
+        if self.experiences.len() < EXPERIENCE_MEMORY {
+            self.experiences.push(experience);
+        } else {
+            self.experiences[self.next_experience] = experience;
+        }
+        self.next_experience = (self.next_experience + 1) % EXPERIENCE_MEMORY;
+    }
+
+    /// How much splitting `situation` on `fact` would change what some experiment does: the
+    /// largest, over experiments tried enough on both sides, of the gap between its effect (its
+    /// average outcome minus the side's average outcome) on the two sides, in score points.
+    fn split_gain(&self, situation: usize, fact: usize) -> i64 {
+        let mut tries = [[0_i64; AFFORDANCE_ACTIONS]; 2];
+        let mut sums = [[[0_i64; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS]; 2];
+        let mut side_count = [0_i64; 2];
+        let mut side_sums = [[0_i64; OUTCOME_FEATURES]; 2];
+        for experience in &self.experiences {
+            if usize::from(experience.situation) != situation {
+                continue;
+            }
+            let side = usize::from(experience.facts & (1 << fact) != 0);
+            let action = usize::from(experience.action);
+            tries[side][action] += 1;
+            side_count[side] += 1;
+            for (feature, value) in experience.outcome.iter().enumerate() {
+                sums[side][action][feature] += i64::from(*value);
+                side_sums[side][feature] += i64::from(*value);
+            }
+        }
+        if side_count.iter().any(|count| *count < SPLIT_MIN_SIDE) {
+            return 0;
+        }
+        let scale = i64::from(OUTCOME_SCALE);
+        (0..AFFORDANCE_ACTIONS)
+            .filter(|action| tries.iter().all(|side| side[*action] >= SPLIT_MIN_TRIES))
+            .map(|action| {
+                (0..OUTCOME_FEATURES)
+                    .map(|feature| {
+                        let effect = |side: usize| {
+                            sums[side][action][feature] * scale / tries[side][action]
+                                - side_sums[side][feature] * scale / side_count[side]
+                        };
+                        let gap = (effect(1) - effect(0)).abs();
+                        self.pooled
+                            .points(feature, i32::try_from(gap).unwrap_or(i32::MAX))
+                    })
+                    .sum::<i64>()
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Splits the situation and sense fact with the largest gain, if it is clear enough and
+    /// room remains. The new situation starts from a copy of its parent's experience.
+    fn try_split(&mut self) {
+        if self.splits.len() + 1 >= CONTEXTS {
+            return;
+        }
+        let mut best: Option<(i64, usize, usize)> = None;
+        for situation in 0..=self.splits.len() {
+            for fact in 0..SENSE_FACTS {
+                let gain = self.split_gain(situation, fact);
+                if gain >= SPLIT_GAIN && best.is_none_or(|(most, _, _)| gain > most) {
+                    best = Some((gain, situation, fact));
+                }
+            }
+        }
+        let Some((_, parent, fact)) = best else {
+            return;
+        };
+        let child = self.splits.len() + 1;
+        self.splits.push(Split {
+            parent: u8::try_from(parent).unwrap_or_default(),
+            fact: u8::try_from(fact).unwrap_or_default(),
+            child: u8::try_from(child).unwrap_or_default(),
+            at: self.outcomes_seen,
+        });
+        self.contexts[child] = self.contexts[parent];
+        self.last_tried_in[child] = self.last_tried_in[parent];
+        for experience in &mut self.experiences {
+            if usize::from(experience.situation) == parent && experience.facts & (1 << fact) != 0 {
+                experience.situation = u8::try_from(child).unwrap_or_default();
+            }
         }
     }
 
@@ -696,7 +979,7 @@ impl AffordanceLearner {
             // per situation: an experiment never tried here is as tempting as one never tried.
             let (tried, last) = match config.context {
                 ContextMode::None => (self.pooled.visits[candidate], self.last_tried[candidate]),
-                ContextMode::SenseBits => (
+                ContextMode::SenseBits | ContextMode::Learned => (
                     self.contexts[self.current_context].visits[candidate],
                     self.last_tried_in[self.current_context][candidate],
                 ),
@@ -1030,7 +1313,11 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
         config.recency_rate,
         config.recency_cap,
         u64::from(config.bout_length),
-        u64::from(config.context == ContextMode::SenseBits),
+        match config.context {
+            ContextMode::None => 0,
+            ContextMode::SenseBits => 1,
+            ContextMode::Learned => 2,
+        },
         u64::from(config.context_prior),
         u64::from(config.outcome_model == OutcomeModel::Expectiles),
         u64::from(learner.bout_remaining),
@@ -1073,7 +1360,35 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
         }
     }
     fingerprint = learner.pooled.fingerprint(fingerprint, 0x504F_4F4C);
-    if config.context == ContextMode::SenseBits {
+    if config.context == ContextMode::Learned {
+        for split in &learner.splits {
+            let word =
+                u64::from(split.parent) | u64::from(split.fact) << 8 | u64::from(split.child) << 16;
+            fingerprint = derive(fingerprint, word, split.at, 0x5350_4C54);
+        }
+        for (index, experience) in learner.experiences.iter().enumerate() {
+            let mut word = u64::from(experience.facts) << 16
+                | u64::from(experience.situation) << 8
+                | u64::from(experience.action);
+            for value in experience.outcome {
+                word = derive(word, i64::from(value).cast_unsigned(), 0, 0x4F55_5443);
+            }
+            fingerprint = derive(fingerprint, word, index as u64, 0x4558_5045);
+        }
+        fingerprint = derive(
+            fingerprint,
+            learner.next_experience as u64,
+            learner.outcomes_seen,
+            0x5249_4E47,
+        );
+        fingerprint = derive(
+            fingerprint,
+            u64::from(learner.current_facts),
+            0,
+            0x4641_4354,
+        );
+    }
+    if config.context != ContextMode::None {
         for (context, statistics) in learner.contexts.iter().enumerate() {
             fingerprint = statistics.fingerprint(fingerprint, 0x4354_0000 | context as u64);
             for (action, tick) in learner.last_tried_in[context].iter().enumerate() {

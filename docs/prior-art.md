@@ -255,6 +255,7 @@ a pushable cube the founder's hand pulses rise from 6.8 to 15.4 per 100 decision
 | Memory that fades | Spisak et al., ICDL 2025 | Unused experiment memories drift to normal over about 32 decisions | Extinction ends instead of dragging on |
 | Delayed consequences | Millar 1972; MIMo v2 sensorimotor delays | Eligibility trace over the last 4 experiments | Learning fades with delay, as in infants |
 | Object in the default view | Every mobile study and model (Xu & Triesch; Spisak et al.; Rosales et al.) | In Luanti learning runs the cube hangs at the founder's eye height and swings back after a push | Real-game hit rate rose from 31% to 56% of pushes |
+| Situations the founder discovers itself | Oudeyer's IAC and SGIM region splitting (via Nguyen 2024); VACERL step selection; Curiosity→Competence on hand-picked vs learned state | `ContextMode::Learned`: starts with one situation and splits on one of 21 generic sense facts when some experiment's effect clearly differs between the two sides; off by default | Synthetic reaching: every seed discovers "near ahead", late hit rate 20.8% vs 12.6% without situations. Real game: 25.1%, better than hand-picked situations (20.6%) but below none (29.5%): its first splits are on its own movement, which matter for walking but fragment the experience of pushing. Next: per-experiment situations |
 | Full outcome distributions | Xu & Triesch CAIS (code: github.com/trieschlab/cais); expectiles from distributional RL (Rowland et al.) | `OutcomeModel::Expectiles`: nine expectiles per feature, compared by mean absolute gap; off by default | Not better here: passes standard and inverted on 6/8 seeds, bimodal 3/8 and seen 2/8, against 8, 8, 8 and 6 for average and spread; reaching late hit rate 18.3% vs 12.6%. A first version with stochastic quantiles learned too slowly on rare outcomes (1/8) |
 | Context-conditioned contingency, with per-situation curiosity and shrinkage to pooled statistics | Seitzer et al. causal action influence (via Mantiuk et al. 2025); IAC count-based curiosity | `ContextMode::SenseBits`: four fixed sense bits, off by default | Synthetic reaching test: late hit rate 26.4% vs 12.6% context-free and 13.5% random. Real game: worse (20.6% vs 29.5%), because "close ahead" fires on walls and floor as often as on the cube and self-motion splits memory |
 | Bouts of repeated movement | Infant kicking in bouts (Rovee-Collier; Fujihira et al. 2025) | Each chosen experiment is held for 3 decisions | Delays of up to 2 decisions are learned on 8/8 seeds; in Luanti 31% of pushes reach the cube, up from 18% |
@@ -264,8 +265,9 @@ a pushable cube the founder's hand pulses rise from 6.8 to 15.4 per 100 decision
 Learning-progress curiosity (Hou et al.; MAGELLAN) and CAIS-style full outcome distributions
 are available as alternatives and compared in every report; contingency judged by average and
 spread remains the default. Fixed sense bits confound in the real game, as the research warned
-for hand-picked state features; the planned next step is IAC/SGIM-style splitting, where the
-learner keeps only the distinctions that sharpen contingency. Not yet adopted: CAIS's surprise
+for hand-picked state features. Situations the founder learns itself do better than hand-picked
+ones in the game but not yet better than none, because one shared set of situations serves every
+experiment; the next step is situations per experiment. Not yet adopted: CAIS's surprise
 term, flexible-control and anticipation-timing tests (Bednarski et al.; Rosales et al.), and the
 planned habituation, object-permanence and means-end protocols.
 
