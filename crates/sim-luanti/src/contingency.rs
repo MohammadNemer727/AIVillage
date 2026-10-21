@@ -9,7 +9,9 @@
 //! - baseline: the object rests at its paradigm's resting contact, whatever the founder does;
 //! - middle: contingent (a hand pulse changes the next contact) or yoked (contact replays another
 //!   seed's contingent run for the same controller, regardless of what the founder does);
-//! - extinction: the object rests again.
+//! - extinction: the object rests again. Its first half is reported separately because infants
+//!   often pulse harder right after disconnection (the extinction burst); the verdict asks only
+//!   that the second half falls below the connected phase.
 //!
 //! The paradigms follow Xu & Triesch (Developmental Science, 2026), which shows that simpler
 //! contingency detectors fail when an action removes an effect or only changes its variability:
@@ -41,7 +43,7 @@ const PHASE: u64 = 96;
 const CURVE_BLOCK: usize = 24;
 const CONTACT: u16 = 255;
 
-const CONTINGENT: [Phase; 3] = [
+const CONTINGENT: [Phase; 4] = [
     Phase {
         name: "baseline",
         decisions: PHASE,
@@ -53,12 +55,17 @@ const CONTINGENT: [Phase; 3] = [
         coupling: Coupling::Contingent,
     },
     Phase {
-        name: "extinction",
-        decisions: PHASE,
+        name: "early extinction",
+        decisions: PHASE / 2,
+        coupling: Coupling::Rest,
+    },
+    Phase {
+        name: "late extinction",
+        decisions: PHASE / 2,
         coupling: Coupling::Rest,
     },
 ];
-const YOKED: [Phase; 3] = [
+const YOKED: [Phase; 4] = [
     CONTINGENT[0],
     Phase {
         name: "yoked",
@@ -66,6 +73,7 @@ const YOKED: [Phase; 3] = [
         coupling: Coupling::Yoked,
     },
     CONTINGENT[2],
+    CONTINGENT[3],
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -136,7 +144,7 @@ pub struct Cell {
 pub struct ContingencyReport {
     pub schema_version: u16,
     pub seeds: [u64; 8],
-    pub phases: [Phase; 3],
+    pub phases: [Phase; 4],
     pub curve_block: usize,
     pub cells: Vec<Cell>,
 }
@@ -152,14 +160,16 @@ impl ContingencyReport {
 }
 
 /// Connected-phase target experiments are at least 1.5x both baseline and the yoked middle
-/// phase, and fall again in extinction.
+/// phase, and their rate falls again by late extinction. Early extinction is not judged, so an
+/// extinction burst does not count against learning.
 fn shows_contingency(contingent: &[PhaseSummary], yoked: &[PhaseSummary], object: Object) -> bool {
     let baseline = contingent[0].target(object);
     let middle = contingent[1].target(object);
+    let late = contingent[3].target(object);
     middle > 0
         && 2 * middle >= 3 * baseline
         && 2 * middle >= 3 * yoked[1].target(object)
-        && contingent[2].target(object) < middle
+        && late * contingent[1].decisions < middle * contingent[3].decisions
 }
 
 fn cell(paradigm: Paradigm, controller: Controller) -> Cell {
@@ -250,8 +260,8 @@ pub fn markdown(report: &ContingencyReport) -> String {
          Anticipation is the learner's expected contact after a hand pulse, as distance from \
          rest (0–255), averaged per phase before each outcome arrived. Consequences counts \
          middle-phase decisions whose contact differed from rest.\n\n\
-         | paradigm | controller | condition | baseline | middle | extinction | consequences | anticipation |\n\
-         |---|---|---|---:|---:|---:|---:|---|\n",
+         | paradigm | controller | condition | baseline | middle | early extinction | late extinction | consequences | anticipation |\n\
+         |---|---|---|---:|---:|---:|---:|---:|---|\n",
         report.seeds.len(),
         report.phases[0].decisions
     );
@@ -259,12 +269,13 @@ pub fn markdown(report: &ContingencyReport) -> String {
         let object = cell.paradigm.object();
         for (condition, phases) in [("Contingent", &cell.contingent), ("Yoked", &cell.yoked)] {
             text.push_str(&format!(
-                "| {:?} | {:?} | {condition} | {} | {} | {} | {} | {} |\n",
+                "| {:?} | {:?} | {condition} | {} | {} | {} | {} | {} | {} |\n",
                 cell.paradigm,
                 cell.controller,
                 rate(phases[0].target(object), phases[0].decisions),
                 rate(phases[1].target(object), phases[1].decisions),
                 rate(phases[2].target(object), phases[2].decisions),
+                rate(phases[3].target(object), phases[3].decisions),
                 phases[1].consequences,
                 joined(phases.iter().map(|p| p.anticipation.to_string()), " → "),
             ));
@@ -272,7 +283,9 @@ pub fn markdown(report: &ContingencyReport) -> String {
     }
     text.push_str(
         "\n## Verdicts\n\nA run shows contingency when connected-phase pulses are at least 1.5× \
-         both baseline and the yoked middle phase, and fall in extinction.\n\n\
+         both baseline and the yoked middle phase, and their rate falls below the connected rate by \
+         late extinction. Early extinction is not judged, so an extinction burst does not count \
+         against learning.\n\n\
          | paradigm | controller | pooled | seeds passing |\n|---|---|---|---:|\n",
     );
     for cell in &report.cells {
@@ -285,6 +298,14 @@ pub fn markdown(report: &ContingencyReport) -> String {
             cell.curves.len()
         ));
     }
+    text.push_str(&curves_markdown(report));
+    text.push_str(&strategy_markdown(report));
+    text
+}
+
+/// Per-seed learning curves of the affordance learner.
+fn curves_markdown(report: &ContingencyReport) -> String {
+    let mut text = String::new();
     let blocks_per_phase = report.phases[0].decisions as usize / report.curve_block;
     text.push_str(&format!(
         "\n## AffordanceDiscovery learning curves\n\nHand pulses per {} decisions for each seed, \
@@ -314,6 +335,12 @@ pub fn markdown(report: &ContingencyReport) -> String {
             ));
         }
     }
+    text
+}
+
+/// Strategy mix of the affordance learner in each contingent-condition phase.
+fn strategy_markdown(report: &ContingencyReport) -> String {
+    let mut text = String::new();
     text.push_str(&format!(
         "\n## AffordanceDiscovery strategy mix\n\nShare of decisions per experiment in each \
          contingent-condition phase, in percent.\n\n| paradigm | phase | {} |\n|---|---|{}\n",
