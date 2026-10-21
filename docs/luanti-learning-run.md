@@ -41,9 +41,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | free / per-action-8 / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 22.0 |
 | free / per-action-8 / turned | connected | 4000 | 11.9 | 20.8 | 13.7 | 11.7 | 32.5 |
 | free / per-action-8 / turned | extinction | 800 | 9.8 | 0.0 | 0.1 | 0.0 | 27.5 |
-| free / scenes / turned | baseline | 800 | 6.4 | 0.0 | 0.0 | 0.0 | 22.5 |
-| free / scenes / turned | connected | 4000 | 14.2 | 31.4 | 14.4 | 17.5 | 30.3 |
-| free / scenes / turned | extinction | 800 | 13.4 | 0.0 | 0.1 | 0.0 | 34.8 |
+| free / scenes-slowfade / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 20.6 |
+| free / scenes-slowfade / turned | connected | 4000 | 11.9 | 30.6 | 17.1 | 21.4 | 25.9 |
+| free / scenes-slowfade / turned | extinction | 800 | 10.9 | 0.0 | 0.2 | 0.0 | 31.1 |
 | inert / context / toward | baseline | 800 | 8.6 | 0.0 | 0.0 | 0.0 | 22.5 |
 | inert / context / toward | connected | 4000 | 8.0 | 0.0 | 39.6 | 36.5 | 34.7 |
 | inert / context / toward | extinction | 800 | 7.9 | 0.0 | 0.1 | 0.0 | 31.5 |
@@ -62,9 +62,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | inert / per-action-8 / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 23.2 |
 | inert / per-action-8 / turned | connected | 4000 | 8.0 | 0.0 | 14.9 | 19.6 | 28.8 |
 | inert / per-action-8 / turned | extinction | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 25.5 |
-| inert / scenes / turned | baseline | 800 | 6.4 | 0.0 | 0.0 | 0.0 | 22.5 |
-| inert / scenes / turned | connected | 4000 | 8.8 | 0.0 | 17.1 | 17.8 | 26.6 |
-| inert / scenes / turned | extinction | 800 | 10.8 | 0.0 | 0.2 | 0.0 | 33.0 |
+| inert / scenes-slowfade / turned | baseline | 800 | 7.4 | 0.0 | 0.0 | 0.0 | 20.6 |
+| inert / scenes-slowfade / turned | connected | 4000 | 7.4 | 0.0 | 21.6 | 25.4 | 27.4 |
+| inert / scenes-slowfade / turned | extinction | 800 | 6.8 | 0.0 | 0.1 | 0.0 | 24.6 |
 
 ## Per run (hand pulses per 100 decisions)
 
@@ -118,11 +118,11 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | pa-inert-seed2 | inert / per-action-8 / turned | 2 | 6.0 | 5.7 | 6.0 |
 | pa-inert-seed3 | inert / per-action-8 / turned | 3 | 6.0 | 8.4 | 7.5 |
 | pa-inert-seed4 | inert / per-action-8 / turned | 4 | 7.5 | 7.8 | 6.0 |
-| sc-free-seed1 | free / scenes / turned | 1 | 6.0 | 13.5 | 13.5 |
-| sc-free-seed2 | free / scenes / turned | 2 | 7.5 | 16.2 | 15.0 |
-| sc-free-seed3 | free / scenes / turned | 3 | 6.0 | 14.4 | 13.5 |
-| sc-free-seed4 | free / scenes / turned | 4 | 6.0 | 12.9 | 11.5 |
-| sc-inert-seed1 | inert / scenes / turned | 1 | 7.5 | 8.7 | 12.0 |
-| sc-inert-seed2 | inert / scenes / turned | 2 | 6.0 | 6.6 | 7.5 |
-| sc-inert-seed3 | inert / scenes / turned | 3 | 6.0 | 10.2 | 13.5 |
-| sc-inert-seed4 | inert / scenes / turned | 4 | 6.0 | 9.9 | 10.0 |
+| ss-free-seed1 | free / scenes-slowfade / turned | 1 | 6.0 | 12.9 | 10.5 |
+| ss-free-seed2 | free / scenes-slowfade / turned | 2 | 7.5 | 12.3 | 10.5 |
+| ss-free-seed3 | free / scenes-slowfade / turned | 3 | 6.0 | 11.1 | 10.5 |
+| ss-free-seed4 | free / scenes-slowfade / turned | 4 | 7.5 | 11.4 | 12.0 |
+| ss-inert-seed1 | inert / scenes-slowfade / turned | 1 | 7.5 | 6.6 | 6.0 |
+| ss-inert-seed2 | inert / scenes-slowfade / turned | 2 | 7.0 | 7.3 | 7.5 |
+| ss-inert-seed3 | inert / scenes-slowfade / turned | 3 | 7.5 | 8.7 | 7.5 |
+| ss-inert-seed4 | inert / scenes-slowfade / turned | 4 | 7.5 | 6.9 | 6.0 |

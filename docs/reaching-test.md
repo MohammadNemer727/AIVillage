@@ -16,10 +16,10 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | ExpectileDiscovery | late | 8.7 | 13.6 | 18.3 | 18.3 |
 | LearnedSituations | early | 8.0 | 13.1 | 17.6 | 17.6 |
 | LearnedSituations | late | 8.4 | 13.9 | 18.5 | 18.5 |
-| PerActionSituations | early | 8.8 | 12.6 | 17.7 | 17.7 |
-| PerActionSituations | late | 11.0 | 15.5 | 24.7 | 24.7 |
-| SceneSituations | early | 7.6 | 11.9 | 12.8 | 12.8 |
-| SceneSituations | late | 10.0 | 14.6 | 21.1 | 21.1 |
+| PerActionSituations | early | 8.3 | 12.9 | 12.5 | 12.5 |
+| PerActionSituations | late | 10.0 | 13.2 | 20.2 | 20.2 |
+| SceneSituations | early | 8.3 | 13.0 | 16.6 | 16.6 |
+| SceneSituations | late | 9.6 | 15.2 | 26.8 | 26.8 |
 
 ## Late-phase hit rate per seed (%)
 
@@ -30,8 +30,8 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | ContextDiscovery | 37.9 · 32.3 · 26.2 · 33.6 · 27.3 · 6.6 · 19.2 · 19.3 |
 | ExpectileDiscovery | 17.8 · 21.1 · 11.1 · 16.6 · 30.3 · 14.8 · 17.2 · 14.2 |
 | LearnedSituations | 16.6 · 33.3 · 20.9 · 15.3 · 19.7 · 14.8 · 13.9 · 13.7 |
-| PerActionSituations | 31.4 · 37.1 · 0.0 · 31.7 · 32.5 · 21.0 · 21.0 · 12.6 |
-| SceneSituations | 25.0 · 33.3 · 22.2 · 6.6 · 19.3 · 27.2 · 11.6 · 25.9 |
+| PerActionSituations | 29.3 · 36.8 · 15.6 · 34.6 · 10.4 · 5.2 · 16.6 · 3.7 |
+| SceneSituations | 41.3 · 42.6 · 16.1 · 25.6 · 18.5 · 22.6 · 24.2 · 32.3 |
 
 ## LearnedSituations: shared situations
 
@@ -54,14 +54,14 @@ Sense facts each seed split on, in order.
 
 | seed | facts |
 |---:|---|
-| 7 | near left, near behind, touch |
-| 19 | near left, near right, near ahead |
-| 43 | near ahead |
-| 91 | near right, near ahead, touch |
-| 131 | near behind, near right, touch, near ahead |
-| 173 | near right, near ahead |
-| 211 | near behind, looking up, near ahead |
-| 251 | near left, near behind, near right |
+| 7 | near right, touch, near left |
+| 19 | near behind, near right, touch |
+| 43 | near ahead, near right |
+| 91 | near right, near ahead |
+| 131 | near behind, near ahead |
+| 173 | near behind, near right |
+| 211 | near left, near right, looking down |
+| 251 | near ahead |
 
 ## SceneSituations: the push's own situations over learned scenes
 
@@ -69,11 +69,11 @@ Sense facts each seed split on, in order.
 
 | seed | facts |
 |---:|---|
-| 7 | scene 3, scene 5 |
-| 19 | scene 3, scene 5 |
-| 43 | scene 6, scene 5 |
-| 91 | scene 3, scene 4, scene 7, scene 1 |
-| 131 | scene 4, scene 3, scene 1, scene 0 |
-| 173 | scene 2 |
-| 211 | scene 5, scene 7, scene 1 |
-| 251 | scene 0, scene 5, scene 7 |
+| 7 | scene 5 |
+| 19 | scene 3 |
+| 43 | scene 2, scene 6, scene 5 |
+| 91 | scene 3, scene 2, scene 5 |
+| 131 | scene 4, scene 0, scene 3, scene 7 |
+| 173 | scene 0, scene 2 |
+| 211 | scene 0, scene 1 |
+| 251 | scene 5, scene 7 |

@@ -453,6 +453,8 @@ const LOOKING_UP_ABOVE: u16 = 144;
 pub const EXPERIENCE_MEMORY: usize = 256;
 /// Decisions between attempts to split a situation.
 const SPLIT_INTERVAL: u64 = 32;
+/// How many times slower an experiment's memory fades in situations the founder is not in.
+const DISTANT_FORGETTING: u16 = 4;
 /// Experiences each side of a split needs before the split is judged.
 const SPLIT_MIN_SIDE: i64 = 16;
 /// Tries of an experiment each side of a split needs for the experiment to count.
@@ -898,11 +900,25 @@ impl AffordanceLearner {
                 situations.stats[situation].credit(age, now, &config);
             }
         }
+        // Memories fade with time, not only when revisited: where the founder stands, every
+        // experiment but the one just credited drifts back to normal as for pooled statistics;
+        // elsewhere every experiment's memory drifts back four times slower. Fading only where
+        // the founder stands would make experience split over many situations fade that many
+        // times slower; fading everywhere at full speed would erase what rarely visited
+        // situations taught between visits.
+        let distant = AffordanceConfig {
+            forgetting_horizon: config.forgetting_horizon.saturating_mul(DISTANT_FORGETTING),
+            ..config
+        };
         for (other, situations) in self.per_action.iter_mut().enumerate() {
-            let situation = situations.situation_of(facts);
-            situations.stats[situation].observe_overall(now, &config);
-            if other != action {
-                situations.stats[situation].forget(&config);
+            let current = situations.situation_of(facts);
+            situations.stats[current].observe_overall(now, &config);
+            for (index, stats) in situations.stats.iter_mut().enumerate() {
+                if index != current {
+                    stats.forget(&distant);
+                } else if other != action {
+                    stats.forget(&config);
+                }
             }
         }
     }
