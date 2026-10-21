@@ -38,6 +38,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | free / learned / turned | baseline | 800 | 6.4 | 0.0 | 0.0 | 0.0 | 17.8 |
 | free / learned / turned | connected | 4000 | 9.7 | 25.1 | 13.9 | 15.2 | 25.4 |
 | free / learned / turned | extinction | 800 | 6.8 | 0.0 | 0.1 | 0.0 | 22.4 |
+| free / per-action-8 / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 22.0 |
+| free / per-action-8 / turned | connected | 4000 | 11.9 | 20.8 | 13.7 | 11.7 | 32.5 |
+| free / per-action-8 / turned | extinction | 800 | 9.8 | 0.0 | 0.1 | 0.0 | 27.5 |
 | inert / context / toward | baseline | 800 | 8.6 | 0.0 | 0.0 | 0.0 | 22.5 |
 | inert / context / toward | connected | 4000 | 8.0 | 0.0 | 39.6 | 36.5 | 34.7 |
 | inert / context / toward | extinction | 800 | 7.9 | 0.0 | 0.1 | 0.0 | 31.5 |
@@ -53,6 +56,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | inert / learned / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 17.6 |
 | inert / learned / turned | connected | 4000 | 7.8 | 0.0 | 14.4 | 13.8 | 25.3 |
 | inert / learned / turned | extinction | 800 | 8.6 | 0.0 | 0.1 | 0.0 | 33.8 |
+| inert / per-action-8 / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 23.2 |
+| inert / per-action-8 / turned | connected | 4000 | 8.0 | 0.0 | 14.9 | 19.6 | 28.8 |
+| inert / per-action-8 / turned | extinction | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 25.5 |
 
 ## Per run (hand pulses per 100 decisions)
 
@@ -98,3 +104,11 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | learned-inert-seed2 | inert / learned / turned | 2 | 6.0 | 7.8 | 7.5 |
 | learned-inert-seed3 | inert / learned / turned | 3 | 7.5 | 8.1 | 9.0 |
 | learned-inert-seed4 | inert / learned / turned | 4 | 6.0 | 8.1 | 9.0 |
+| pa-free-seed1 | free / per-action-8 / turned | 1 | 7.5 | 9.6 | 7.5 |
+| pa-free-seed2 | free / per-action-8 / turned | 2 | 6.0 | 9.6 | 6.0 |
+| pa-free-seed3 | free / per-action-8 / turned | 3 | 7.5 | 12.9 | 12.0 |
+| pa-free-seed4 | free / per-action-8 / turned | 4 | 7.5 | 15.6 | 13.5 |
+| pa-inert-seed1 | inert / per-action-8 / turned | 1 | 9.0 | 10.2 | 9.0 |
+| pa-inert-seed2 | inert / per-action-8 / turned | 2 | 6.0 | 5.7 | 6.0 |
+| pa-inert-seed3 | inert / per-action-8 / turned | 3 | 6.0 | 8.4 | 7.5 |
+| pa-inert-seed4 | inert / per-action-8 / turned | 4 | 7.5 | 7.8 | 6.0 |

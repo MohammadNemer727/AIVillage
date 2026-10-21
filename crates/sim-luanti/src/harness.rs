@@ -62,6 +62,8 @@ pub enum Controller {
     ExpectileDiscovery,
     /// The affordance learner judging contingency within situations it discovers itself.
     LearnedSituations,
+    /// The affordance learner with situations it discovers separately for each experiment.
+    PerActionSituations,
 }
 
 impl Controller {
@@ -95,6 +97,11 @@ impl Controller {
                 ContextMode::Learned,
                 OutcomeModel::Moments,
             ),
+            Self::PerActionSituations => (
+                ScoringRule::Contingency,
+                ContextMode::PerAction,
+                OutcomeModel::Moments,
+            ),
         };
         Some(AffordanceConfig {
             rule,
@@ -105,7 +112,7 @@ impl Controller {
     }
 }
 
-pub const CONTROLLERS: [Controller; 7] = [
+pub const CONTROLLERS: [Controller; 8] = [
     Controller::PredictiveBaseline,
     Controller::Random,
     Controller::AffordanceDiscovery,
@@ -113,6 +120,7 @@ pub const CONTROLLERS: [Controller; 7] = [
     Controller::ContextDiscovery,
     Controller::ExpectileDiscovery,
     Controller::LearnedSituations,
+    Controller::PerActionSituations,
 ];
 
 /// How the founder senses the coupled object.
@@ -189,7 +197,8 @@ pub struct Trace {
     pub expected: Vec<Option<u16>>,
     /// Whether the founder faced the object at each decision; always true without facing.
     pub facing: Vec<bool>,
-    /// Situations the learner split on by the end of the run, as (sense fact, outcomes seen).
+    /// Situations the learner split on by the end of the run, as (sense fact, outcomes seen): the
+    /// shared situations, or the target experiment's own under per-experiment situations.
     pub splits: Vec<(usize, u64)>,
 }
 
@@ -361,11 +370,17 @@ pub fn run(
         body.vertical_motion = if action.jump > 0 { 255 } else { 0 };
         acceleration = (action.thrust / 2).clamp(-255, 255);
     }
-    trace.splits = runtime
-        .state()
-        .affordance
+    let learner = &runtime.state().affordance;
+    trace.splits = learner
         .splits
         .iter()
+        .chain(
+            learner
+                .per_action
+                .get(object.target)
+                .map(|situations| situations.splits.as_slice())
+                .unwrap_or_default(),
+        )
         .map(|split| (usize::from(split.fact), split.at))
         .collect();
     trace

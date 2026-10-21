@@ -44,12 +44,13 @@ pub const OBJECT: Object = Object {
     facing: true,
 };
 
-pub const REACHING_CONTROLLERS: [Controller; 5] = [
+pub const REACHING_CONTROLLERS: [Controller; 6] = [
     Controller::Random,
     Controller::AffordanceDiscovery,
     Controller::ContextDiscovery,
     Controller::ExpectileDiscovery,
     Controller::LearnedSituations,
+    Controller::PerActionSituations,
 ];
 
 /// One controller over every seed.
@@ -180,18 +181,26 @@ pub fn markdown(report: &ReachingReport) -> String {
             seeds.join(" · ")
         ));
     }
-    let learned = report.row(Controller::LearnedSituations);
-    text.push_str(
-        "\n## Situations LearnedSituations chose\n\nSense facts each seed split on, in order.\n\n\
-         | seed | facts |\n|---:|---|\n",
-    );
-    for (seed, facts) in report.seeds.iter().zip(&learned.learned_facts) {
-        let facts = if facts.is_empty() {
-            "none".to_owned()
-        } else {
-            facts.join(", ")
-        };
-        text.push_str(&format!("| {seed} | {facts} |\n"));
+    for (controller, title) in [
+        (Controller::LearnedSituations, "shared situations"),
+        (Controller::PerActionSituations, "the push's own situations"),
+    ] {
+        text.push_str(&format!(
+            "\n## {controller:?}: {title}\n\nSense facts each seed split on, in order.\n\n\
+             | seed | facts |\n|---:|---|\n"
+        ));
+        for (seed, facts) in report
+            .seeds
+            .iter()
+            .zip(&report.row(controller).learned_facts)
+        {
+            let facts = if facts.is_empty() {
+                "none".to_owned()
+            } else {
+                facts.join(", ")
+            };
+            text.push_str(&format!("| {seed} | {facts} |\n"));
+        }
     }
     text
 }
@@ -225,15 +234,24 @@ mod tests {
     }
 
     #[test]
-    fn learned_situations_discover_what_is_ahead() {
+    fn learned_situations_discover_where_the_object_is() {
         let report = run();
-        let learned = report.row(Controller::LearnedSituations);
-        for facts in &learned.learned_facts {
-            assert!(facts.iter().any(|fact| fact == "near ahead"), "{facts:?}");
+        let pushes = report.row(Controller::PerActionSituations);
+        for facts in &pushes.learned_facts {
+            assert!(
+                facts.iter().any(|fact| fact.starts_with("near ")),
+                "{facts:?}"
+            );
         }
-        assert!(
-            hit_rate(&learned.phases[1])
-                > hit_rate(&report.row(Controller::AffordanceDiscovery).phases[1])
-        );
+        let context_free = hit_rate(&report.row(Controller::AffordanceDiscovery).phases[1]);
+        for controller in [
+            Controller::LearnedSituations,
+            Controller::PerActionSituations,
+        ] {
+            assert!(
+                hit_rate(&report.row(controller).phases[1]) > context_free,
+                "{controller:?}"
+            );
+        }
     }
 }

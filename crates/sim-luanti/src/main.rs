@@ -37,6 +37,22 @@ fn write_report(
     Ok(())
 }
 
+/// Names of the founder's primitive experiments, in the learner's order.
+const EXPERIMENTS: [&str; 12] = [
+    "thrust forward",
+    "thrust back",
+    "turn left",
+    "turn right",
+    "strafe one way",
+    "strafe other way",
+    "look up",
+    "look down",
+    "jump",
+    "hand push",
+    "jaw",
+    "sound",
+];
+
 /// Replays a recorded trace exactly and reports the situations the founder learned in it.
 fn replay(
     seed: u64,
@@ -50,6 +66,18 @@ fn replay(
     let runtime = replay_trace(seed, agent_id, &records)?;
     println!("replayed {} recorded transitions exactly", records.len());
     let learner = &runtime.state().affordance;
+    for (action, situations) in learner.per_action.iter().enumerate() {
+        for split in &situations.splits {
+            println!(
+                "{}: situation {} from {} where {} (after {} outcomes)",
+                EXPERIMENTS[action],
+                split.child,
+                split.parent,
+                sim_core::runtime::sense_fact_name(usize::from(split.fact)),
+                split.at
+            );
+        }
+    }
     for split in &learner.splits {
         println!(
             "learned situation {} from {} where {} (after {} outcomes)",

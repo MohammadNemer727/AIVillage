@@ -14,8 +14,10 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | ContextDiscovery | late | 9.7 | 14.0 | 26.4 | 26.4 |
 | ExpectileDiscovery | early | 7.6 | 10.8 | 10.4 | 10.4 |
 | ExpectileDiscovery | late | 8.7 | 13.6 | 18.3 | 18.3 |
-| LearnedSituations | early | 8.0 | 12.4 | 16.7 | 16.7 |
-| LearnedSituations | late | 8.6 | 13.9 | 20.8 | 20.8 |
+| LearnedSituations | early | 8.0 | 13.1 | 17.6 | 17.6 |
+| LearnedSituations | late | 8.4 | 13.9 | 18.5 | 18.5 |
+| PerActionSituations | early | 8.8 | 12.6 | 17.7 | 17.7 |
+| PerActionSituations | late | 11.0 | 15.5 | 24.7 | 24.7 |
 
 ## Late-phase hit rate per seed (%)
 
@@ -25,19 +27,35 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | AffordanceDiscovery | 11.9 · 25.2 · 7.0 · 16.0 · 18.6 · 0.0 · 7.2 · 4.3 |
 | ContextDiscovery | 37.9 · 32.3 · 26.2 · 33.6 · 27.3 · 6.6 · 19.2 · 19.3 |
 | ExpectileDiscovery | 17.8 · 21.1 · 11.1 · 16.6 · 30.3 · 14.8 · 17.2 · 14.2 |
-| LearnedSituations | 24.1 · 35.4 · 10.2 · 17.2 · 26.7 · 11.1 · 22.2 · 17.2 |
+| LearnedSituations | 16.6 · 33.3 · 20.9 · 15.3 · 19.7 · 14.8 · 13.9 · 13.7 |
+| PerActionSituations | 31.4 · 37.1 · 0.0 · 31.7 · 32.5 · 21.0 · 21.0 · 12.6 |
 
-## Situations LearnedSituations chose
+## LearnedSituations: shared situations
 
 Sense facts each seed split on, in order.
 
 | seed | facts |
 |---:|---|
-| 7 | in the air, near right, near behind, near ahead, looking up, near left, near left, near left |
-| 19 | near right, in the air, near left, in the air, looking down, near ahead, near ahead, near left, near behind, near behind, near ahead |
-| 43 | in the air, near left, looking up, near ahead, near behind, near behind, near right, near ahead, near right |
-| 91 | near left, near ahead, near behind, near right, near right, looking up, near ahead, near behind |
-| 131 | near ahead, in the air, near behind, near left, looking down, near right, near left, near left, looking up |
-| 173 | near ahead, near behind, looking up, looking up, near right, near left, near left, near right, near left |
-| 211 | in the air, near right, near ahead, near ahead, near behind, near left, near behind, looking up, near ahead, near left |
-| 251 | near left, near ahead, in the air, near behind, near ahead, near right, near right |
+| 7 | in the air, near left, near right, near ahead |
+| 19 | in the air, near behind, near left, near right, near right, near ahead |
+| 43 | near behind, looking up, near ahead, near left, near right |
+| 91 | near right, in the air, near behind |
+| 131 | in the air, looking down, near behind, near right, near ahead, near right |
+| 173 | near left, looking up, in the air, near ahead, near ahead, in the air |
+| 211 | in the air, near right, near behind, looking up, near ahead, near ahead |
+| 251 | near left, near behind, in the air, near behind |
+
+## PerActionSituations: the push's own situations
+
+Sense facts each seed split on, in order.
+
+| seed | facts |
+|---:|---|
+| 7 | near left, near behind, touch |
+| 19 | near left, near right, near ahead |
+| 43 | near ahead |
+| 91 | near right, near ahead, touch |
+| 131 | near behind, near right, touch, near ahead |
+| 173 | near right, near ahead |
+| 211 | near behind, looking up, near ahead |
+| 251 | near left, near behind, near right |
