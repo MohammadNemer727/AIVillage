@@ -26,6 +26,12 @@ Anticipation is the learner's expected contact after a hand pulse, as distance f
 | Bimodal | Random | Yoked | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Bimodal | AffordanceDiscovery | Contingent | 3.6 | 4.8 | 4.9 | 4.9 | 37 | 0 → 16 → 20 → 14 |
 | Bimodal | AffordanceDiscovery | Yoked | 3.6 | 3.7 | 2.8 | 5.2 | 37 | 0 → 2 → 7 → 5 |
+| Seen | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
+| Seen | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
+| Seen | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
+| Seen | Random | Yoked | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
+| Seen | AffordanceDiscovery | Contingent | 3.7 | 5.0 | 7.2 | 6.7 | 39 | 0 → 26 → 42 → 26 |
+| Seen | AffordanceDiscovery | Yoked | 3.7 | 3.2 | 3.6 | 4.6 | 39 | 0 → 4 → 7 → 5 |
 
 ## Verdicts
 
@@ -42,6 +48,9 @@ A run shows contingency when connected-phase pulses are at least 1.5× both base
 | Bimodal | PredictiveBaseline | false | 0/8 |
 | Bimodal | Random | false | 0/8 |
 | Bimodal | AffordanceDiscovery | false | 2/8 |
+| Seen | PredictiveBaseline | false | 0/8 |
+| Seen | Random | false | 0/8 |
+| Seen | AffordanceDiscovery | false | 0/8 |
 
 ## AffordanceDiscovery learning curves
 
@@ -73,6 +82,14 @@ Hand pulses per 24 decisions for each seed, phases separated by `|`.
 | Bimodal | 173 | 2 1 0 1 | 0 2 0 2 | 0 2 1 2 | 2 1 0 1 | 0 2 0 2 | 0 1 2 2 | false |
 | Bimodal | 211 | 2 1 0 1 | 1 2 1 1 | 4 1 2 1 | 2 1 0 1 | 1 1 0 1 | 1 0 1 1 | false |
 | Bimodal | 251 | 1 1 1 0 | 1 1 3 1 | 1 1 0 1 | 1 1 1 0 | 1 0 2 0 | 2 0 1 1 | true |
+| Seen | 7 | 2 0 1 1 | 1 1 1 4 | 1 2 2 2 | 2 0 1 1 | 1 1 1 1 | 0 1 1 2 | false |
+| Seen | 19 | 1 1 1 1 | 1 1 2 3 | 3 1 2 2 | 1 1 1 1 | 1 1 0 1 | 2 1 1 1 | false |
+| Seen | 43 | 1 1 1 0 | 1 1 2 1 | 3 1 2 1 | 1 1 1 0 | 1 0 1 1 | 1 1 1 1 | false |
+| Seen | 91 | 1 1 1 0 | 1 1 1 2 | 2 2 2 1 | 1 1 1 0 | 1 0 1 1 | 1 1 2 0 | false |
+| Seen | 131 | 1 1 1 1 | 0 1 1 1 | 1 1 2 1 | 1 1 1 1 | 0 1 1 1 | 0 1 1 1 | false |
+| Seen | 173 | 2 1 0 1 | 0 2 0 2 | 1 2 1 2 | 2 1 0 1 | 1 1 0 1 | 0 2 0 2 | false |
+| Seen | 211 | 2 1 0 1 | 1 1 1 1 | 2 1 2 1 | 2 1 0 1 | 1 1 0 1 | 1 0 2 1 | false |
+| Seen | 251 | 1 0 2 0 | 1 0 2 1 | 3 2 1 2 | 1 0 2 0 | 1 0 2 0 | 2 0 1 1 | false |
 
 ## AffordanceDiscovery strategy mix
 
@@ -92,3 +109,7 @@ Share of decisions per experiment in each contingent-condition phase, in percent
 | Bimodal | connected | 4 | 33 | 33 | 6 | 7 | 7 | 6 | 0 |
 | Bimodal | early extinction | 4 | 34 | 33 | 6 | 7 | 5 | 7 | 0 |
 | Bimodal | late extinction | 4 | 33 | 33 | 7 | 7 | 6 | 6 | 0 |
+| Seen | baseline | 3 | 34 | 30 | 7 | 7 | 7 | 7 | 0 |
+| Seen | connected | 5 | 32 | 33 | 6 | 6 | 6 | 7 | 0 |
+| Seen | early extinction | 7 | 34 | 32 | 5 | 7 | 6 | 6 | 0 |
+| Seen | late extinction | 6 | 32 | 31 | 7 | 7 | 7 | 7 | 0 |

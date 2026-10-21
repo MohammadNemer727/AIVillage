@@ -20,6 +20,10 @@
 //! - bimodal: half contact at rest; a pulse produces full or no contact by a fair coin, so the
 //!   average outcome is unchanged and only its spread depends on the action.
 //!
+//! A fourth paradigm has no touch at all, like an infant watching a mobile it cannot reach:
+//! - seen: the object is visible nearby at rest; a pulse pushes it away, so the rays it covers
+//!   see it recede and its nearness drop.
+//!
 //! Beyond pooled rates, the report follows the infant literature: per-seed learning curves
 //! (Fujihira et al., 2025), the strategy mix in each phase (Spisak et al., 2026), and the
 //! learner's anticipated contact before each outcome (Rosales et al., 2025).
@@ -35,8 +39,8 @@ use serde::Serialize;
 use sim_kernels::derive;
 
 use crate::harness::{
-    self, CONTROLLERS, Controller, Coupling, HAND_PULSE, Object, Phase, PhaseSummary, SEEDS, Trace,
-    rate,
+    self, CONTROLLERS, Controller, Coupling, HAND_PULSE, Object, Phase, PhaseSummary, SEEDS, Sense,
+    Trace, rate,
 };
 
 const PHASE: u64 = 96;
@@ -82,9 +86,15 @@ pub enum Paradigm {
     Standard,
     Inverted,
     Bimodal,
+    Seen,
 }
 
-pub const PARADIGMS: [Paradigm; 3] = [Paradigm::Standard, Paradigm::Inverted, Paradigm::Bimodal];
+pub const PARADIGMS: [Paradigm; 4] = [
+    Paradigm::Standard,
+    Paradigm::Inverted,
+    Paradigm::Bimodal,
+    Paradigm::Seen,
+];
 
 impl Paradigm {
     #[must_use]
@@ -92,16 +102,19 @@ impl Paradigm {
         match self {
             Self::Standard => Object {
                 target: HAND_PULSE,
+                sense: Sense::Contact,
                 resting: 0,
                 caused: |_, _| CONTACT,
             },
             Self::Inverted => Object {
                 target: HAND_PULSE,
+                sense: Sense::Contact,
                 resting: CONTACT,
                 caused: |_, _| 0,
             },
             Self::Bimodal => Object {
                 target: HAND_PULSE,
+                sense: Sense::Contact,
                 resting: CONTACT / 2,
                 caused: |seed, tick| {
                     if derive(seed, tick, 0, 0x4249_4D4F) & 1 == 0 {
@@ -110,6 +123,12 @@ impl Paradigm {
                         0
                     }
                 },
+            },
+            Self::Seen => Object {
+                target: HAND_PULSE,
+                sense: Sense::Sight,
+                resting: 160,
+                caused: |_, _| 64,
             },
         }
     }

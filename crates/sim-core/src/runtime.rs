@@ -29,9 +29,15 @@ pub enum ExperimentMode {
 /// Number of primitive experiments the affordance learner chooses between.
 pub const AFFORDANCE_ACTIONS: usize = 12;
 /// Number of bounded outcome features the affordance learner tracks.
-pub const OUTCOME_FEATURES: usize = 6;
+pub const OUTCOME_FEATURES: usize = 8;
 /// Index of the hand-contact feature in [`AffordanceLearner::expected_after`].
 pub const HAND_CONTACT_FEATURE: usize = 5;
+/// Index of the largest apparent retinal motion feature.
+pub const VISUAL_MOTION_FEATURE: usize = 6;
+/// Index of the largest per-ray view change feature.
+pub const VISUAL_CHANGE_FEATURE: usize = 7;
+/// Retinal channels compared between consecutive views: red, green, blue, brightness, occlusion.
+const VIEW_CHANNELS: usize = 5;
 /// Fixed-point scale of the outcome averages.
 const OUTCOME_SCALE: i32 = 256;
 /// Per-action averages settle at this many visits, so they keep tracking a changed world.
@@ -59,6 +65,9 @@ pub struct AffordanceLearner {
     pub last_tried: [u64; AFFORDANCE_ACTIONS],
     /// Last selected experiment, whose outcome the next observation reports.
     pub previous_action: usize,
+    /// Previous retinal view, so the next outcome can report how much the view changed.
+    #[serde(default)]
+    pub previous_view: [[u16; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
 }
 
 impl Default for AffordanceLearner {
@@ -69,13 +78,43 @@ impl Default for AffordanceLearner {
             overall: [0; OUTCOME_FEATURES],
             last_tried: [0; AFFORDANCE_ACTIONS],
             previous_action: AFFORDANCE_ACTIONS,
+            previous_view: [[0; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
         }
     }
 }
 
 impl AffordanceLearner {
-    fn outcome(observation: &EnvironmentObservation) -> [i32; OUTCOME_FEATURES] {
+    /// Bounded body and visual outcome. Vision is summarized without identities or locations:
+    /// the largest apparent motion on any ray, and the largest change of any ray since the
+    /// previous view. Taking the largest rather than the mean keeps a small object salient
+    /// instead of diluting it across the whole retina.
+    fn outcome(&mut self, observation: &EnvironmentObservation) -> [i32; OUTCOME_FEATURES] {
         let body = observation.body;
+        let mut motion = 0_i32;
+        let mut change = 0_i32;
+        for (sample, previous) in observation
+            .senses
+            .retinal
+            .iter()
+            .zip(&mut self.previous_view)
+        {
+            let view = [
+                sample.red,
+                sample.green,
+                sample.blue,
+                sample.brightness,
+                sample.occlusion,
+            ];
+            motion = motion.max(i32::from(sample.motion.unsigned_abs()));
+            change = change.max(i32::from(
+                view.iter()
+                    .zip(*previous)
+                    .map(|(now, before)| now.abs_diff(before))
+                    .max()
+                    .unwrap_or_default(),
+            ));
+            *previous = view;
+        }
         [
             i32::from(observation.senses.touch),
             i32::from(observation.senses.acceleration),
@@ -83,12 +122,14 @@ impl AffordanceLearner {
             i32::from(body.grounded),
             i32::from(body.vertical_motion),
             i32::from(body.hand_contact),
+            motion.min(255),
+            change,
         ]
         .map(|value| value * OUTCOME_SCALE)
     }
 
     fn observe(&mut self, observation: &EnvironmentObservation) {
-        let now = Self::outcome(observation);
+        let now = self.outcome(observation);
         if self.previous_action >= AFFORDANCE_ACTIONS {
             self.overall = now;
             return;
@@ -433,6 +474,16 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
             feature as u64,
             0x4F56_4552,
         );
+    }
+    for (ray, view) in learner.previous_view.iter().enumerate() {
+        for (channel, value) in view.iter().enumerate() {
+            fingerprint = derive(
+                fingerprint,
+                u64::from(*value),
+                (ray * VIEW_CHANNELS + channel) as u64,
+                0x5649_4557,
+            );
+        }
     }
     for (action, count) in learner.visits.iter().enumerate() {
         fingerprint = derive(fingerprint, u64::from(*count), action as u64, 0x5649_5349);

@@ -173,6 +173,13 @@ local function trunc_toward_zero(value)
   return value < 0 and math.ceil(value) or math.floor(value)
 end
 
+-- Ray-visible physical entities and their average texture colour. Only these entities stop eye
+-- rays; players (observers) and the founder's own body never do. Nothing names the entity to
+-- Rust: a ray reports only colour, light, distance, and apparent motion.
+local entity_colours = {
+  ["ai_bridge:test_object"] = {176, 176, 176}, -- average of ai_bridge_generic_cc0.png
+}
+
 local function sense(self, dt)
   local senses, pos = empty_senses(), self.object:get_pos()
   local velocity, yaw = self.object:get_velocity(), self.object:get_yaw()
@@ -182,21 +189,32 @@ local function sense(self, dt)
   for index = 0, 15 do
     local angle = v2_angle + index * (2 * math.pi / 16)
     local direction = {x = math.cos(angle) * math.cos(pitch), y = math.sin(pitch), z = math.sin(angle) * math.cos(pitch)}
-    local hit
-    for pointed in minetest.raycast(eye, vector.add(eye, vector.multiply(direction, 6)), false, false) do
-      if pointed.type == "node" then hit = pointed break end
+    local hit, rgb, light, hit_velocity
+    for pointed in minetest.raycast(eye, vector.add(eye, vector.multiply(direction, 6)), true, false) do
+      if pointed.type == "node" then
+        hit, rgb = pointed, palette[minetest.get_node(pointed.under).name] or {120, 170, 255}
+        light = minetest.get_node_light(pointed.above, 0.5) or 0
+        break
+      end
+      local entity = pointed.ref ~= self.object and pointed.ref:get_luaentity()
+      local colour = entity and entity_colours[entity.name]
+      if colour then
+        hit, rgb, hit_velocity = pointed, colour, pointed.ref:get_velocity()
+        light = minetest.get_node_light(vector.round(pointed.ref:get_pos()), 0.5) or 0
+        break
+      end
     end
     local sample = senses.retinal[index + 1]
     if hit then
-      local rgb = palette[minetest.get_node(hit.under).name] or {120, 170, 255}
-      local light = minetest.get_node_light(hit.above, 0.5) or 0
       local delta = vector.subtract(hit.intersection_point, eye)
       local distance = vector.length(delta)
       sample.red, sample.green, sample.blue = rgb[1], rgb[2], rgb[3]
       sample.brightness = byte(light * 17)
       sample.occlusion = byte(255 * (1 - clamp(distance, 0, 6) / 6))
     end
-    sample.motion = signed((velocity.x * direction.x + velocity.z * direction.z) * 255 / 4)
+    -- Apparent closing speed along the ray: own motion, minus the motion of a seen object.
+    local seen = hit_velocity or {x = 0, z = 0}
+    sample.motion = signed(((velocity.x - seen.x) * direction.x + (velocity.z - seen.z) * direction.z) * 255 / 4)
   end
   senses.touch = byte(state.touch)
   senses.joint_position = byte((((v2_angle % (2 * math.pi)) * 256) / (2 * math.pi)))

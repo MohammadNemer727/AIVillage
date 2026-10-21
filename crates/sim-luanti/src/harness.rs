@@ -19,7 +19,10 @@ use std::ops::Range;
 use serde::Serialize;
 use sim_core::{
     environment::{BodyProprioception, PrimitiveAction},
-    runtime::{AFFORDANCE_ACTIONS, AgentRuntime, ExperimentMode, HAND_CONTACT_FEATURE},
+    runtime::{
+        AFFORDANCE_ACTIONS, AgentRuntime, ExperimentMode, HAND_CONTACT_FEATURE,
+        VISUAL_CHANGE_FEATURE,
+    },
 };
 
 use crate::benchmark::{config, observation, random_action};
@@ -30,6 +33,10 @@ pub const SEEDS: [u64; 8] = [7, 19, 43, 91, 131, 173, 211, 251];
 pub const ACTION_SLOTS: usize = AFFORDANCE_ACTIONS + 1;
 /// Slot of the generic hand pulse.
 pub const HAND_PULSE: usize = 9;
+/// Retinal rays the object covers when it is seen.
+const SEEN_RAYS: usize = 3;
+/// Broad-band colour of a seen object, as the Luanti test cube's average texture colour.
+const SEEN_COLOUR: u16 = 176;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -45,15 +52,26 @@ pub const CONTROLLERS: [Controller; 3] = [
     Controller::AffordanceDiscovery,
 ];
 
+/// How the founder senses the coupled object.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Sense {
+    /// The object's level is the hand-contact amplitude.
+    Contact,
+    /// The object is seen but never touched: its level is the occlusion (nearness) of the rays
+    /// it covers, and a change of level is seen as apparent motion along those rays.
+    Sight,
+}
+
 /// How the coupled object responds during a phase.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Coupling {
-    /// The object stays at its resting contact whatever the founder does.
+    /// The object stays at its resting level whatever the founder does.
     Rest,
-    /// The target experiment produces the coupling's caused contact on the next observation.
+    /// The target experiment produces the object's caused level on the next observation.
     Contingent,
-    /// Contact replays a partner run's recorded contact at the same decision.
+    /// The level replays a partner run's recorded level at the same decision.
     Yoked,
 }
 
@@ -64,15 +82,28 @@ pub struct Phase {
     pub coupling: Coupling,
 }
 
-/// The coupled object: which experiment moves it, and how it feels.
+/// The coupled object: which experiment moves it, and how it is sensed.
 #[derive(Clone, Copy, Debug)]
 pub struct Object {
     /// Experiment slot the object responds to.
     pub target: usize,
-    /// Contact while the target has no consequence.
+    pub sense: Sense,
+    /// Level while the target has no consequence.
     pub resting: u16,
-    /// Contact after the target experiment while contingent, keyed by seed and decision.
+    /// Level after the target experiment while contingent, keyed by seed and decision.
     pub caused: fn(u64, u64) -> u16,
+}
+
+impl Object {
+    /// How strongly the learner expects the target experiment to change what it senses: its
+    /// expected contact's distance from rest, or its expected view change.
+    fn anticipation(self, expected: [i32; sim_core::runtime::OUTCOME_FEATURES]) -> u16 {
+        let value = match self.sense {
+            Sense::Contact => (expected[HAND_CONTACT_FEATURE] - i32::from(self.resting)).abs(),
+            Sense::Sight => expected[VISUAL_CHANGE_FEATURE],
+        };
+        value.clamp(0, 255) as u16
+    }
 }
 
 /// Every decision of one run.
@@ -81,9 +112,9 @@ pub struct Trace {
     pub seed: u64,
     /// Experiment slot chosen at each decision.
     pub slots: Vec<usize>,
-    /// Contact delivered after each decision.
-    pub contacts: Vec<u16>,
-    /// The learner's expected contact after the target experiment, read before each outcome
+    /// Object level delivered after each decision.
+    pub levels: Vec<u16>,
+    /// The learner's anticipated change after the target experiment, read before each outcome
     /// arrived, or `None` while untried or for controllers without a learner.
     pub expected: Vec<Option<u16>>,
 }
@@ -126,7 +157,7 @@ pub fn phase_ranges(phases: &[Phase]) -> Vec<Range<usize>> {
         .collect()
 }
 
-/// Runs one seed through every phase. Yoked phases replay `partner`'s contacts.
+/// Runs one seed through every phase. Yoked phases replay `partner`'s levels.
 #[must_use]
 pub fn run(
     controller: Controller,
@@ -144,15 +175,16 @@ pub fn run(
     let mut body = BodyProprioception {
         eye_pitch: 128,
         grounded: 255,
-        hand_contact: object.resting,
         ..BodyProprioception::default()
     };
+    let mut level = object.resting;
+    let mut previous_level = level;
     let mut acceleration = 0;
     let total: u64 = phases.iter().map(|phase| phase.decisions).sum();
     let mut trace = Trace {
         seed,
         slots: Vec::with_capacity(total as usize),
-        contacts: Vec::with_capacity(total as usize),
+        levels: Vec::with_capacity(total as usize),
         expected: Vec::with_capacity(total as usize),
     };
     let ranges = phase_ranges(phases);
@@ -162,8 +194,21 @@ pub fn run(
             .iter()
             .position(|range| range.contains(&index))
             .expect("tick within protocol");
+        match object.sense {
+            Sense::Contact => body.hand_contact = level,
+            Sense::Sight => body.hand_contact = 0,
+        }
         let mut sensed = observation(tick, body, body.hand_contact);
         sensed.senses.acceleration = acceleration;
+        if object.sense == Sense::Sight {
+            for ray in &mut sensed.senses.retinal[..SEEN_RAYS] {
+                ray.red = SEEN_COLOUR;
+                ray.green = SEEN_COLOUR;
+                ray.blue = SEEN_COLOUR;
+                ray.occlusion = level;
+                ray.motion = (i32::from(level) - i32::from(previous_level)) as i16;
+            }
+        }
         let transition = runtime.step(sensed).expect("fixture sequence");
         let action = match controller {
             Controller::PredictiveBaseline | Controller::AffordanceDiscovery => transition.action,
@@ -173,16 +218,16 @@ pub fn run(
         let expected = (controller == Controller::AffordanceDiscovery)
             .then(|| runtime.state().affordance.expected_after(object.target))
             .flatten()
-            .map(|outcome| outcome[HAND_CONTACT_FEATURE].clamp(0, 255) as u16);
-        let contact = match phases[phase].coupling {
+            .map(|outcome| object.anticipation(outcome));
+        previous_level = level;
+        level = match phases[phase].coupling {
             Coupling::Contingent if chosen == object.target => (object.caused)(seed, tick),
             Coupling::Rest | Coupling::Contingent => object.resting,
-            Coupling::Yoked => partner.expect("yoked phase needs a partner").contacts[index],
+            Coupling::Yoked => partner.expect("yoked phase needs a partner").levels[index],
         };
         trace.slots.push(chosen);
-        trace.contacts.push(contact);
+        trace.levels.push(level);
         trace.expected.push(expected);
-        body.hand_contact = contact;
         body.eye_pitch =
             (i32::from(body.eye_pitch) + i32::from(action.look_pitch) / 32).clamp(0, 255) as u16;
         body.grounded = if action.jump > 0 { 0 } else { 255 };
@@ -193,7 +238,7 @@ pub fn run(
 }
 
 /// Runs every seed, then yokes each seed to the next seed's run of `source` (as infants are
-/// yoked to a partner: replaying a deterministic run's own contacts would reproduce that run).
+/// yoked to a partner: replaying a deterministic run's own levels would reproduce that run).
 #[must_use]
 pub fn run_yoked(
     controller: Controller,
@@ -217,10 +262,10 @@ pub struct PhaseSummary {
     pub decisions: u32,
     /// Decisions per experiment slot: the strategy mix.
     pub slot_counts: [u32; ACTION_SLOTS],
-    /// Decisions whose delivered contact differed from rest.
+    /// Decisions whose delivered level differed from rest.
     pub consequences: u32,
-    /// Mean distance of the learner's expected target contact from rest, over decisions where
-    /// it held an expectation. Zero for controllers without a learner.
+    /// Mean anticipated change after the target experiment, over decisions where the learner
+    /// held an expectation. Zero for controllers without a learner.
     pub anticipation: u32,
 }
 
@@ -244,9 +289,9 @@ pub fn summarize(phases: &[Phase], object: Object, traces: &[Trace]) -> Vec<Phas
                 for index in range.clone() {
                     summary.decisions += 1;
                     summary.slot_counts[trace.slots[index]] += 1;
-                    summary.consequences += u32::from(trace.contacts[index] != object.resting);
+                    summary.consequences += u32::from(trace.levels[index] != object.resting);
                     if let Some(expected) = trace.expected[index] {
-                        anticipation += u64::from(expected.abs_diff(object.resting));
+                        anticipation += u64::from(expected);
                         expectations += 1;
                     }
                 }
@@ -292,6 +337,7 @@ mod tests {
     ];
     const OBJECT: Object = Object {
         target: HAND_PULSE,
+        sense: Sense::Contact,
         resting: 0,
         caused: |_, _| 255,
     };
@@ -309,9 +355,9 @@ mod tests {
     #[test]
     fn contact_follows_only_the_target_while_contingent() {
         let trace = run(Controller::Random, &PHASES, OBJECT, 7, None);
-        for (index, (slot, contact)) in trace.slots.iter().zip(&trace.contacts).enumerate() {
+        for (index, (slot, level)) in trace.slots.iter().zip(&trace.levels).enumerate() {
             let caused = index >= 16 && *slot == HAND_PULSE;
-            assert_eq!(*contact, if caused { 255 } else { 0 }, "decision {index}");
+            assert_eq!(*level, if caused { 255 } else { 0 }, "decision {index}");
         }
     }
 
@@ -331,7 +377,7 @@ mod tests {
         let yoked = run_yoked(Controller::Random, &phases, OBJECT, &source);
         for (index, trace) in yoked.iter().enumerate() {
             let partner = &source[(index + 1) % source.len()];
-            assert_eq!(trace.contacts[16..], partner.contacts[16..]);
+            assert_eq!(trace.levels[16..], partner.levels[16..]);
         }
         let again = run(Controller::AffordanceDiscovery, &PHASES, OBJECT, 7, None);
         let first = run(Controller::AffordanceDiscovery, &PHASES, OBJECT, 7, None);
