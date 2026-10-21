@@ -22,8 +22,13 @@ use sim_kernels::{
     senses::noisy_receptor,
 };
 
+mod backend;
 mod checkpoint;
 
+pub use backend::{
+    BACKEND_ENV, Backend, BackendPreference, BackendRunner, BackendStatus, BoxedBrainBackend,
+    OpenGpu, ParseBackendPreferenceError, gpu_not_built,
+};
 pub use checkpoint::{CheckpointError, WorldCheckpoint};
 pub use sim_kernels::{
     brain::{BrainConfig, BrainStep, EpisodicTrace, NEURONS as V2_BRAIN_NEURONS, PredictiveBrain},
@@ -692,6 +697,15 @@ pub trait BrainBackend {
         frames: &[RawSensoryFrame],
         configs: &[BrainConfig],
     ) -> Result<Vec<BrainStep>, BrainBackendError>;
+
+    /// Names the device that runs the brains, for logs and diagnostics.
+    #[allow(
+        clippy::unnecessary_literal_bound,
+        reason = "Implementations return names borrowed from themselves, such as an adapter's."
+    )]
+    fn device_name(&self) -> &str {
+        "external brain backend"
+    }
 }
 
 /// A [`BrainBackend`] failure. The tick it occurred in left no state changes.

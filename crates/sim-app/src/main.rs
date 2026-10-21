@@ -11,6 +11,7 @@
 
 use std::{
     collections::{HashMap, VecDeque},
+    process,
     time::Duration,
 };
 
@@ -22,8 +23,8 @@ use bevy::{
     winit::{UpdateMode, WinitSettings},
 };
 use sim_core::{
-    AgentId, AgentSnapshot, CulturalTransmissionControls, FIXED_SCALE, World, WorldSeed,
-    WorldSnapshot,
+    AgentId, AgentSnapshot, BACKEND_ENV, BackendPreference, BackendRunner,
+    CulturalTransmissionControls, FIXED_SCALE, OpenGpu, World, WorldSeed, WorldSnapshot,
 };
 
 const TICKS_PER_SECOND: f64 = 20.0;
@@ -37,6 +38,11 @@ const HISTORY_SAMPLES: usize = 180;
 const PAUSED_FOCUSED_WAIT: Duration = Duration::from_millis(33);
 /// Redraw ceiling while paused and unfocused.
 const PAUSED_UNFOCUSED_WAIT: Duration = Duration::from_secs(5);
+/// Opens the GPU brain backend when this binary was built with the `gpu` feature.
+#[cfg(feature = "gpu")]
+const OPEN_GPU: OpenGpu = sim_gpu::open_brain_backend;
+#[cfg(not(feature = "gpu"))]
+const OPEN_GPU: OpenGpu = sim_core::gpu_not_built;
 
 /// Application lifecycle states retained from the Bevy 2D template pattern.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, States)]
@@ -75,6 +81,23 @@ impl SimulationBridge {
             paused: false,
             speed: 1,
         }
+    }
+}
+
+/// Where V2 brains run. Kept apart from [`SimulationBridge`] so a world reset keeps the backend
+/// and what it has measured.
+#[derive(Resource)]
+struct SimulationBackend(BackendRunner);
+
+impl SimulationBackend {
+    /// Reads the preference from [`BACKEND_ENV`], defaulting to `auto`.
+    fn from_env() -> Result<Self, String> {
+        let preference = BackendPreference::from_env()
+            .map_err(|error| format!("{BACKEND_ENV}: {error}"))?
+            .unwrap_or_default();
+        BackendRunner::new(preference, OPEN_GPU)
+            .map(Self)
+            .map_err(|error| format!("{BACKEND_ENV}={preference}: {error}"))
     }
 }
 
@@ -140,6 +163,10 @@ struct InspectorText;
 struct PlotText;
 
 fn main() {
+    let backend = SimulationBackend::from_env().unwrap_or_else(|error| {
+        eprintln!("{error}");
+        process::exit(2);
+    });
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -155,6 +182,7 @@ fn main() {
         .init_state::<AppState>()
         .insert_resource(Time::<Fixed>::from_hz(TICKS_PER_SECOND))
         .insert_resource(SimulationBridge::new())
+        .insert_resource(backend)
         .init_resource::<AgentEntities>()
         .init_resource::<BlockEntities>()
         .init_resource::<Inspector>()
@@ -298,13 +326,28 @@ fn maybe_capture_verify_screenshot(mut commands: Commands, mut frames: Local<u32
 }
 
 /// Advances only the authoritative core and retains adjacent detached snapshots for rendering.
-fn advance_authoritative_world(mut bridge: ResMut<SimulationBridge>) {
+fn advance_authoritative_world(
+    mut bridge: ResMut<SimulationBridge>,
+    mut backend: ResMut<SimulationBackend>,
+) {
     if bridge.paused {
         return;
     }
     for _ in 0..bridge.speed {
+        let snapshot = backend.0.step(&mut bridge.world).unwrap_or_else(|error| {
+            // Only an explicitly requested GPU fails here, and the failed tick left the world
+            // unchanged. A live view keeps going on the CPU rather than closing.
+            error!("GPU brains failed, continuing on the CPU: {error}");
+            backend.0 = BackendRunner::new(BackendPreference::Cpu, OPEN_GPU)
+                .expect("the CPU backend opens no device");
+            let _ = backend.0.take_status_change();
+            bridge.world.step()
+        });
         bridge.previous = bridge.current.clone();
-        bridge.current = bridge.world.step();
+        bridge.current = snapshot;
+    }
+    if let Some(status) = backend.0.take_status_change() {
+        info!("brain backend: {status}");
     }
 }
 
@@ -727,6 +770,7 @@ fn sync_block_entities(
 fn update_diagnostics(
     diagnostics: Res<DiagnosticsStore>,
     bridge: Res<SimulationBridge>,
+    backend: Res<SimulationBackend>,
     mut text: Query<&mut Text, With<DiagnosticsText>>,
 ) {
     let Ok(mut text) = text.single_mut() else {
@@ -767,10 +811,15 @@ fn update_diagnostics(
             })
         })
         .unwrap_or_else(|| "receptors: V1 semantic compatibility path".to_owned());
+    let brains = backend
+        .0
+        .status()
+        .backend()
+        .map_or_else(|| "measuring".to_owned(), |backend| backend.to_string());
     *text = Text::new(format!(
         "AI VILLAGE  •  LIVE\n\
          tick: {:>7}     population: {:>4}\n\
-         sim: {}×{} @ {:.0} Hz     speed: {}×\n\
+         sim: {}×{} @ {:.0} Hz     speed: {}×     brains: {brains}\n\
          material: {:>5}     blocks: {:>4}\n\
          signals: {:>5} sent / {:>5} heard\n\
          learning: {:>5} updates / {:>4} experienced\n\

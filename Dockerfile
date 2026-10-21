@@ -18,7 +18,7 @@ COPY . .
 # inside the same step because the mounted target dir is not part of the image layer.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
-    cargo build -p sim-cli --profile release-optimized --locked \
+    cargo build -p sim-cli --profile release-optimized --locked --no-default-features \
         ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} \
     && cp target/release-optimized/sim-cli /usr/local/bin/sim-cli
 

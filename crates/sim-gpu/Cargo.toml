@@ -25,4 +25,6 @@ bytemuck.workspace = true
 pollster = "1.0.1"
 sim-core = { path = "../sim-core" }
 sim-kernels = { path = "../sim-kernels", features = ["bytemuck"] }
-wgpu = "30.0.1"
+# Vulkan only: the shaders are SPIR-V passthrough. Default features would also switch on every
+# other backend for Bevy's copy of wgpu in sim-app.
+wgpu = { version = "30.0.1", default-features = false, features = ["parking_lot", "std", "vulkan"] }

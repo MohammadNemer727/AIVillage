@@ -19,5 +19,6 @@ sim-gpu = { path = "../sim-gpu", optional = true }
 toml = { workspace = true }
 
 [features]
-# Adds the `gpu-verify` command, which runs V2 brains on a Vulkan GPU via sim-gpu.
+default = ["gpu"]
+# Lets V2 brains run on a Vulkan GPU via sim-gpu (`--backend`) and enables `gpu-verify`.
 gpu = ["dep:sim-gpu"]

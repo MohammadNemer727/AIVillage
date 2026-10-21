@@ -15,3 +15,9 @@ workspace = true
 bevy.workspace = true
 sim-core = { path = "../sim-core" }
 sim-format = { path = "../sim-format" }
+sim-gpu = { path = "../sim-gpu", optional = true }
+
+[features]
+default = ["gpu"]
+# Lets V2 brains run on a Vulkan GPU when one is present and faster; see `AI_VILLAGE_BACKEND`.
+gpu = ["dep:sim-gpu"]

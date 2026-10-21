@@ -7,7 +7,9 @@
 
 use std::{error::Error, fmt};
 
-use sim_core::{BrainBackendError, BrainConfig, BrainStep, PredictiveBrain, RawSensoryFrame};
+use sim_core::{
+    BoxedBrainBackend, BrainBackendError, BrainConfig, BrainStep, PredictiveBrain, RawSensoryFrame,
+};
 use sim_kernels::gpu::{GpuBrain, GpuBrainConfig, GpuBrainStep, GpuFrame, WORKGROUP_SIZE};
 use wgpu::util::DeviceExt;
 
@@ -23,10 +25,8 @@ const REQUIRED_FEATURES: wgpu::Features =
 /// Why the GPU backend is unavailable or a dispatch failed.
 #[derive(Debug)]
 pub enum GpuError {
-    /// No suitable adapter was found.
-    NoAdapter(wgpu::RequestAdapterError),
-    /// The adapter lacks features the rust-gpu shaders need.
-    MissingFeatures(wgpu::Features),
+    /// No hardware Vulkan adapter supports the shaders; each entry says why one was rejected.
+    NoSuitableAdapter(Vec<String>),
     /// The adapter refused to create a device.
     RequestDevice(wgpu::RequestDeviceError),
     /// Input slices had different lengths.
@@ -38,11 +38,14 @@ pub enum GpuError {
 impl fmt::Display for GpuError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoAdapter(error) => write!(formatter, "no GPU adapter: {error}"),
-            Self::MissingFeatures(missing) => {
+            Self::NoSuitableAdapter(rejected) if rejected.is_empty() => {
+                formatter.write_str("no Vulkan GPU adapter found")
+            }
+            Self::NoSuitableAdapter(rejected) => {
                 write!(
                     formatter,
-                    "GPU adapter lacks required features: {missing:?}"
+                    "no suitable GPU adapter: {}",
+                    rejected.join("; ")
                 )
             }
             Self::RequestDevice(error) => write!(formatter, "GPU device request failed: {error}"),
@@ -52,7 +55,14 @@ impl fmt::Display for GpuError {
     }
 }
 
-impl Error for GpuError {}
+impl Error for GpuError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::RequestDevice(error) => Some(error),
+            Self::NoSuitableAdapter(_) | Self::LengthMismatch | Self::Readback(_) => None,
+        }
+    }
+}
 
 /// Runs the V2 predictive-brain kernel for many agents in one GPU dispatch.
 #[derive(Debug)]
@@ -65,11 +75,16 @@ pub struct GpuBrainStepper {
 }
 
 impl GpuBrainStepper {
-    /// Opens the best available Vulkan adapter and builds the brain-step pipeline.
+    /// Opens the best hardware Vulkan adapter and builds the brain-step pipeline.
+    ///
+    /// Software renderers such as llvmpipe and lavapipe are never chosen: they emulate the GPU
+    /// on the CPU, far more slowly than the native CPU path. Among adapters that support the
+    /// shaders, discrete GPUs are preferred over integrated ones.
     ///
     /// # Errors
     ///
-    /// Returns [`GpuError`] when no adapter supports SPIR-V passthrough and 16-bit integers.
+    /// Returns [`GpuError`] when no hardware adapter supports SPIR-V passthrough and 16-bit
+    /// integers, or the device cannot be created.
     pub fn new() -> Result<Self, GpuError> {
         pollster::block_on(Self::new_async())
     }
@@ -80,17 +95,7 @@ impl GpuBrainStepper {
             backends: wgpu::Backends::VULKAN,
             ..wgpu::InstanceDescriptor::new_without_display_handle_from_env()
         });
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                ..wgpu::RequestAdapterOptions::default()
-            })
-            .await
-            .map_err(GpuError::NoAdapter)?;
-        let missing = REQUIRED_FEATURES - adapter.features();
-        if !missing.is_empty() {
-            return Err(GpuError::MissingFeatures(missing));
-        }
+        let adapter = select_adapter(instance.enumerate_adapters(wgpu::Backends::VULKAN).await)?;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("sim-gpu"),
@@ -283,8 +288,23 @@ impl GpuBrainStepper {
     }
 }
 
+/// Opens the best hardware GPU as a brain backend; matches [`sim_core::OpenGpu`], so it can be
+/// passed straight to [`sim_core::BackendRunner::new`].
+///
+/// # Errors
+///
+/// Returns the [`GpuError`] from [`GpuBrainStepper::new`].
+pub fn open_brain_backend() -> Result<BoxedBrainBackend, BrainBackendError> {
+    let stepper = GpuBrainStepper::new().map_err(BrainBackendError::new)?;
+    Ok(Box::new(stepper))
+}
+
 /// Lets [`sim_core::World::step_with_brains`] run V2 brains on the GPU.
 impl sim_core::BrainBackend for GpuBrainStepper {
+    fn device_name(&self) -> &str {
+        self.adapter_name()
+    }
+
     fn step_brains(
         &mut self,
         brains: &mut [PredictiveBrain],
@@ -302,6 +322,33 @@ impl sim_core::BrainBackend for GpuBrainStepper {
         }
         Ok(steps.iter().map(GpuBrainStep::unpack).collect())
     }
+}
+
+/// Picks the most capable hardware adapter that supports [`REQUIRED_FEATURES`].
+fn select_adapter(adapters: Vec<wgpu::Adapter>) -> Result<wgpu::Adapter, GpuError> {
+    let mut rejected = Vec::new();
+    let mut best: Option<(u8, wgpu::Adapter)> = None;
+    for adapter in adapters {
+        let info = adapter.get_info();
+        let missing = REQUIRED_FEATURES - adapter.features();
+        let rank = match info.device_type {
+            wgpu::DeviceType::DiscreteGpu => 0,
+            wgpu::DeviceType::IntegratedGpu => 1,
+            wgpu::DeviceType::Other => 2,
+            wgpu::DeviceType::VirtualGpu => 3,
+            wgpu::DeviceType::Cpu => {
+                rejected.push(format!("{} is a software renderer", info.name));
+                continue;
+            }
+        };
+        if !missing.is_empty() {
+            rejected.push(format!("{} lacks {missing:?}", info.name));
+        } else if best.as_ref().is_none_or(|(best_rank, _)| rank < *best_rank) {
+            best = Some((rank, adapter));
+        }
+    }
+    best.map(|(_, adapter)| adapter)
+        .ok_or(GpuError::NoSuitableAdapter(rejected))
 }
 
 #[allow(

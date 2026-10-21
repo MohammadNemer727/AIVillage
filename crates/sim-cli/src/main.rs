@@ -6,7 +6,8 @@ use std::{env, fs, path::PathBuf, process, time::Instant};
 
 use serde::Deserialize;
 use sim_core::{
-    CulturalTransmissionControls, STATE_HASH_VERSION, World, WorldSeed, WorldSettings,
+    BACKEND_ENV, BackendPreference, BackendRunner, CulturalTransmissionControls, OpenGpu,
+    STATE_HASH_VERSION, World, WorldSeed, WorldSettings, WorldSnapshot,
     run_cultural_evolution_experiments, run_physical_social_learning_experiments,
     run_unknown_hazard_experiments,
 };
@@ -21,25 +22,32 @@ fn main() {
     }
 }
 
+/// Opens the GPU brain backend when this binary was built with the `gpu` feature.
+#[cfg(feature = "gpu")]
+const OPEN_GPU: OpenGpu = sim_gpu::open_brain_backend;
+#[cfg(not(feature = "gpu"))]
+const OPEN_GPU: OpenGpu = sim_core::gpu_not_built;
+
 fn run() -> Result<(), String> {
-    let arguments: Vec<_> = env::args().skip(1).collect();
+    let mut arguments: Vec<_> = env::args().skip(1).collect();
+    let backend = take_backend_option(&mut arguments)?;
     let command = arguments.first().map_or("all", String::as_str);
     match command {
         "all" => {
             verify_determinism(1_000)?;
-            benchmark_populations(2_000)?;
+            benchmark_populations(2_000, backend)?;
             soak(20_000)?;
         }
         "determinism" => verify_determinism(1_000)?,
-        "population" => benchmark_populations(2_000)?,
+        "population" => benchmark_populations(2_000, backend)?,
         "soak" => soak(20_000)?,
         "golden" => verify_golden_fixtures(false)?,
         "golden-print" => verify_golden_fixtures(true)?,
-        "development" => development_controls()?,
+        "development" => development_controls(backend)?,
         "unknown-hazards" => unknown_hazard_controls()?,
         "social-learning" => social_learning_controls()?,
         "cultural-evolution" => cultural_evolution_controls()?,
-        "experiment-report" => replicated_experiment_report(&arguments)?,
+        "experiment-report" => replicated_experiment_report(&arguments, backend)?,
         "save" => save_checkpoint(&arguments)?,
         "resume" => resume_checkpoint(&arguments)?,
         "gpu-verify" => gpu_verify(&arguments)?,
@@ -49,10 +57,57 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
+/// Removes every `--backend <name>` or `--backend=<name>` from `arguments`; the last one wins.
+/// Without the option, [`BACKEND_ENV`] applies, and then `auto`.
+fn take_backend_option(arguments: &mut Vec<String>) -> Result<BackendPreference, String> {
+    let mut chosen = None;
+    while let Some(index) = arguments
+        .iter()
+        .position(|argument| argument == "--backend" || argument.starts_with("--backend="))
+    {
+        let option = arguments.remove(index);
+        let value = match option.strip_prefix("--backend=") {
+            Some(value) => value.to_owned(),
+            None if index < arguments.len() => arguments.remove(index),
+            None => return Err("--backend needs a value: auto, cpu, or gpu".to_owned()),
+        };
+        chosen = Some(
+            value
+                .parse()
+                .map_err(|error| format!("--backend: {error}"))?,
+        );
+    }
+    match chosen {
+        Some(preference) => Ok(preference),
+        None => BackendPreference::from_env()
+            .map(Option::unwrap_or_default)
+            .map_err(|error| format!("{BACKEND_ENV}: {error}")),
+    }
+}
+
+fn backend_runner(preference: BackendPreference) -> Result<BackendRunner, String> {
+    BackendRunner::new(preference, OPEN_GPU)
+        .map_err(|error| format!("backend {preference}: {error}"))
+}
+
+/// Advances `world` on `runner`, reporting backend decisions on stderr so stdout stays
+/// machine-readable.
+fn step(runner: &mut BackendRunner, world: &mut World) -> Result<WorldSnapshot, String> {
+    let snapshot = runner
+        .step(world)
+        .map_err(|error| format!("tick {}: {error}", world.tick().get().saturating_add(1)))?;
+    if let Some(status) = runner.take_status_change() {
+        eprintln!("backend: {status}");
+    }
+    Ok(snapshot)
+}
+
 fn print_usage() {
     println!(
-        "usage: sim-cli [all|determinism|population|soak|golden|golden-print|development|unknown-hazards|social-learning|cultural-evolution|experiment-report|save|resume|gpu-verify]\n\
+        "usage: sim-cli [--backend auto|cpu|gpu] [all|determinism|population|soak|golden|golden-print|development|unknown-hazards|social-learning|cultural-evolution|experiment-report|save|resume|gpu-verify]\n\
          \n\
+         --backend     where V2 brains run (default: ${BACKEND_ENV}, then auto). auto uses the GPU\n\
+         \x20             only when it opens and measures faster; gpu fails instead of falling back\n\
          V1 freeze ({V1_FREEZE_LABEL}): config schema {CONFIG_SCHEMA_VERSION}, \
          snapshot schema {SNAPSHOT_SCHEMA_VERSION}, state-hash version {STATE_HASH_VERSION}\n\
          golden        verify tests/fixtures/v1_golden_replay.toml\n\
@@ -73,11 +128,15 @@ fn print_usage() {
 ///
 /// This command intentionally consumes only the public headless core API.  The report is a
 /// presentation artifact: generating it cannot alter a replicate's future state.
-fn replicated_experiment_report(arguments: &[String]) -> Result<(), String> {
+fn replicated_experiment_report(
+    arguments: &[String],
+    backend: BackendPreference,
+) -> Result<(), String> {
     const REPLICATES: u64 = 8;
     const TICKS: u32 = 1_200;
     let settings = WorldSettings::new(24, 24, 48)
         .map_err(|error| format!("invalid report settings: {error}"))?;
+    let mut runner = backend_runner(backend)?;
     let started = Instant::now();
     let mut rows = Vec::with_capacity(usize::try_from(REPLICATES).expect("replicate count fits"));
     for seed_offset in 0..REPLICATES {
@@ -85,7 +144,7 @@ fn replicated_experiment_report(arguments: &[String]) -> Result<(), String> {
         let mut world = World::with_settings_v2(WorldSeed::new(seed), settings)
             .map_err(|error| format!("create report replicate: {error}"))?;
         for _ in 0..TICKS {
-            let _ = world.step();
+            step(&mut runner, &mut world)?;
         }
         let metrics = world.metrics();
         let snapshot = world.snapshot();
@@ -217,11 +276,12 @@ fn unknown_hazard_controls() -> Result<(), String> {
     clippy::too_many_lines,
     reason = "The replicated experiment keeps its printed budget trace and gate together."
 )]
-fn development_controls() -> Result<(), String> {
+fn development_controls(backend: BackendPreference) -> Result<(), String> {
     const REPLICATES: u64 = 8;
     const TICKS: u32 = 1_200;
     let settings = WorldSettings::new(20, 20, 24)
         .map_err(|error| format!("invalid development settings: {error}"))?;
+    let mut runner = backend_runner(backend)?;
     let mut mutated_depth = 0_u64;
     let mut control_depth = 0_u64;
     let mut mutated_diversity = 0_u64;
@@ -239,7 +299,7 @@ fn development_controls() -> Result<(), String> {
                 ..CulturalTransmissionControls::default()
             });
             for tick in 1..=TICKS {
-                let snapshot = world.step();
+                let snapshot = step(&mut runner, &mut world)?;
                 if (tick == 1
                     || tick == 10
                     || tick == 40
@@ -386,7 +446,8 @@ fn verify_determinism(ticks: u32) -> Result<(), String> {
     Ok(())
 }
 
-fn benchmark_populations(ticks: u32) -> Result<(), String> {
+fn benchmark_populations(ticks: u32, backend: BackendPreference) -> Result<(), String> {
+    let mut runner = backend_runner(backend)?;
     for (population, side) in [(128, 32), (500, 48), (2_000, 64)] {
         let settings = WorldSettings::new(side, side, population)
             .map_err(|error| format!("invalid population benchmark settings: {error}"))?;
@@ -396,7 +457,7 @@ fn benchmark_populations(ticks: u32) -> Result<(), String> {
         for (model, mut world) in [("v1", v1), ("v2", v2)] {
             let started = Instant::now();
             for _ in 0..ticks {
-                let _ = world.step();
+                step(&mut runner, &mut world)?;
             }
             let elapsed = started.elapsed();
             let ticks_per_second = f64::from(ticks) / elapsed.as_secs_f64();

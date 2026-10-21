@@ -76,10 +76,31 @@ Verify the GPU against the CPU on your machine (needs a Vulkan GPU):
 
 ```sh
 AI_VILLAGE_REQUIRE_GPU=1 cargo test -p sim-gpu --release
-cargo run -p sim-cli --profile release-optimized --features gpu -- gpu-verify 500
+cargo run -p sim-cli --profile release-optimized -- gpu-verify 500
 ```
 
-**Performance today:** the GPU path is correct but not yet faster. With ~1,400 V2 agents on
+### Choosing the backend
+
+`sim-cli` and `sim-app` are built with the `gpu` feature by default and pick where V2 brains run
+at startup, from `sim-cli --backend <auto|cpu|gpu>` or the `AI_VILLAGE_BACKEND` environment
+variable (the flag wins; both default to `auto`):
+
+- `auto` opens the best hardware Vulkan GPU on the first V2 tick, then alternates ticks between
+  CPU and GPU, discards warm-up ticks, and keeps the GPU only if its median tick is at least 10%
+  faster. It measures again whenever the population halves or doubles, and if the GPU fails it
+  redoes that tick on the CPU and stays there. Without a usable GPU it simply runs on the CPU.
+- `cpu` never loads a GPU driver.
+- `gpu` fails at startup if no GPU opens, and `sim-cli` fails if a GPU tick fails, instead of
+  quietly falling back. The desktop app logs the failure and continues on the CPU.
+
+Software renderers such as llvmpipe and lavapipe are never chosen. V1 worlds have no
+predictive brains and always run on the CPU. Every choice produces bit-identical histories, so
+the backend only affects speed. Decisions are printed to stderr by `sim-cli` and logged by
+`sim-app`, which also shows the active backend in its diagnostics panel. Build with
+`--no-default-features` for a binary without any GPU code.
+
+**Performance today:** the GPU path is correct but not yet faster, so `auto` normally settles on
+the CPU. With ~1,400 V2 agents on
 an RTX 4060 Ti it runs 36.5 ticks/s versus 53.1 ticks/s on a 6-core CPU, because a 64-neuron
 brain is cheap and each tick pays for upload, dispatch, and readback. The GPU becomes
 worthwhile with much larger populations, heavier brains, or once sensing also moves on-device
