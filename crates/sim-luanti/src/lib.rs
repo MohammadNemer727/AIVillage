@@ -9,6 +9,7 @@
 
 pub mod benchmark;
 pub mod contingency;
+pub mod foraging;
 pub mod harness;
 pub mod reaching;
 

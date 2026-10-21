@@ -16,6 +16,13 @@ use crate::{
     scale_v2_orientation_turn,
 };
 
+mod homeostasis;
+
+pub use homeostasis::{
+    ENERGY_AT_BIRTH, ENERGY_MAX, ENERGY_SET_POINT, FEATURES as HOMEOSTATIC_FEATURES, Homeostasis,
+    JAW_EXPERIMENT, ROOTING_REST, ROOTING_SMELL, homeostasis_fingerprint,
+};
+
 /// Explicit action-selection policy for a standalone founder.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ExperimentMode {
@@ -24,6 +31,9 @@ pub enum ExperimentMode {
     PredictiveBaseline,
     /// Deterministic, intrinsic-only causal experimentation.
     AffordanceDiscovery,
+    /// Live energy: learns from its own drive reduction while hungry, explores by curiosity
+    /// while sated.
+    Homeostatic,
 }
 
 /// Number of primitive experiments the affordance learner chooses between.
@@ -371,6 +381,18 @@ impl AffordanceLearner {
     }
 }
 
+impl AffordanceLearner {
+    /// Records an experiment chosen by another policy, so its outcome is credited to it and the
+    /// next choice starts afresh.
+    fn note_choice(&mut self, action: usize, tick: u64) {
+        self.previous_action = action;
+        self.bout_remaining = 0;
+        self.recent_actions.rotate_right(1);
+        self.recent_actions[0] = action;
+        self.last_tried[action] = tick;
+    }
+}
+
 fn affordance_action(index: usize) -> PrimitiveAction {
     let mut action = PrimitiveAction::default();
     match index {
@@ -461,6 +483,9 @@ pub struct AgentRuntimeState {
     /// Exact intrinsic learner state when experiment mode is enabled.
     #[serde(default)]
     pub affordance: AffordanceLearner,
+    /// Live energy and learned values in homeostatic mode; empty otherwise.
+    #[serde(default)]
+    pub homeostasis: Homeostasis,
 }
 
 /// Rejected observation; the runtime state is unchanged.
@@ -512,6 +537,7 @@ impl AgentRuntime {
                 next_sequence: 0,
                 experiment_mode: ExperimentMode::PredictiveBaseline,
                 affordance: AffordanceLearner::default(),
+                homeostasis: Homeostasis::default(),
             },
         )
     }
@@ -526,6 +552,10 @@ impl AgentRuntime {
     ) -> Self {
         let mut runtime = Self::new(seed, agent_id, developmental_config);
         runtime.state.experiment_mode = mode;
+        if mode == ExperimentMode::Homeostatic {
+            runtime.state.homeostasis = Homeostasis::newborn();
+            runtime.state.physiology.energy = ENERGY_AT_BIRTH;
+        }
         runtime
     }
 
@@ -610,18 +640,20 @@ impl AgentRuntime {
                 action: PrimitiveAction::default(),
                 baseline_action: PrimitiveAction::default(),
                 intrinsic_score: 0,
-                affordance_fingerprint: if self.state.experiment_mode
-                    == ExperimentMode::AffordanceDiscovery
-                {
-                    affordance_fingerprint(&self.state.affordance)
-                } else {
-                    0
-                },
+                affordance_fingerprint: learner_fingerprint(&self.state),
                 brain_fingerprint: brain_fingerprint(&self.state.brain),
             });
         }
         let mut external = observation.senses;
         observation.capabilities.dead.silence(&mut external);
+        let smell = [external.chemicals[0], external.chemicals[1]];
+        let reward = if self.state.experiment_mode == ExperimentMode::Homeostatic {
+            let reward = self.state.homeostasis.live(&observation);
+            self.state.physiology.energy = self.state.homeostasis.energy;
+            reward
+        } else {
+            0
+        };
         let (chemicals, adaptation) =
             adapt_chemical_receptors(external.chemicals, self.state.chemical_adaptation);
         external.chemicals = chemicals;
@@ -638,14 +670,18 @@ impl AgentRuntime {
             .step(&self.state.developmental_config, &frame);
         let decision_tick = self.state.decision_tick;
         let baseline_action = decode_motor_outputs(&step.outputs);
-        let (action, intrinsic_score, recorded_baseline) =
-            if self.state.experiment_mode == ExperimentMode::AffordanceDiscovery {
+        let (action, intrinsic_score, recorded_baseline) = match self.state.experiment_mode {
+            ExperimentMode::PredictiveBaseline => (baseline_action, 0, PrimitiveAction::default()),
+            ExperimentMode::AffordanceDiscovery => {
                 self.state.affordance.observe(&observation);
                 let (action, score) = self.state.affordance.select(self.seed, decision_tick);
                 (action, score, baseline_action)
-            } else {
-                (baseline_action, 0, PrimitiveAction::default())
-            };
+            }
+            ExperimentMode::Homeostatic => {
+                let (action, score) = self.homeostatic_choice(&observation, smell, reward);
+                (action, score, baseline_action)
+            }
+        };
         self.state.chemical_adaptation = adaptation;
         self.state.decision_tick += 1;
         Ok(EnvironmentTransition {
@@ -654,15 +690,51 @@ impl AgentRuntime {
             action,
             baseline_action: recorded_baseline,
             intrinsic_score,
-            affordance_fingerprint: if self.state.experiment_mode
-                == ExperimentMode::AffordanceDiscovery
-            {
-                affordance_fingerprint(&self.state.affordance)
-            } else {
-                0
-            },
+            affordance_fingerprint: learner_fingerprint(&self.state),
             brain_fingerprint: brain_fingerprint(&self.state.brain),
         })
+    }
+
+    /// Learns from the drive reduction that followed the previous decision, then acts: on
+    /// learned value while hungry, by curiosity while sated. Curiosity keeps learning throughout.
+    fn homeostatic_choice(
+        &mut self,
+        observation: &EnvironmentObservation,
+        smell: [u16; 2],
+        reward: i64,
+    ) -> (PrimitiveAction, u32) {
+        let tick = self.state.decision_tick;
+        let state = &mut self.state;
+        state.affordance.observe(observation);
+        let features = state.homeostasis.features(observation, smell);
+        state.homeostasis.learn(reward, &features);
+        let (index, score) = if state.homeostasis.rooting(smell) {
+            state.affordance.note_choice(JAW_EXPERIMENT, tick);
+            (JAW_EXPERIMENT, 0)
+        } else if state.homeostasis.hungry() {
+            let (index, value) = state.homeostasis.choose(&features, self.seed, tick);
+            state.affordance.note_choice(index, tick);
+            (index, u32::try_from(value.max(0)).unwrap_or(u32::MAX))
+        } else {
+            let (_, score) = state.affordance.select(self.seed, tick);
+            (state.affordance.previous_action, score)
+        };
+        state.homeostasis.remember(index, features);
+        (affordance_action(index), score)
+    }
+}
+
+/// Fingerprint of whichever learner the experiment mode uses, or zero for the baseline.
+fn learner_fingerprint(state: &AgentRuntimeState) -> u64 {
+    match state.experiment_mode {
+        ExperimentMode::PredictiveBaseline => 0,
+        ExperimentMode::AffordanceDiscovery => affordance_fingerprint(&state.affordance),
+        ExperimentMode::Homeostatic => derive(
+            affordance_fingerprint(&state.affordance),
+            homeostasis_fingerprint(&state.homeostasis),
+            0,
+            0x484F_4D53,
+        ),
     }
 }
 
@@ -775,6 +847,8 @@ struct StateRepr {
     next_sequence: u64,
     experiment_mode: ExperimentMode,
     affordance: AffordanceLearner,
+    #[serde(default)]
+    homeostasis: Homeostasis,
 }
 
 impl From<AgentRuntimeState> for StateRepr {
@@ -794,6 +868,7 @@ impl From<AgentRuntimeState> for StateRepr {
             next_sequence: state.next_sequence,
             experiment_mode: state.experiment_mode,
             affordance: state.affordance,
+            homeostasis: state.homeostasis,
         }
     }
 }
@@ -812,6 +887,10 @@ impl TryFrom<StateRepr> for AgentRuntimeState {
             return Err("developmental configuration is out of range".to_owned());
         }
         repr.affordance.validate()?;
+        repr.homeostasis.validate()?;
+        if (repr.experiment_mode == ExperimentMode::Homeostatic) != repr.homeostasis.active() {
+            return Err("homeostatic state does not match the experiment mode".to_owned());
+        }
         Ok(Self {
             brain,
             developmental_config: BrainConfig {
@@ -828,6 +907,7 @@ impl TryFrom<StateRepr> for AgentRuntimeState {
             next_sequence: repr.next_sequence,
             experiment_mode: repr.experiment_mode,
             affordance: repr.affordance,
+            homeostasis: repr.homeostasis,
         })
     }
 }

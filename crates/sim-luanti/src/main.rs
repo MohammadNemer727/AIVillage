@@ -7,7 +7,7 @@ use std::{fs::OpenOptions, io::Write, path::PathBuf, time::Duration};
 
 use sim_core::runtime::{AffordanceConfig, ExperimentMode};
 use sim_luanti::{
-    Bridge, TraceRecord, benchmark, bind_loopback, contingency, reaching, replay_trace,
+    Bridge, TraceRecord, benchmark, bind_loopback, contingency, foraging, reaching, replay_trace,
     serve_once_with_stall,
 };
 
@@ -28,7 +28,8 @@ fn write_report(
         .map_or_else(|| PathBuf::from(format!("docs/{name}.md")), PathBuf::from);
     if args.next().is_some() {
         return Err(
-            "usage: sim-luanti benchmark|contingency|reaching [report.json] [report.md]".into(),
+            "usage: sim-luanti benchmark|contingency|foraging|reaching [report.json] [report.md]"
+                .into(),
         );
     }
     std::fs::write(&json, serde_json::to_vec_pretty(report)?)?;
@@ -77,6 +78,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let markdown = reaching::markdown(&report);
             return write_report(args, "reaching-test", &report, &markdown);
         }
+        if command == "foraging" {
+            let report = foraging::run();
+            let markdown = foraging::markdown(&report);
+            return write_report(args, "foraging-test", &report, &markdown);
+        }
         if command == "contingency" {
             let report = contingency::run();
             let markdown = contingency::markdown(&report);
@@ -84,7 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         let (Some(path), None, "replay") = (args.next(), args.next(), command.as_str()) else {
             return Err(
-                "usage: sim-luanti [replay <trace.ndjson>|benchmark|contingency|reaching [report.json] [report.md]]"
+                "usage: sim-luanti [replay <trace.ndjson>|benchmark|contingency|foraging|reaching [report.json] [report.md]]"
                     .into(),
             );
         };
@@ -94,11 +100,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("sim-luanti listening on 127.0.0.1:{port}");
     let mode = match std::env::var("SIM_LUANTI_MODE").as_deref() {
         Ok("affordance") => ExperimentMode::AffordanceDiscovery,
+        Ok("homeostatic") => ExperimentMode::Homeostatic,
         Ok("baseline") | Err(_) => ExperimentMode::PredictiveBaseline,
         Ok(value) => {
-            return Err(
-                format!("SIM_LUANTI_MODE must be baseline or affordance, got {value}").into(),
-            );
+            return Err(format!(
+                "SIM_LUANTI_MODE must be baseline, affordance or homeostatic, got {value}"
+            )
+            .into());
         }
     };
     eprintln!("sim-luanti mode: {mode:?}");
