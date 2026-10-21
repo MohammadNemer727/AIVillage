@@ -26,8 +26,12 @@ pub enum ExperimentMode {
     AffordanceDiscovery,
 }
 
-const AFFORDANCE_ACTIONS: usize = 12;
-const OUTCOME_FEATURES: usize = 6;
+/// Number of primitive experiments the affordance learner chooses between.
+pub const AFFORDANCE_ACTIONS: usize = 12;
+/// Number of bounded outcome features the affordance learner tracks.
+pub const OUTCOME_FEATURES: usize = 6;
+/// Index of the hand-contact feature in [`AffordanceLearner::expected_after`].
+pub const HAND_CONTACT_FEATURE: usize = 5;
 /// Fixed-point scale of the outcome averages.
 const OUTCOME_SCALE: i32 = 256;
 /// Per-action averages settle at this many visits, so they keep tracking a changed world.
@@ -97,6 +101,14 @@ impl AffordanceLearner {
             self.after[action][feature] += (value - self.after[action][feature]) / horizon;
             self.overall[feature] += (value - self.overall[feature]) / OVERALL_HORIZON;
         }
+    }
+
+    /// Outcome the learner currently expects to follow `action`, in receptor units, or `None`
+    /// before the action has been tried. This is the learner's prediction, read before the
+    /// outcome arrives.
+    #[must_use]
+    pub fn expected_after(&self, action: usize) -> Option<[i32; OUTCOME_FEATURES]> {
+        (self.visits[action] > 0).then(|| self.after[action].map(|value| value / OUTCOME_SCALE))
     }
 
     /// How strongly an experiment's outcome differs from the overall outcome.

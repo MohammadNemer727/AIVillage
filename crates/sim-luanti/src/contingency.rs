@@ -8,7 +8,7 @@
 //! Each run has three equal phases:
 //! - baseline: the object rests at its paradigm's resting contact, whatever the founder does;
 //! - middle: contingent (a hand pulse changes the next contact) or yoked (contact replays another
-//!   seed's contingent timeline for the same controller, regardless of what the founder does);
+//!   seed's contingent run for the same controller, regardless of what the founder does);
 //! - extinction: the object rests again.
 //!
 //! The paradigms follow Xu & Triesch (Developmental Science, 2026), which shows that simpler
@@ -17,35 +17,56 @@
 //! - inverted: constant contact at rest; a pulse removes it;
 //! - bimodal: half contact at rest; a pulse produces full or no contact by a fair coin, so the
 //!   average outcome is unchanged and only its spread depends on the action.
+//!
+//! Beyond pooled rates, the report follows the infant literature: per-seed learning curves
+//! (Fujihira et al., 2025), the strategy mix in each phase (Spisak et al., 2026), and the
+//! learner's anticipated contact before each outcome (Rosales et al., 2025).
 #![allow(
     missing_docs,
     clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
     clippy::format_push_string,
     clippy::missing_panics_doc,
     reason = "compact deterministic experiment harness"
 )]
 
 use serde::Serialize;
-use sim_core::{
-    environment::{BodyProprioception, PrimitiveAction},
-    runtime::{AgentRuntime, ExperimentMode},
-};
 use sim_kernels::derive;
 
-use crate::benchmark::{config, observation, random_action};
+use crate::harness::{
+    self, CONTROLLERS, Controller, Coupling, HAND_PULSE, Object, Phase, PhaseSummary, SEEDS, Trace,
+    rate,
+};
 
-const SEEDS: [u64; 4] = [7, 19, 43, 91];
 const PHASE: u64 = 96;
+const CURVE_BLOCK: usize = 24;
 const CONTACT: u16 = 255;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Controller {
-    PredictiveBaseline,
-    Random,
-    AffordanceDiscovery,
-}
+const CONTINGENT: [Phase; 3] = [
+    Phase {
+        name: "baseline",
+        decisions: PHASE,
+        coupling: Coupling::Rest,
+    },
+    Phase {
+        name: "connected",
+        decisions: PHASE,
+        coupling: Coupling::Contingent,
+    },
+    Phase {
+        name: "extinction",
+        decisions: PHASE,
+        coupling: Coupling::Rest,
+    },
+];
+const YOKED: [Phase; 3] = [
+    CONTINGENT[0],
+    Phase {
+        name: "yoked",
+        decisions: PHASE,
+        coupling: Coupling::Yoked,
+    },
+    CONTINGENT[2],
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,239 +76,266 @@ pub enum Paradigm {
     Bimodal,
 }
 
+pub const PARADIGMS: [Paradigm; 3] = [Paradigm::Standard, Paradigm::Inverted, Paradigm::Bimodal];
+
 impl Paradigm {
-    /// Contact while the hand pulse has no consequence.
-    const fn resting(self) -> u16 {
+    #[must_use]
+    pub fn object(self) -> Object {
         match self {
-            Self::Standard => 0,
-            Self::Inverted => CONTACT,
-            Self::Bimodal => CONTACT / 2,
+            Self::Standard => Object {
+                target: HAND_PULSE,
+                resting: 0,
+                caused: |_, _| CONTACT,
+            },
+            Self::Inverted => Object {
+                target: HAND_PULSE,
+                resting: CONTACT,
+                caused: |_, _| 0,
+            },
+            Self::Bimodal => Object {
+                target: HAND_PULSE,
+                resting: CONTACT / 2,
+                caused: |seed, tick| {
+                    if derive(seed, tick, 0, 0x4249_4D4F) & 1 == 0 {
+                        CONTACT
+                    } else {
+                        0
+                    }
+                },
+            },
         }
     }
-
-    /// Contact following a hand pulse while the object is connected.
-    fn pulsed(self, seed: u64, tick: u64) -> u16 {
-        match self {
-            Self::Standard => CONTACT,
-            Self::Inverted => 0,
-            Self::Bimodal => {
-                if derive(seed, tick, 0, 0x4249_4D4F) & 1 == 0 {
-                    CONTACT
-                } else {
-                    0
-                }
-            }
-        }
-    }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Condition {
-    Contingent,
-    Yoked,
-}
-
-/// Hand pulses summed over all seeds in each phase.
+/// One seed's target experiments per block of decisions.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct Row {
-    pub controller: Controller,
-    pub paradigm: Paradigm,
-    pub condition: Condition,
-    pub baseline_pulses: u32,
-    pub middle_pulses: u32,
-    pub extinction_pulses: u32,
-    /// Middle-phase decisions whose contact differed from rest.
-    pub middle_consequences: u32,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct Verdict {
-    pub controller: Controller,
-    pub paradigm: Paradigm,
-    /// Contingent pulsing is at least 1.5x both its own baseline and the yoked middle phase,
-    /// and falls again in extinction.
+pub struct SeedCurve {
+    pub seed: u64,
+    pub contingent: Vec<u32>,
+    pub yoked: Vec<u32>,
     pub shows_contingency: bool,
+}
+
+/// One paradigm for one controller over every seed.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct Cell {
+    pub paradigm: Paradigm,
+    pub controller: Controller,
+    /// Pooled phase summaries of the contingent runs.
+    pub contingent: Vec<PhaseSummary>,
+    /// Pooled phase summaries of the yoked runs.
+    pub yoked: Vec<PhaseSummary>,
+    /// The pooled runs pass the contingency criterion.
+    pub shows_contingency: bool,
+    /// Seeds whose own contingent and yoked runs pass the criterion.
+    pub seeds_passing: u32,
+    pub curves: Vec<SeedCurve>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ContingencyReport {
     pub schema_version: u16,
-    pub seeds: [u64; 4],
-    pub phase_decisions: u64,
-    pub rows: Vec<Row>,
-    pub verdicts: Vec<Verdict>,
+    pub seeds: [u64; 8],
+    pub phases: [Phase; 3],
+    pub curve_block: usize,
+    pub cells: Vec<Cell>,
 }
 
-struct RunResult {
-    pulses: [u32; 3],
-    contacts: Vec<u16>,
-}
-
-/// Runs one seed. `yoked` replays a recorded middle-phase contact timeline; `None` makes contact
-/// follow the founder's own hand pulses.
-fn run_seed(
-    controller: Controller,
-    paradigm: Paradigm,
-    seed: u64,
-    yoked: Option<&[u16]>,
-) -> RunResult {
-    let mode = if controller == Controller::AffordanceDiscovery {
-        ExperimentMode::AffordanceDiscovery
-    } else {
-        ExperimentMode::PredictiveBaseline
-    };
-    let mut runtime = AgentRuntime::new_with_mode(seed, 1, config(), mode);
-    let mut body = BodyProprioception {
-        eye_pitch: 128,
-        grounded: 255,
-        hand_contact: paradigm.resting(),
-        ..BodyProprioception::default()
-    };
-    let mut acceleration = 0;
-    let mut pulses = [0; 3];
-    let mut contacts = Vec::new();
-    for tick in 0..3 * PHASE {
-        let phase = (tick / PHASE) as usize;
-        let mut sensed = observation(tick, body, body.hand_contact);
-        sensed.senses.acceleration = acceleration;
-        let transition = runtime.step(sensed).expect("fixture sequence");
-        let action: PrimitiveAction = match controller {
-            Controller::PredictiveBaseline | Controller::AffordanceDiscovery => transition.action,
-            Controller::Random => random_action(seed, tick),
-        };
-        let pulse = action.hand_pulse > 0;
-        pulses[phase] += u32::from(pulse);
-        let contact = match (phase, yoked) {
-            (1, Some(timeline)) => timeline[(tick - PHASE) as usize],
-            (1, None) if pulse => paradigm.pulsed(seed, tick),
-            _ => paradigm.resting(),
-        };
-        if phase == 1 {
-            contacts.push(contact);
-        }
-        body.hand_contact = contact;
-        body.eye_pitch =
-            (i32::from(body.eye_pitch) + i32::from(action.look_pitch) / 32).clamp(0, 255) as u16;
-        body.grounded = if action.jump > 0 { 0 } else { 255 };
-        body.vertical_motion = if action.jump > 0 { 255 } else { 0 };
-        acceleration = (action.thrust / 2).clamp(-255, 255);
-    }
-    RunResult { pulses, contacts }
-}
-
-fn row(
-    controller: Controller,
-    paradigm: Paradigm,
-    condition: Condition,
-    runs: &[RunResult],
-) -> Row {
-    let sum = |phase: usize| runs.iter().map(|run| run.pulses[phase]).sum();
-    Row {
-        controller,
-        paradigm,
-        condition,
-        baseline_pulses: sum(0),
-        middle_pulses: sum(1),
-        extinction_pulses: sum(2),
-        middle_consequences: runs
+impl ContingencyReport {
+    #[must_use]
+    pub fn cell(&self, paradigm: Paradigm, controller: Controller) -> &Cell {
+        self.cells
             .iter()
-            .flat_map(|run| &run.contacts)
-            .filter(|contact| **contact != paradigm.resting())
+            .find(|cell| cell.paradigm == paradigm && cell.controller == controller)
+            .expect("every paradigm and controller is run")
+    }
+}
+
+/// Connected-phase target experiments are at least 1.5x both baseline and the yoked middle
+/// phase, and fall again in extinction.
+fn shows_contingency(contingent: &[PhaseSummary], yoked: &[PhaseSummary], object: Object) -> bool {
+    let baseline = contingent[0].target(object);
+    let middle = contingent[1].target(object);
+    middle > 0
+        && 2 * middle >= 3 * baseline
+        && 2 * middle >= 3 * yoked[1].target(object)
+        && contingent[2].target(object) < middle
+}
+
+fn cell(paradigm: Paradigm, controller: Controller) -> Cell {
+    let object = paradigm.object();
+    let contingent: Vec<Trace> = SEEDS
+        .iter()
+        .map(|seed| harness::run(controller, &CONTINGENT, object, *seed, None))
+        .collect();
+    let yoked = harness::run_yoked(controller, &YOKED, object, &contingent);
+    let curves: Vec<_> = contingent
+        .iter()
+        .zip(&yoked)
+        .map(|(contingent, yoked)| SeedCurve {
+            seed: contingent.seed,
+            contingent: harness::curve(contingent, object, CURVE_BLOCK),
+            yoked: harness::curve(yoked, object, CURVE_BLOCK),
+            shows_contingency: shows_contingency(
+                &harness::summarize(&CONTINGENT, object, std::slice::from_ref(contingent)),
+                &harness::summarize(&YOKED, object, std::slice::from_ref(yoked)),
+                object,
+            ),
+        })
+        .collect();
+    let contingent = harness::summarize(&CONTINGENT, object, &contingent);
+    let yoked = harness::summarize(&YOKED, object, &yoked);
+    Cell {
+        paradigm,
+        controller,
+        shows_contingency: shows_contingency(&contingent, &yoked, object),
+        seeds_passing: curves
+            .iter()
+            .filter(|curve| curve.shows_contingency)
             .count() as u32,
+        contingent,
+        yoked,
+        curves,
     }
 }
 
 /// Runs every paradigm in both conditions for every controller over all seeds.
 #[must_use]
 pub fn run() -> ContingencyReport {
-    let mut rows = Vec::new();
-    let mut verdicts = Vec::new();
-    for paradigm in [Paradigm::Standard, Paradigm::Inverted, Paradigm::Bimodal] {
-        for controller in [
-            Controller::PredictiveBaseline,
-            Controller::Random,
-            Controller::AffordanceDiscovery,
-        ] {
-            let contingent: Vec<_> = SEEDS
+    let cells = PARADIGMS
+        .iter()
+        .flat_map(|paradigm| {
+            CONTROLLERS
                 .iter()
-                .map(|seed| run_seed(controller, paradigm, *seed, None))
-                .collect();
-            // As with infants, each run is yoked to a different partner's timeline: replaying a
-            // deterministic run's own timeline would reproduce that run exactly.
-            let yoked: Vec<_> = SEEDS
-                .iter()
-                .enumerate()
-                .map(|(index, seed)| {
-                    let partner = &contingent[(index + 1) % contingent.len()];
-                    run_seed(controller, paradigm, *seed, Some(&partner.contacts))
-                })
-                .collect();
-            let contingent = row(controller, paradigm, Condition::Contingent, &contingent);
-            let yoked = row(controller, paradigm, Condition::Yoked, &yoked);
-            let middle = contingent.middle_pulses;
-            verdicts.push(Verdict {
-                controller,
-                paradigm,
-                shows_contingency: middle > 0
-                    && 2 * middle >= 3 * contingent.baseline_pulses
-                    && 2 * middle >= 3 * yoked.middle_pulses
-                    && contingent.extinction_pulses < middle,
-            });
-            rows.push(contingent);
-            rows.push(yoked);
-        }
-    }
+                .map(|controller| cell(*paradigm, *controller))
+        })
+        .collect();
     ContingencyReport {
-        schema_version: 2,
+        schema_version: 3,
         seeds: SEEDS,
-        phase_decisions: PHASE,
-        rows,
-        verdicts,
+        phases: CONTINGENT,
+        curve_block: CURVE_BLOCK,
+        cells,
     }
 }
 
-/// Hand pulses per 100 decisions, to one decimal place.
-fn rate(pulses: u32, decisions: u64) -> String {
-    let tenths = u64::from(pulses) * 1_000 / decisions;
-    format!("{}.{}", tenths / 10, tenths % 10)
+/// Experiment groups shown in the strategy table, as (label, slots).
+const STRATEGY_GROUPS: [(&str, &[usize]); 8] = [
+    ("hand", &[HAND_PULSE]),
+    ("jump", &[8]),
+    ("thrust", &[0, 1]),
+    ("turn", &[2, 3]),
+    ("strafe", &[4, 5]),
+    ("look", &[6, 7]),
+    ("voice", &[10, 11]),
+    ("other", &[12]),
+];
+
+fn joined(values: impl IntoIterator<Item = String>, separator: &str) -> String {
+    values.into_iter().collect::<Vec<_>>().join(separator)
 }
 
 /// Compact truthful Markdown rendering for checked-in experiment evidence.
 #[must_use]
 pub fn markdown(report: &ContingencyReport) -> String {
-    let decisions = report.phase_decisions * report.seeds.len() as u64;
     let mut text = format!(
-        "# Contingency test\n\nInfant mobile paradigm on deterministic synthetic fixtures: hand \
-         pulses per 100 decisions over {} seeds, {} decisions per phase. In the contingent \
-         condition a hand pulse changes the next contact; in the yoked condition contact replays \
-         the contingent timeline of another seed regardless of action. Standard: a pulse produces \
-         contact. Inverted: a pulse removes constant contact. Bimodal: a pulse turns half contact \
-         into full or none by a fair coin, leaving the average unchanged. No controller receives \
-         a reward.\n\n\
-         | paradigm | controller | condition | baseline | middle | extinction | consequences |\n\
-         |---|---|---|---:|---:|---:|---:|\n",
+        "# Contingency test\n\n\
+         Infant mobile paradigm on deterministic synthetic fixtures over {} seeds, {} decisions \
+         per phase. In the contingent condition a hand pulse changes the next contact; in the \
+         yoked condition contact replays another seed's contingent run regardless of action. \
+         Standard: a pulse produces contact. Inverted: a pulse removes constant contact. \
+         Bimodal: a pulse turns half contact into full or none by a fair coin, leaving the \
+         average unchanged. No controller receives a reward.\n\n\
+         ## Hand pulses per 100 decisions\n\n\
+         Anticipation is the learner's expected contact after a hand pulse, as distance from \
+         rest (0–255), averaged per phase before each outcome arrived. Consequences counts \
+         middle-phase decisions whose contact differed from rest.\n\n\
+         | paradigm | controller | condition | baseline | middle | extinction | consequences | anticipation |\n\
+         |---|---|---|---:|---:|---:|---:|---|\n",
         report.seeds.len(),
-        report.phase_decisions
+        report.phases[0].decisions
     );
-    for row in &report.rows {
+    for cell in &report.cells {
+        let object = cell.paradigm.object();
+        for (condition, phases) in [("Contingent", &cell.contingent), ("Yoked", &cell.yoked)] {
+            text.push_str(&format!(
+                "| {:?} | {:?} | {condition} | {} | {} | {} | {} | {} |\n",
+                cell.paradigm,
+                cell.controller,
+                rate(phases[0].target(object), phases[0].decisions),
+                rate(phases[1].target(object), phases[1].decisions),
+                rate(phases[2].target(object), phases[2].decisions),
+                phases[1].consequences,
+                joined(phases.iter().map(|p| p.anticipation.to_string()), " → "),
+            ));
+        }
+    }
+    text.push_str(
+        "\n## Verdicts\n\nA run shows contingency when connected-phase pulses are at least 1.5× \
+         both baseline and the yoked middle phase, and fall in extinction.\n\n\
+         | paradigm | controller | pooled | seeds passing |\n|---|---|---|---:|\n",
+    );
+    for cell in &report.cells {
         text.push_str(&format!(
-            "| {:?} | {:?} | {:?} | {} | {} | {} | {} |\n",
-            row.paradigm,
-            row.controller,
-            row.condition,
-            rate(row.baseline_pulses, decisions),
-            rate(row.middle_pulses, decisions),
-            rate(row.extinction_pulses, decisions),
-            row.middle_consequences
+            "| {:?} | {:?} | {} | {}/{} |\n",
+            cell.paradigm,
+            cell.controller,
+            cell.shows_contingency,
+            cell.seeds_passing,
+            cell.curves.len()
         ));
     }
-    text.push_str("\n| paradigm | controller | shows contingency |\n|---|---|---|\n");
-    for verdict in &report.verdicts {
-        text.push_str(&format!(
-            "| {:?} | {:?} | {} |\n",
-            verdict.paradigm, verdict.controller, verdict.shows_contingency
-        ));
+    let blocks_per_phase = report.phases[0].decisions as usize / report.curve_block;
+    text.push_str(&format!(
+        "\n## AffordanceDiscovery learning curves\n\nHand pulses per {} decisions for each seed, \
+         phases separated by `|`.\n\n\
+         | paradigm | seed | contingent | yoked | passes |\n|---|---:|---|---|---|\n",
+        report.curve_block
+    ));
+    let curve = |blocks: &[u32]| {
+        joined(
+            blocks
+                .chunks(blocks_per_phase)
+                .map(|phase| joined(phase.iter().map(u32::to_string), " ")),
+            " | ",
+        )
+    };
+    for paradigm in PARADIGMS {
+        for seed in &report
+            .cell(paradigm, Controller::AffordanceDiscovery)
+            .curves
+        {
+            text.push_str(&format!(
+                "| {paradigm:?} | {} | {} | {} | {} |\n",
+                seed.seed,
+                curve(&seed.contingent),
+                curve(&seed.yoked),
+                seed.shows_contingency
+            ));
+        }
+    }
+    text.push_str(&format!(
+        "\n## AffordanceDiscovery strategy mix\n\nShare of decisions per experiment in each \
+         contingent-condition phase, in percent.\n\n| paradigm | phase | {} |\n|---|---|{}\n",
+        joined(
+            STRATEGY_GROUPS.iter().map(|(label, _)| (*label).to_owned()),
+            " | "
+        ),
+        "---:|".repeat(STRATEGY_GROUPS.len())
+    ));
+    for paradigm in PARADIGMS {
+        let cell = report.cell(paradigm, Controller::AffordanceDiscovery);
+        for (phase, summary) in report.phases.iter().zip(&cell.contingent) {
+            let shares = STRATEGY_GROUPS.iter().map(|(_, slots)| {
+                let count: u32 = slots.iter().map(|slot| summary.slot_counts[*slot]).sum();
+                (count * 100 / summary.decisions.max(1)).to_string()
+            });
+            text.push_str(&format!(
+                "| {paradigm:?} | {} | {} |\n",
+                phase.name,
+                joined(shares, " | ")
+            ));
+        }
     }
     text
 }
@@ -296,39 +344,28 @@ pub fn markdown(report: &ContingencyReport) -> String {
 mod tests {
     use super::*;
 
-    fn verdict(report: &ContingencyReport, paradigm: Paradigm) -> &Verdict {
-        report
-            .verdicts
-            .iter()
-            .find(|verdict| {
-                verdict.controller == Controller::AffordanceDiscovery
-                    && verdict.paradigm == paradigm
-            })
-            .expect("affordance controller")
-    }
-
     #[test]
-    fn report_is_deterministic() {
+    fn report_is_deterministic_and_complete() {
         let a = run();
         let b = run();
-        assert_eq!(a.rows, b.rows);
-        assert_eq!(a.verdicts, b.verdicts);
-        assert_eq!(a.rows.len(), 18);
+        assert_eq!(a.cells, b.cells);
+        assert_eq!(a.cells.len(), PARADIGMS.len() * CONTROLLERS.len());
+        assert!(a.cells.iter().all(|cell| cell.curves.len() == SEEDS.len()));
     }
 
     #[test]
     fn yoked_condition_replays_the_contingent_consequences() {
-        for pair in run().rows.chunks(2) {
-            assert_eq!(pair[0].middle_consequences, pair[1].middle_consequences);
+        for cell in run().cells {
+            assert_eq!(cell.contingent[1].consequences, cell.yoked[1].consequences);
         }
     }
 
     #[test]
     fn controllers_blind_to_consequences_show_no_contingency() {
-        let report = run();
-        for verdict in &report.verdicts {
-            if verdict.controller != Controller::AffordanceDiscovery {
-                assert!(!verdict.shows_contingency, "{verdict:?}");
+        for cell in run().cells {
+            if cell.controller != Controller::AffordanceDiscovery {
+                assert!(!cell.shows_contingency, "{cell:?}");
+                assert_eq!(cell.contingent[1].anticipation, 0);
             }
         }
     }
@@ -337,10 +374,11 @@ mod tests {
     fn affordance_discovery_shows_contingency() {
         let report = run();
         for paradigm in [Paradigm::Standard, Paradigm::Inverted] {
+            let cell = report.cell(paradigm, Controller::AffordanceDiscovery);
+            assert!(cell.shows_contingency, "{paradigm:?}: {cell:?}");
             assert!(
-                verdict(&report, paradigm).shows_contingency,
-                "{paradigm:?}: {:?}",
-                report.rows
+                cell.contingent[1].anticipation > cell.yoked[1].anticipation,
+                "{paradigm:?} anticipates caused contact: {cell:?}"
             );
         }
     }
