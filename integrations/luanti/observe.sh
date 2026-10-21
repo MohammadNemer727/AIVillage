@@ -31,8 +31,10 @@ ai_bridge_observer = observer
 EOF
 
 bridge_log="$world/bridge.log"
+trace_log="$world/bridge-trace.ndjson"
 server_log="$world/server.log"
-cargo run --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml" >"$bridge_log" 2>&1 &
+SIM_LUANTI_MODE=affordance SIM_LUANTI_TRACE="$trace_log" \
+  cargo run --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml" >"$bridge_log" 2>&1 &
 bridge_pid=$!
 server_bin=$(command -v luantiserver || command -v minetestserver)
 client_bin=$(command -v luanti || command -v minetest)

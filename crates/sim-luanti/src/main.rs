@@ -5,7 +5,10 @@
 
 use std::{fs::OpenOptions, io::Write, path::PathBuf, time::Duration};
 
-use sim_luanti::{Bridge, TraceRecord, bind_loopback, replay_trace, serve_once_with_stall};
+use sim_core::runtime::ExperimentMode;
+use sim_luanti::{
+    Bridge, TraceRecord, benchmark, bind_loopback, replay_trace, serve_once_with_stall,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let port = std::env::var("SIM_LUANTI_PORT")
@@ -22,8 +25,29 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .unwrap_or(1);
     let mut args = std::env::args().skip(1);
     if let Some(command) = args.next() {
+        if command == "benchmark" {
+            let json = args.next().map_or_else(
+                || PathBuf::from("target/affordance-benchmark.json"),
+                PathBuf::from,
+            );
+            let markdown = args.next().map_or_else(
+                || PathBuf::from("docs/affordance-benchmark.md"),
+                PathBuf::from,
+            );
+            if args.next().is_some() {
+                return Err("usage: sim-luanti benchmark [report.json] [report.md]".into());
+            }
+            let report = benchmark::run();
+            std::fs::write(&json, serde_json::to_vec_pretty(&report)?)?;
+            std::fs::write(&markdown, benchmark::markdown(&report))?;
+            println!("wrote {} and {}", json.display(), markdown.display());
+            return Ok(());
+        }
         let (Some(path), None, "replay") = (args.next(), args.next(), command.as_str()) else {
-            return Err("usage: sim-luanti [replay <trace.ndjson>]".into());
+            return Err(
+                "usage: sim-luanti [replay <trace.ndjson>|benchmark [report.json] [report.md]]"
+                    .into(),
+            );
         };
         let records = std::fs::read_to_string(&path)?
             .lines()
@@ -35,7 +59,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
     let server = bind_loopback(port)?;
     eprintln!("sim-luanti listening on 127.0.0.1:{port}");
-    let mut bridge = Bridge::new(seed, agent_id);
+    let mode = match std::env::var("SIM_LUANTI_MODE").as_deref() {
+        Ok("affordance") => ExperimentMode::AffordanceDiscovery,
+        Ok("baseline") | Err(_) => ExperimentMode::PredictiveBaseline,
+        Ok(value) => {
+            return Err(
+                format!("SIM_LUANTI_MODE must be baseline or affordance, got {value}").into(),
+            );
+        }
+    };
+    eprintln!("sim-luanti mode: {mode:?}");
+    let mut bridge = Bridge::new_with_mode(seed, agent_id, mode);
     let trace_path = std::env::var_os("SIM_LUANTI_TRACE").map(PathBuf::from);
     let stall_sequence = std::env::var("SIM_LUANTI_STALL_SEQUENCE")
         .ok()

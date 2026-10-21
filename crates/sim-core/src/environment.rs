@@ -67,10 +67,29 @@ impl DeadChannels {
 /// Capabilities negotiated with an environment endpoint.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EnvironmentCapabilities {
+    /// Version of the bounded body contract implemented by this endpoint.
+    #[serde(default, skip_serializing_if = "is_zero_u16")]
+    pub body_contract_version: u16,
     /// Whether the endpoint can preserve a resumable sequence.
     pub checkpoint_resume: bool,
     /// Receptors the endpoint leaves unimplemented.
     pub dead: DeadChannels,
+}
+
+/// Nonsemantic body feedback added by body-contract version 3.
+///
+/// These amplitudes deliberately describe only the body outcome, never an object identity,
+/// location, node, reward, or task label.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BodyProprioception {
+    /// Vertical eye angle, centered at 128.
+    pub eye_pitch: u16,
+    /// Whether the body was grounded during this observation interval.
+    pub grounded: u16,
+    /// Signed vertical velocity.
+    pub vertical_motion: i16,
+    /// Whether the most recent generic hand pulse contacted a physical test object.
+    pub hand_contact: u16,
 }
 
 /// Current transport health, separate from sensory data.
@@ -95,6 +114,9 @@ pub struct EnvironmentObservation {
     /// External receptor amplitudes. Interoceptive fields are ignored: the runtime owns them.
     #[serde(with = "wire_frame")]
     pub senses: RawSensoryFrame,
+    /// Versioned, bounded body feedback not represented in the legacy V2 sensory frame.
+    #[serde(default, skip_serializing_if = "is_default_body")]
+    pub body: BodyProprioception,
     /// Endpoint capabilities applicable to this observation.
     pub capabilities: EnvironmentCapabilities,
     /// Transport state for this boundary.
@@ -108,8 +130,20 @@ pub struct PrimitiveAction {
     pub thrust: i16,
     /// Angular motor command.
     pub turn: i16,
+    /// Lateral movement command.
+    #[serde(default, skip_serializing_if = "is_zero_i16")]
+    pub strafe: i16,
+    /// Vertical eye rotation command.
+    #[serde(default, skip_serializing_if = "is_zero_i16")]
+    pub look_pitch: i16,
+    /// Bounded jump pulse.
+    #[serde(default, skip_serializing_if = "is_zero_u16")]
+    pub jump: u16,
     /// Jaw aperture command.
     pub jaw: u16,
+    /// Generic hand pulse, limited by endpoints to a nearby physical test object.
+    #[serde(default, skip_serializing_if = "is_zero_u16")]
+    pub hand_pulse: u16,
     /// Acoustic motor amplitude.
     pub acoustic: u16,
     /// Chemical gland amplitude.
@@ -130,8 +164,56 @@ pub struct EnvironmentTransition {
     pub observation: EnvironmentObservation,
     /// Action selected from that observation.
     pub action: PrimitiveAction,
+    /// The unchanged predictive founder output before an experiment-mode override.
+    #[serde(default, skip_serializing_if = "is_default_action")]
+    pub baseline_action: PrimitiveAction,
+    /// Intrinsic information score of the selected action, in experiment mode.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub intrinsic_score: u32,
+    /// Fingerprint of the checkpointed affordance learner, or zero for the baseline.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub affordance_fingerprint: u64,
     /// Fingerprint of the brain state after this decision.
     pub brain_fingerprint: u64,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip predicate signature"
+)]
+fn is_default_body(value: &BodyProprioception) -> bool {
+    *value == BodyProprioception::default()
+}
+fn is_default_action(value: &PrimitiveAction) -> bool {
+    *value == PrimitiveAction::default()
+}
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip predicate signature"
+)]
+const fn is_zero_i16(value: &i16) -> bool {
+    *value == 0
+}
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip predicate signature"
+)]
+const fn is_zero_u16(value: &u16) -> bool {
+    *value == 0
+}
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip predicate signature"
+)]
+const fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
+}
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip predicate signature"
+)]
+const fn is_zero_u64(value: &u64) -> bool {
+    *value == 0
 }
 
 /// An endpoint that senses for, and moves, one agent body.

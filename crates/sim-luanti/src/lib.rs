@@ -7,6 +7,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod benchmark;
+
 use std::{
     io::Read,
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -16,14 +18,14 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sim_core::{
     environment::{EnvironmentObservation, EnvironmentTransition, PrimitiveAction},
-    runtime::{AgentRuntime, FrozenPhysiology, RuntimeError},
+    runtime::{AgentRuntime, ExperimentMode, FrozenPhysiology, RuntimeError},
 };
 use sim_format::FounderSpec;
 use sim_kernels::brain::{MODULATORS, NEURONS};
 use tiny_http::{Header, Method, Response, Server, StatusCode};
 
 /// Wire protocol accepted by this crate.
-pub const PROTOCOL_VERSION: u16 = 2;
+pub const PROTOCOL_VERSION: u16 = 3;
 /// Requests larger than this cannot be receptor frames from the one-agent protocol.
 pub const MAX_PAYLOAD_BYTES: usize = 64 * 1024;
 
@@ -58,10 +60,20 @@ pub struct AppliedPose {
 /// Observer-only state, never accepted as a runtime input.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Diagnostics {
+    /// Explicit policy that generated this response.
+    pub experiment_mode: ExperimentMode,
     /// Runtime decision counter after this response.
     pub decision_tick: u64,
     /// Fingerprint of the post-decision brain.
     pub brain_fingerprint: u64,
+    /// Action emitted by the unchanged predictive founder before any intrinsic override.
+    pub baseline_action: PrimitiveAction,
+    /// Intrinsic action selected by the affordance learner, if enabled.
+    pub intrinsic_action: PrimitiveAction,
+    /// Intrinsic information score; zero for the predictive baseline.
+    pub intrinsic_score: u32,
+    /// Fingerprint of checkpointed affordance state.
+    pub affordance_fingerprint: u64,
     /// Whether any lifetime brain parameter has departed from its blank initial state.
     pub learned: bool,
     /// Mean absolute activity of the modulatory population.
@@ -159,8 +171,20 @@ impl Bridge {
     /// Constructs a bridge for one deterministic founder.
     #[must_use]
     pub fn new(seed: u64, agent_id: u64) -> Self {
+        Self::new_with_mode(seed, agent_id, ExperimentMode::PredictiveBaseline)
+    }
+
+    /// Constructs a bridge with an explicit baseline or affordance-discovery policy.
+    #[must_use]
+    pub fn new_with_mode(seed: u64, agent_id: u64, mode: ExperimentMode) -> Self {
+        let founder = FounderSpec::new(seed, agent_id);
         Self {
-            runtime: FounderSpec::new(seed, agent_id).runtime(),
+            runtime: AgentRuntime::new_with_mode(
+                seed,
+                agent_id,
+                founder.genome.default_brain_config(),
+                mode,
+            ),
             trace: Vec::new(),
         }
     }
@@ -214,7 +238,18 @@ fn response_for(
         action: transition.action,
         diagnostics: Diagnostics {
             decision_tick: transition.decision_tick,
+            experiment_mode: runtime.state().experiment_mode,
             brain_fingerprint: transition.brain_fingerprint,
+            baseline_action: if runtime.state().experiment_mode
+                == ExperimentMode::PredictiveBaseline
+            {
+                transition.action
+            } else {
+                transition.baseline_action
+            },
+            intrinsic_action: transition.action,
+            intrinsic_score: transition.intrinsic_score,
+            affordance_fingerprint: transition.affordance_fingerprint,
             learned: runtime
                 .state()
                 .brain
@@ -243,7 +278,20 @@ fn mean_modulator_activity(runtime: &AgentRuntime) -> u16 {
 ///
 /// Returns an error if any recorded response cannot be reproduced exactly.
 pub fn replay_trace(seed: u64, agent_id: u64, records: &[TraceRecord]) -> Result<(), BridgeError> {
-    let mut runtime = FounderSpec::new(seed, agent_id).runtime();
+    let mode = records
+        .first()
+        .map_or(ExperimentMode::PredictiveBaseline, |record| {
+            record.response.diagnostics.experiment_mode
+        });
+    if records
+        .iter()
+        .any(|record| record.response.diagnostics.experiment_mode != mode)
+    {
+        return Err(BridgeError::Replay);
+    }
+    let founder = FounderSpec::new(seed, agent_id);
+    let mut runtime =
+        AgentRuntime::new_with_mode(seed, agent_id, founder.genome.default_brain_config(), mode);
     for record in records {
         let transition = runtime
             .step(record.request.observation)
@@ -402,7 +450,7 @@ fn respond_json<T: Serialize>(
 mod tests {
     use sim_core::{
         RawSensoryFrame,
-        environment::{EnvironmentCapabilities, TransportStatus},
+        environment::{BodyProprioception, EnvironmentCapabilities, TransportStatus},
     };
 
     use super::*;
@@ -414,6 +462,7 @@ mod tests {
             observation: EnvironmentObservation {
                 sequence,
                 senses: RawSensoryFrame::EMPTY,
+                body: BodyProprioception::default(),
                 capabilities: EnvironmentCapabilities::default(),
                 transport: TransportStatus::Healthy,
             },
@@ -436,7 +485,7 @@ mod tests {
     fn rejects_protocol_agent_and_sequence_without_advancing() {
         let mut bridge = Bridge::new(4, 9);
         let mut wrong_protocol = request(0);
-        wrong_protocol.protocol = 3;
+        wrong_protocol.protocol = 4;
         assert!(matches!(
             bridge.handle(wrong_protocol),
             Err(BridgeError::Protocol { .. })
@@ -485,6 +534,18 @@ mod tests {
         let mut records = bridge.drain_trace();
         records[0].response.diagnostics.brain_fingerprint ^= 1;
         assert_eq!(replay_trace(4, 9, &records), Err(BridgeError::Replay));
+    }
+
+    #[test]
+    fn affordance_trace_replays_and_rejects_tampering() {
+        let mut bridge = Bridge::new_with_mode(4, 9, ExperimentMode::AffordanceDiscovery);
+        bridge.handle(request(0)).expect("first");
+        bridge.handle(request(1)).expect("second");
+        let records = bridge.drain_trace();
+        replay_trace(4, 9, &records).expect("replay");
+        let mut tampered = records;
+        tampered[1].request.observation.body.hand_contact = 255;
+        assert_eq!(replay_trace(4, 9, &tampered), Err(BridgeError::Replay));
     }
 
     #[test]

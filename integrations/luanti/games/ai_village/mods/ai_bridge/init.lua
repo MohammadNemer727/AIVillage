@@ -1,7 +1,7 @@
 -- One physical founder and an intentionally narrow, loopback-only bridge protocol.
 -- No coordinates, node names, recipes, rewards, or world facts cross into Rust.
 local palette = dofile(minetest.get_modpath("ai_bridge") .. "/palette_generated.lua").colours
-local protocol, agent_id = 2, 1
+local protocol, agent_id = 3, 1
 local step_seconds, request_timeout = 0.1, 0.5
 local endpoint = minetest.settings:get("ai_bridge_endpoint") or "http://127.0.0.1:8481/v1/transition"
 local http = minetest.request_http_api()
@@ -12,6 +12,23 @@ if mode ~= "observe" and mode ~= "smoke" and mode ~= "demo-motion" then
 end
 local scripted = mode == "smoke" or mode == "demo-motion"
 local observer_name = minetest.settings:get("ai_bridge_observer") or "observer"
+-- This is Minetest Game's native player mesh, whose player_api definition uses unit scale.
+local founder_visual_scale = 1
+local founder_animations = {
+  idle = {x = 0, y = 79, speed = 30},
+  walk = {x = 168, y = 187, speed = 30},
+  hand = {x = 189, y = 198, speed = 30},
+}
+-- Luanti nodes occupy y +/-0.5 around their integer coordinate.  These positions put
+-- collisionbox bottoms directly on the floor node's upper face (y=0.5).
+local founder_spawn = {x = 0, y = 0.5, z = 0}
+local generic_spawn = {x = 1.2, y = 0.7, z = 0}
+local generic_visual_scale = 0.4
+-- The physical player mesh occupies x/z +/-0.3 and y 0..1.7 from its position.
+-- The inner room is bounded by the faces at +/-4 and y=0/4; the second shell is
+-- deliberately outside it, so the physics engine always has a solid neighbour even
+-- during maximum thrust, strafe, and jump impulses.
+local arena_safety_limit = {horizontal = 5.25, low_y = -0.5, high_y = 5.25}
 
 local function clamp(value, low, high)
   return math.max(low, math.min(high, value))
@@ -56,16 +73,17 @@ minetest.register_node("ai_bridge:observer_light", {
 })
 
 local state = { sequence = 0, server_step = 0, pending = false, pending_at = 0, request_token = 0,
-  held = { thrust = 0, turn = 0, jaw = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} },
-  applied_step = 0, applied_steps = 0, elapsed = 0, previous_velocity = {x = 0, z = 0}, touch = 0, status = "healthy",
-  smoke = mode == "smoke", diagnostics = nil, latency_ms = 0, founder = nil, observer_resets = 0 }
+  held = { thrust = 0, turn = 0, strafe = 0, look_pitch = 0, jump = 0, jaw = 0, hand_pulse = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} },
+  applied_step = 0, applied_steps = 0, elapsed = 0, previous_velocity = {x = 0, z = 0}, touch = 0, grounded = 0, hand_contact = 0, eye_pitch = 0, status = "healthy",
+  smoke = mode == "smoke", diagnostics = nil, latency_ms = 0, founder = nil, body_parts = {},
+  observer_resets = 0, safety_resets = 0, last_safety_reset = "none" }
 
 local function smoke_log(event)
   if state.smoke then minetest.log("action", "AI_BRIDGE_SMOKE " .. minetest.write_json(event)) end
 end
 
 local function zero_action(reason)
-  state.held = { thrust = 0, turn = 0, jaw = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} }
+  state.held = { thrust = 0, turn = 0, strafe = 0, look_pitch = 0, jump = 0, jaw = 0, hand_pulse = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} }
   state.status = reason
   smoke_log({event = "safe_zero", status = reason, thrust = state.held.thrust, turn = state.held.turn})
 end
@@ -76,43 +94,80 @@ local function pose(self)
     z_millinode = math.floor(position.z * 1000 + 0.5), yaw_milliradian = math.floor(self.object:get_yaw() * 1000 + 0.5)}
 end
 
-local function hud_text()
+local transport_name = {
+  healthy = "Healthy", timeout = "Timeout", rejected = "Rejected", disconnected = "Disconnected",
+}
+
+local function hud_lines()
   local diagnostics = state.diagnostics or {}
   local physiology = diagnostics.frozen_physiology or {}
+  local intrinsic = diagnostics.experiment_mode == "AffordanceDiscovery"
+  local baseline = diagnostics.baseline_action or {}
+  local selected = diagnostics.intrinsic_action or {}
+  local applied = state.held or {}
   local actuator = scripted and "fixture action applied" or "Rust action applied"
-  return table.concat({
-    "AI Village observer — explore with normal movement and jump; mouse looks",
-    "FOUNDER below: amber-faced green body; observe mode motors accept only Rust bridge responses",
-    "decision tick: " .. tostring(diagnostics.decision_tick or "waiting") .. "   Luanti step: " .. state.server_step,
-    actuator .. ": thrust " .. tostring(state.held.thrust or 0) .. " turn " .. tostring(state.held.turn or 0),
-    "latency: " .. tostring(state.latency_ms) .. " ms   transport: " .. state.status,
-    "receptors active/used: green mean, brightness mean, interoception",
-    "active/unused: red, blue, ray direction; dead: chemicals, vibration",
-    "brain: " .. (diagnostics.learned and "learning" or "blank") .. " fp " .. tostring(diagnostics.brain_fingerprint or "—")
-      .. " mod " .. tostring(diagnostics.mean_modulator_activity or "—"),
-    "frozen physiology: E " .. tostring(physiology.energy or 120) .. " G " .. tostring(physiology.gut or 120)
-      .. " H " .. tostring(physiology.hydration or 120) .. " F " .. tostring(physiology.fatigue or 0)
-      .. " T " .. tostring(physiology.toxin or 0) .. " D " .. tostring(physiology.damage or 0),
-    "observer-only resets: " .. tostring(state.observer_resets) .. "  (/founder_reset; does not steer or retrain)",
-  }, "\n")
+  local generated = intrinsic and selected or baseline
+  local generated_label = intrinsic and "GENERATED INTRINSIC" or "BASELINE BRAIN"
+  return {
+    "AI VILLAGE  |  OBSERVER DIAGNOSTICS",
+    "Move/look freely; founder motors accept Rust bridge responses only.",
+    "MODE  " .. tostring(diagnostics.experiment_mode or "waiting"),
+    "GENERATED  " .. generated_label .. "  thrust " .. tostring(generated.thrust or 0)
+      .. "  strafe " .. tostring(generated.strafe or 0) .. "  turn " .. tostring(generated.turn or 0),
+    "           jump " .. tostring(generated.jump or 0) .. "  hand " .. tostring(generated.hand_pulse or 0)
+      .. "  score " .. tostring(diagnostics.intrinsic_score or "—"),
+    "APPLIED  " .. actuator .. "  thrust " .. tostring(applied.thrust or 0)
+      .. "  strafe " .. tostring(applied.strafe or 0) .. "  turn " .. tostring(applied.turn or 0),
+    "         pitch " .. tostring(applied.look_pitch or 0) .. "  jump " .. tostring(applied.jump or 0)
+      .. "  hand " .. tostring(applied.hand_pulse or 0),
+    "BODY  " .. (state.grounded > 0 and "GROUNDED" or "AIRBORNE") .. "  |  hand contact: "
+      .. (state.hand_contact > 0 and "YES (generic impulse)" or "none"),
+    "TRANSPORT  " .. transport_name[state.status] .. "  |  latency " .. tostring(state.latency_ms) .. " ms",
+    "TICKS  decision " .. tostring(diagnostics.decision_tick or "waiting")
+      .. "  |  server " .. tostring(state.server_step),
+    "SAFETY  observer resets " .. tostring(state.observer_resets)
+      .. "  |  containment resets " .. tostring(state.safety_resets)
+      .. " (" .. state.last_safety_reset .. ")",
+    "FROZEN PHYSIOLOGY  energy " .. tostring(physiology.energy or 120)
+      .. "  gut " .. tostring(physiology.gut or 120) .. "  hydration " .. tostring(physiology.hydration or 120),
+    "                    fatigue " .. tostring(physiology.fatigue or 0)
+      .. "  toxin " .. tostring(physiology.toxin or 0) .. "  damage " .. tostring(physiology.damage or 0),
+    "SECONDARY  brain " .. (diagnostics.learned and "learning" or "blank")
+      .. "  mod " .. tostring(diagnostics.mean_modulator_activity or "—")
+      .. "  receptors: green/brightness/interoception",
+  }
 end
 
 local function update_observer_hud()
   local player = minetest.get_player_by_name(observer_name)
   if player then
-    local id = player:get_meta():get_int("ai_bridge_hud")
-    if id == 0 then
-      id = player:hud_add({hud_elem_type = "text", position = {x = 0.02, y = 0.02}, offset = {x = 0, y = 0},
-        text = "", alignment = {x = 1, y = 1}, number = 0xFFFFFF})
-      player:get_meta():set_int("ai_bridge_hud", id)
+    -- Replace the pre-panel single multiline element once, so reconnecting observers
+    -- cannot see the old tiny, overlapping diagnostic block beneath this panel.
+    if player:get_meta():get_int("ai_bridge_hud_panel_v2") == 0 then
+      local legacy_id = player:get_meta():get_int("ai_bridge_hud")
+      if legacy_id ~= 0 then player:hud_remove(legacy_id) end
+      player:get_meta():set_int("ai_bridge_hud_panel_v2", 1)
     end
-    player:hud_change(id, "text", hud_text())
+    local lines = hud_lines()
+    for index, text in ipairs(lines) do
+      local key = "ai_bridge_hud_" .. index
+      local id = player:get_meta():get_int(key)
+      if id == 0 then
+        id = player:hud_add({
+          type = "text",
+          position = {x = 0.025, y = 0.018 + (index - 1) * 0.034},
+          offset = {x = 0, y = 0},
+          text = "",
+          alignment = {x = 1, y = 1},
+          scale = {x = 1.25, y = 1.25},
+          number = index == 1 and 0xFFF3B0 or 0xFFFFFF,
+        })
+        player:get_meta():set_int(key, id)
+      end
+      player:hud_change(id, "text", text)
+    end
   end
 end
-
-local transport_name = {
-  healthy = "Healthy", timeout = "Timeout", rejected = "Rejected", disconnected = "Disconnected",
-}
 
 local function trunc_toward_zero(value)
   return value < 0 and math.ceil(value) or math.floor(value)
@@ -122,10 +177,11 @@ local function sense(self, dt)
   local senses, pos = empty_senses(), self.object:get_pos()
   local velocity, yaw = self.object:get_velocity(), self.object:get_yaw()
   local v2_angle = yaw + math.pi / 2
+  local pitch = state.eye_pitch * math.pi / 512
   local eye = vector.add(pos, {x = 0, y = 1, z = 0})
   for index = 0, 15 do
     local angle = v2_angle + index * (2 * math.pi / 16)
-    local direction = {x = math.cos(angle), y = 0, z = math.sin(angle)}
+    local direction = {x = math.cos(angle) * math.cos(pitch), y = math.sin(pitch), z = math.sin(angle) * math.cos(pitch)}
     local hit
     for pointed in minetest.raycast(eye, vector.add(eye, vector.multiply(direction, 6)), false, false) do
       if pointed.type == "node" then hit = pointed break end
@@ -155,13 +211,18 @@ end
 
 local function send_transition(self, dt)
   if not http then zero_action("disconnected") return end
+  local velocity = self.object:get_velocity()
   local observation = { sequence = state.sequence, senses = sense(self, dt),
-    capabilities = { checkpoint_resume = false, dead = { chemicals = {true,true,true,true}, vibration = true,
+    body = { eye_pitch = byte(state.eye_pitch + 128), grounded = state.grounded, vertical_motion = signed(velocity.y * 64), hand_contact = state.hand_contact },
+    capabilities = { body_contract_version = 3, checkpoint_resume = false, dead = { chemicals = {true,true,true,true}, vibration = true,
       touch = false, joint_position = false, muscle_tension = false, acceleration = false, orientation = false } },
     transport = transport_name[state.status] or "Disconnected" }
   local body = minetest.write_json({ protocol = protocol, agent_id = agent_id, observation = observation,
     trace = { applied_server_step = state.applied_step, applied_steps = state.applied_steps,
       accumulated_dtime_us = math.floor(state.elapsed * 1000000 + 0.5), applied_action = state.held, pose = pose(self) } })
+  -- Hand contact is a bounded event latch: preserve it until the one subsequent observation,
+  -- then clear it.  It never carries target identity or any other world fact.
+  state.hand_contact = 0
   local ray = observation.senses.retinal[1]
   smoke_log({event = "observation", sequence = state.sequence, transport = observation.transport, touch = observation.senses.touch,
     ray0 = {red = ray.red, green = ray.green, blue = ray.blue, occlusion = ray.occlusion}})
@@ -190,9 +251,18 @@ local function send_transition(self, dt)
     if scripted then
       -- The bridge remains live; this deterministic actuator fixture makes collision and yaw
       -- evidence independent of the founder's learned motor output.
-      if state.sequence < 5 then state.held = { thrust = 0, turn = 255, jaw = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} }
-      else state.held = { thrust = 255, turn = 0, jaw = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} } end
-      smoke_log({event = "override_action", sequence = state.sequence, thrust = state.held.thrust, turn = state.held.turn})
+      local sequence = state.sequence
+      state.held = { thrust = 0, turn = 0, strafe = 0, look_pitch = 0, jump = 0,
+        hand_pulse = 0, jaw = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} }
+      if sequence == 0 then state.held.hand_pulse = 255
+      elseif sequence < 8 then state.held.turn = 255
+      elseif sequence < 55 then state.held.thrust, state.held.jump = 255, 255
+      elseif sequence < 102 then state.held.strafe, state.held.jump = -255, 255
+      elseif sequence < 149 then state.held.strafe, state.held.jump = 255, 255
+      else state.held.thrust, state.held.hand_pulse = -255, 255 end
+      smoke_log({event = "override_action", sequence = sequence, thrust = state.held.thrust,
+        strafe = state.held.strafe, jump = state.held.jump, turn = state.held.turn,
+        hand_pulse = state.held.hand_pulse})
     end
     state.sequence = state.sequence + 1
     state.applied_step, state.applied_steps, state.elapsed = state.server_step, 0, 0
@@ -200,22 +270,55 @@ local function send_transition(self, dt)
   end)
 end
 
+-- Keep the neutral physics fixture's material a direct six-face media reference.
+local function cube_textures(texture)
+  return {texture, texture, texture, texture, texture, texture}
+end
+
+local function update_humanoid_pose(object, action)
+  -- This mesh can show one native animation at a time.  Locomotion therefore wins over
+  -- the mine frame: a nonzero movement command (or residual physical movement) is always
+  -- visibly walking, while hand is shown only for a nonzero pulse while stationary.
+  local name = "idle"
+  local velocity = object:get_velocity()
+  local moving = math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z) > 0.08
+  if (action.thrust or 0) ~= 0 or (action.strafe or 0) ~= 0 or moving then
+    name = "walk"
+  elseif (action.hand_pulse or 0) > 0 then
+    name = "hand"
+  end
+  if state.founder_animation == name then return end
+  local animation = founder_animations[name]
+  object:set_animation({x = animation.x, y = animation.y}, animation.speed, 0, true)
+  state.founder_animation = name
+  minetest.log("action", "AI_BRIDGE_FOUNDER_ANIMATION name=" .. name
+    .. " frames=" .. animation.x .. "-" .. animation.y
+    .. " thrust=" .. tostring(action.thrust or 0)
+    .. " strafe=" .. tostring(action.strafe or 0)
+    .. " hand=" .. tostring(action.hand_pulse or 0))
+  smoke_log({event = "animation", name = name, thrust = action.thrust or 0,
+    strafe = action.strafe or 0, hand_pulse = action.hand_pulse or 0})
+end
+
 minetest.register_entity("ai_bridge:founder", {
   initial_properties = {physical = true, collide_with_objects = false, collisionbox = {-0.3,0,-0.3,0.3,1.7,0.3},
-    visual = "cube", textures = {"ai_bridge_base.png^[colorize:#487a55:255", "ai_bridge_base.png^[colorize:#487a55:255",
-      "ai_bridge_base.png^[colorize:#5a9364:255", "ai_bridge_base.png^[colorize:#31553b:255",
-      "ai_bridge_base.png^[colorize:#f0b44c:255",
-      "ai_bridge_base.png^[colorize:#487a55:255"}, visual_size = {x = 1.35, y = 1.35},
-    glow = 8, nametag = "FOUNDER — Rust bridge controlled", nametag_color = "#ffe08a",
+    visual = "mesh", mesh = "minetest_game_character.b3d",
+    textures = {"minetest_game_character.png"}, visual_size = {x = founder_visual_scale, y = founder_visual_scale},
+    nametag = "FOUNDER — Rust-controlled humanoid", nametag_color = "#ffe08a",
     static_save = false},
   on_activate = function(self)
     -- V2 heading zero is +X while Luanti yaw -pi/2 faces +X.
     self.object:set_yaw(-math.pi / 2)
     state.founder = self.object
+    state.founder_animation = nil
+    update_humanoid_pose(self.object, state.held)
+    local properties = self.object:get_properties()
+    minetest.log("action", "AI_BRIDGE_FOUNDER_VISUAL mesh=" .. tostring(properties.mesh)
+      .. " texture=" .. tostring(properties.textures and properties.textures[1]))
   end,
   on_step = function(self, dtime, moveresult)
     state.server_step, state.applied_steps, state.elapsed = state.server_step + 1, state.applied_steps + 1, state.elapsed + dtime
-    state.touch = 0
+    state.touch, state.grounded = 0, 0
     if state.smoke and state.server_step == 1 then
       local pos, velocity = self.object:get_pos(), self.object:get_velocity()
       smoke_log({event = "spawn", x = pos.x, y = pos.y, z = pos.z, yaw = self.object:get_yaw(), vy = velocity.y})
@@ -224,7 +327,8 @@ minetest.register_entity("ai_bridge:founder", {
     end
     if moveresult and moveresult.collisions then
       for _, collision in ipairs(moveresult.collisions) do
-        if collision.axis == "x" or collision.axis == "z" then state.touch = 255 break end
+        if collision.axis == "x" or collision.axis == "z" then state.touch = 255 end
+        if collision.axis == "y" and collision.old_velocity.y < 0 then state.grounded = 255 end
       end
     end
     if state.pending and (minetest.get_us_time() - state.pending_at) / 1000000 > request_timeout then
@@ -233,20 +337,64 @@ minetest.register_entity("ai_bridge:founder", {
       zero_action("timeout")
       update_observer_hud()
     end
+    local position = self.object:get_pos()
+    if math.abs(position.x) > arena_safety_limit.horizontal or math.abs(position.z) > arena_safety_limit.horizontal
+        or position.y < arena_safety_limit.low_y or position.y > arena_safety_limit.high_y then
+      -- This recovery is intentionally outside the actuator/learning path.  It records a
+      -- physics containment failure but preserves held action, sequence, and Rust state.
+      local reason = string.format("out_of_bounds x=%.3f y=%.3f z=%.3f", position.x, position.y, position.z)
+      minetest.log("warning", "AI_BRIDGE_SAFETY_RESET " .. reason)
+      smoke_log({event = "safety_reset", reason = reason, x = position.x, y = position.y, z = position.z})
+      self.object:move_to(founder_spawn, false)
+      self.object:set_velocity({x = 0, y = 0, z = 0})
+      self.object:set_acceleration({x = 0, y = -9.81, z = 0})
+      self.object:set_yaw(-math.pi / 2)
+      state.previous_velocity, state.touch, state.grounded = {x = 0, z = 0}, 0, 255
+      state.safety_resets, state.last_safety_reset = state.safety_resets + 1, reason
+      update_observer_hud()
+      return
+    end
     local action, yaw = state.held, self.object:get_yaw()
+    update_humanoid_pose(self.object, action)
     local v2_angle = yaw + math.pi / 2
     local forward = {x = math.cos(v2_angle), z = math.sin(v2_angle)}
+    local right = {x = -forward.z, z = forward.x}
     local velocity = self.object:get_velocity()
     local target = clamp((action.thrust or 0) * 4 / 256, -4, 4)
     local current = velocity.x * forward.x + velocity.z * forward.z
     local control = clamp((target - current) / math.max(dtime, 0.0001), -8, 8)
-    self.object:set_acceleration({x = forward.x * control, y = -9.81, z = forward.z * control})
+    local side_target = clamp((action.strafe or 0) * 4 / 256, -4, 4)
+    local side_current = velocity.x * right.x + velocity.z * right.z
+    local side_control = clamp((side_target - side_current) / math.max(dtime, 0.0001), -8, 8)
+    self.object:set_acceleration({x = forward.x * control + right.x * side_control, y = -9.81, z = forward.z * control + right.z * side_control})
     if state.applied_steps == 1 then
       local turn = clamp(trunc_toward_zero((action.turn or 0) / 32), -8, 8)
       self.object:set_yaw(yaw + turn * (2 * math.pi / 256))
+      state.eye_pitch = clamp(state.eye_pitch + trunc_toward_zero((action.look_pitch or 0) / 32), -128, 127)
+      if (action.jump or 0) > 0 and state.grounded > 0 then self.object:set_velocity({x = velocity.x, y = 5, z = velocity.z}) end
+      if (action.hand_pulse or 0) > 0 then
+        local origin = vector.add(self.object:get_pos(), {x = forward.x * 0.8, y = 0.8, z = forward.z * 0.8})
+        -- Deliberately bounded reach around the visible forward hand; this is contact feedback,
+        -- not a proximity sensor or a way to identify arbitrary world objects.
+        for _, object in ipairs(minetest.get_objects_inside_radius(origin, 1.2)) do
+          local entity = object:get_luaentity()
+          if entity and entity.name == "ai_bridge:test_object" then
+            object:add_velocity({x = forward.x * 3, y = 1, z = forward.z * 3}); state.hand_contact = 255
+            smoke_log({event = "hand_contact", impulse = 3}); break
+          end
+        end
+      end
     end
     if not state.pending and state.elapsed >= step_seconds then send_transition(self, state.elapsed) end
   end,
+})
+
+-- The sole hand-pulse target is a physical, nonsemantic test object. It is not sensed by name
+-- or exposed to Rust; contact is reported only as a bounded body outcome.
+minetest.register_entity("ai_bridge:test_object", {
+  initial_properties = {physical = true, collide_with_objects = true, collisionbox = {-0.2,-0.2,-0.2,0.2,0.2,0.2},
+    visual = "cube", visual_size = {x = generic_visual_scale, y = generic_visual_scale},
+    textures = cube_textures("ai_bridge_generic_cc0.png"), static_save = false},
 })
 
 minetest.register_on_mods_loaded(function()
@@ -255,10 +403,22 @@ minetest.register_on_mods_loaded(function()
       if remaining ~= 0 then return end
       minetest.set_timeofday(0.5)
       -- Luanti yaw -pi/2 maps V2 heading 0 to +X; positive turns move ray 0 toward +Z.
-      for x = -4, 4 do for z = -4, 4 do
+      for x = -5, 5 do for z = -5, 5 do
+        minetest.set_node({x=x,y=-1,z=z}, {name="ai_bridge:floor"})
         minetest.set_node({x=x,y=0,z=z}, {name="ai_bridge:floor"})
         minetest.set_node({x=x,y=4,z=z}, {name="ai_bridge:observer_glass"})
+        minetest.set_node({x=x,y=5,z=z}, {name="ai_bridge:observer_glass"})
       end end
+      for y = -1, 5 do for axis = -5, 5 do
+        if axis == -5 or axis == 5 then
+          for other = -5, 5 do
+            minetest.set_node({x=axis,y=y,z=other}, {name="ai_bridge:wall_x"})
+            minetest.set_node({x=other,y=y,z=axis}, {name="ai_bridge:wall_z"})
+          end
+        end
+      end end
+      -- Inner collision faces, plus the outer shell above, leave room for the full
+      -- 1.7-node collisionbox to jump without a route around a wall edge.
       for y = 1, 3 do for axis = -4, 4 do
         if axis == -4 or axis == 4 then
           for other = -4, 4 do
@@ -275,7 +435,7 @@ minetest.register_on_mods_loaded(function()
       }) do
         minetest.set_node(light, {name="ai_bridge:observer_light"})
       end
-      minetest.fix_light({x=-5, y=-1, z=-5}, {x=5, y=5, z=5})
+      minetest.fix_light({x=-6, y=-2, z=-6}, {x=6, y=6, z=6})
       if state.smoke then
         local floor = minetest.get_node({x=0, y=0, z=0})
         local wall = minetest.get_node({x=4, y=2, z=0})
@@ -283,9 +443,14 @@ minetest.register_on_mods_loaded(function()
           floor_light = minetest.get_node_light({x=0, y=0, z=0}, 0.5) or -1,
           wall_light = minetest.get_node_light({x=4, y=2, z=0}, 0.5) or -1})
       end
-      minetest.add_entity({x=0,y=1,z=0}, "ai_bridge:founder")
+      minetest.add_entity(founder_spawn, "ai_bridge:founder")
+      -- The 0.4-node cube's collision centre is exactly 0.2 nodes above the floor.  It is
+      -- therefore grounded at creation rather than falling or receiving any startup impulse.
+      minetest.add_entity(generic_spawn, "ai_bridge:test_object")
+      smoke_log({event = "generic_spawn", x = generic_spawn.x, y = generic_spawn.y, z = generic_spawn.z,
+        visual_size = generic_visual_scale, collision_height = 0.4})
       if mode == "smoke" then
-        minetest.after(7, function() minetest.request_shutdown("ai_bridge smoke completed", true) end)
+        minetest.after(18, function() minetest.request_shutdown("ai_bridge smoke completed", true) end)
       end
     end)
   end)
@@ -295,12 +460,21 @@ minetest.register_on_joinplayer(function(player)
   if player:get_player_name() ~= observer_name then return end
   -- The observer is a normal, non-privileged explorer. Its controls affect only the player:
   -- the founder remains a separate entity whose actuators are driven only by Rust bridge replies.
-  -- Start inside the lit room so the initial framing keeps the founder and its label readable.
+  -- Aim at the founder's chest from far enough away to show the complete humanoid and the one
+  -- nearby neutral fixture without making either fill the first frame.
   minetest.set_player_privs(observer_name, {})
   player:set_physics_override({speed = 1, jump = 1, gravity = 1})
-  player:set_pos({x = 0, y = 2, z = -3})
+  player:set_pos({x = 0, y = 2.1, z = -3})
   player:set_look_horizontal(0)
-  player:set_look_vertical(-0.55)
+  player:set_look_vertical(-0.28)
+  -- A returning observer must not arrive after the live brain has walked the founder away.
+  -- This is presentation-only: it does not alter the held action, protocol sequence, or learning.
+  if state.founder and state.founder:get_pos() then
+    state.founder:move_to(founder_spawn, false)
+    state.founder:set_velocity({x = 0, y = 0, z = 0})
+    state.founder:set_acceleration({x = 0, y = -9.81, z = 0})
+    state.founder:set_yaw(-math.pi / 2)
+  end
   update_observer_hud()
 end)
 
@@ -312,7 +486,7 @@ minetest.register_chatcommand("founder_reset", {
     if not founder or not founder:get_pos() then return false, "The founder is not available yet." end
     -- This changes only scene placement. The held Rust action, next observation, sequence, and
     -- runtime state remain untouched: it is intentionally not collision avoidance or steering.
-    founder:move_to({x = 0, y = 1, z = 0}, false)
+    founder:move_to(founder_spawn, false)
     founder:set_velocity({x = 0, y = 0, z = 0})
     founder:set_acceleration({x = 0, y = -9.81, z = 0})
     founder:set_yaw(-math.pi / 2)

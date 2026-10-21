@@ -16,6 +16,120 @@ use crate::{
     scale_v2_orientation_turn,
 };
 
+/// Explicit action-selection policy for a standalone founder.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ExperimentMode {
+    /// Frozen predictive founder semantics (the default and legacy baseline).
+    #[default]
+    PredictiveBaseline,
+    /// Deterministic, intrinsic-only causal experimentation.
+    AffordanceDiscovery,
+}
+
+const AFFORDANCE_ACTIONS: usize = 12;
+const OUTCOME_FEATURES: usize = 6;
+
+/// Checkpointed bounded statistics for intrinsic action discovery.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AffordanceLearner {
+    /// Number of observed outcomes per experiment.
+    pub visits: [u16; AFFORDANCE_ACTIONS],
+    /// Running absolute outcome changes per experiment.
+    pub change: [[u16; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+    /// Previous bounded body outcome.
+    pub previous_outcome: [i16; OUTCOME_FEATURES],
+    /// Last selected experiment, used only to discourage immediate repetition.
+    pub previous_action: usize,
+}
+
+impl Default for AffordanceLearner {
+    fn default() -> Self {
+        Self {
+            visits: [0; AFFORDANCE_ACTIONS],
+            change: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+            previous_outcome: [0; OUTCOME_FEATURES],
+            previous_action: AFFORDANCE_ACTIONS,
+        }
+    }
+}
+
+impl AffordanceLearner {
+    fn outcome(observation: &EnvironmentObservation) -> [i16; OUTCOME_FEATURES] {
+        let body = observation.body;
+        [
+            i16::try_from(observation.senses.touch).unwrap_or_default(),
+            observation.senses.acceleration,
+            i16::try_from(body.eye_pitch).unwrap_or_default() - 128,
+            i16::try_from(body.grounded).unwrap_or_default(),
+            body.vertical_motion,
+            i16::try_from(body.hand_contact).unwrap_or_default(),
+        ]
+    }
+
+    fn observe(&mut self, observation: &EnvironmentObservation) {
+        if self.previous_action >= AFFORDANCE_ACTIONS {
+            self.previous_outcome = Self::outcome(observation);
+            return;
+        }
+        let now = Self::outcome(observation);
+        let count = self.visits[self.previous_action].saturating_add(1);
+        self.visits[self.previous_action] = count;
+        for (feature, value) in now.into_iter().enumerate() {
+            let delta = value
+                .saturating_sub(self.previous_outcome[feature])
+                .unsigned_abs();
+            let old = self.change[self.previous_action][feature];
+            self.change[self.previous_action][feature] =
+                old.saturating_add((delta.saturating_sub(old)) / count);
+        }
+        self.previous_outcome = now;
+    }
+
+    fn select(&mut self, seed: u64, tick: u64) -> (PrimitiveAction, u32) {
+        let mut best = 0;
+        let mut best_score = 0_u32;
+        for candidate in 0..AFFORDANCE_ACTIONS {
+            let novelty = 65_535_u32 / (u32::from(self.visits[candidate]) + 1);
+            let progress: u32 = self.change[candidate]
+                .iter()
+                .map(|value| u32::from(*value))
+                .sum();
+            let repeat_cost = u32::from(candidate == self.previous_action) * 32_768;
+            // Seed-keyed tie breaking is endogenous deterministic initialization, not a schedule.
+            let tie = (derive(seed, tick, candidate as u64, 0x4146_464F) & 0xff) as u32;
+            let score = novelty
+                .saturating_add(progress)
+                .saturating_add(tie)
+                .saturating_sub(repeat_cost);
+            if score > best_score {
+                best = candidate;
+                best_score = score;
+            }
+        }
+        self.previous_action = best;
+        (affordance_action(best), best_score)
+    }
+}
+
+fn affordance_action(index: usize) -> PrimitiveAction {
+    let mut action = PrimitiveAction::default();
+    match index {
+        0 => action.thrust = 256,
+        1 => action.thrust = -256,
+        2 => action.turn = 256,
+        3 => action.turn = -256,
+        4 => action.strafe = 256,
+        5 => action.strafe = -256,
+        6 => action.look_pitch = 256,
+        7 => action.look_pitch = -256,
+        8 => action.jump = 256,
+        9 => action.hand_pulse = 256,
+        10 => action.jaw = 256,
+        _ => action.acoustic = 256,
+    }
+    action
+}
+
 /// Frozen internal stores used by the external one-agent runtime.
 ///
 /// The defaults sit far enough above the founder reflex thresholds that receptor noise cannot
@@ -81,6 +195,12 @@ pub struct AgentRuntimeState {
     pub decision_tick: u64,
     /// Sequence number the next observation must carry.
     pub next_sequence: u64,
+    /// Selected policy; baseline remains the default and preserves V2 behavior.
+    #[serde(default)]
+    pub experiment_mode: ExperimentMode,
+    /// Exact intrinsic learner state when experiment mode is enabled.
+    #[serde(default)]
+    pub affordance: AffordanceLearner,
 }
 
 /// Rejected observation; the runtime state is unchanged.
@@ -130,8 +250,23 @@ impl AgentRuntime {
                 physiology: FrozenPhysiology::default(),
                 decision_tick: 0,
                 next_sequence: 0,
+                experiment_mode: ExperimentMode::PredictiveBaseline,
+                affordance: AffordanceLearner::default(),
             },
         )
+    }
+
+    /// Constructs a runtime with an explicit, versioned action-selection policy.
+    #[must_use]
+    pub fn new_with_mode(
+        seed: u64,
+        agent_id: u64,
+        developmental_config: BrainConfig,
+        mode: ExperimentMode,
+    ) -> Self {
+        let mut runtime = Self::new(seed, agent_id, developmental_config);
+        runtime.state.experiment_mode = mode;
+        runtime
     }
 
     /// Restores an exact runtime state.
@@ -187,6 +322,15 @@ impl AgentRuntime {
                 decision_tick: self.state.decision_tick,
                 observation,
                 action: PrimitiveAction::default(),
+                baseline_action: PrimitiveAction::default(),
+                intrinsic_score: 0,
+                affordance_fingerprint: if self.state.experiment_mode
+                    == ExperimentMode::AffordanceDiscovery
+                {
+                    affordance_fingerprint(&self.state.affordance)
+                } else {
+                    0
+                },
                 brain_fingerprint: brain_fingerprint(&self.state.brain),
             });
         }
@@ -207,15 +351,46 @@ impl AgentRuntime {
             .brain
             .step(&self.state.developmental_config, &frame);
         let decision_tick = self.state.decision_tick;
+        let baseline_action = decode_motor_outputs(&step.outputs);
+        let (action, intrinsic_score, recorded_baseline) =
+            if self.state.experiment_mode == ExperimentMode::AffordanceDiscovery {
+                self.state.affordance.observe(&observation);
+                let (action, score) = self.state.affordance.select(self.seed, decision_tick);
+                (action, score, baseline_action)
+            } else {
+                (baseline_action, 0, PrimitiveAction::default())
+            };
         self.state.chemical_adaptation = adaptation;
         self.state.decision_tick += 1;
         Ok(EnvironmentTransition {
             decision_tick,
             observation,
-            action: decode_motor_outputs(&step.outputs),
+            action,
+            baseline_action: recorded_baseline,
+            intrinsic_score,
+            affordance_fingerprint: if self.state.experiment_mode
+                == ExperimentMode::AffordanceDiscovery
+            {
+                affordance_fingerprint(&self.state.affordance)
+            } else {
+                0
+            },
             brain_fingerprint: brain_fingerprint(&self.state.brain),
         })
     }
+}
+
+/// Stable fingerprint of all checkpointed intrinsic learner statistics.
+#[must_use]
+pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
+    let mut fingerprint = derive(0, learner.previous_action as u64, 0, 0x4146_4650);
+    for (action, count) in learner.visits.iter().enumerate() {
+        fingerprint = derive(fingerprint, u64::from(*count), action as u64, 0x5649_5349);
+        for (feature, value) in learner.change[action].iter().enumerate() {
+            fingerprint = derive(fingerprint, u64::from(*value), feature as u64, 0x4348_4745);
+        }
+    }
+    fingerprint
 }
 
 /// Returns a stable fingerprint of every field of a brain.
@@ -248,6 +423,8 @@ struct StateRepr {
     physiology: FrozenPhysiology,
     decision_tick: u64,
     next_sequence: u64,
+    experiment_mode: ExperimentMode,
+    affordance: AffordanceLearner,
 }
 
 impl From<AgentRuntimeState> for StateRepr {
@@ -265,6 +442,8 @@ impl From<AgentRuntimeState> for StateRepr {
             physiology: state.physiology,
             decision_tick: state.decision_tick,
             next_sequence: state.next_sequence,
+            experiment_mode: state.experiment_mode,
+            affordance: state.affordance,
         }
     }
 }
@@ -296,6 +475,8 @@ impl TryFrom<StateRepr> for AgentRuntimeState {
             physiology: repr.physiology,
             decision_tick: repr.decision_tick,
             next_sequence: repr.next_sequence,
+            experiment_mode: repr.experiment_mode,
+            affordance: repr.affordance,
         })
     }
 }
@@ -364,7 +545,9 @@ impl EnvironmentAdapter for FakeEnvironment {
         let observation = EnvironmentObservation {
             sequence: self.sequence,
             senses,
+            body: crate::environment::BodyProprioception::default(),
             capabilities: EnvironmentCapabilities {
+                body_contract_version: 0,
                 checkpoint_resume: false,
                 dead: DeadChannels {
                     chemicals: [true; CHEMICAL_RECEPTOR_COUNT],

@@ -77,9 +77,10 @@ and the `luanti` graphical client as the `observer` player at `127.0.0.1:30000`.
 `integrations/luanti/.observe-world`. The observer begins inside the room, aimed at the founder, and
 has normal movement, jumping, gravity, and mouse look for exploration; it remains non-privileged, so
 it cannot interact with the world. Server-side ceiling fixtures illuminate the room even on a fresh
-singlenode world. The glowing, amber-faced green founder
-is labelled `FOUNDER — Rust bridge controlled`; its applied motor
-values and Rust decision tick appear in the observer HUD. Stop the graphical client to cleanly
+singlenode world. The original CC0 blocky humanoid founder has an amber head and hands, green
+torso/arms, dark legs, and dark face cues; it is labelled
+`FOUNDER — Rust-controlled humanoid`. Its applied motor values and Rust decision tick appear in
+the observer HUD. Stop the graphical client to cleanly
 stop the local server and bridge.
 
 For a rendering and actuator check when the live founder happens to be still, change
@@ -89,7 +90,8 @@ actuator fixture after each successful Rust bridge response; it demonstrates ren
 not learned Rust motor output. `smoke` is reserved for the automated harness; only that mode
 enables the injected stall and timed server shutdown.
 
-The observer-only HUD labels the decision tick, server step, held command, request latency and
+The observer-only HUD labels the decision tick, server step, held command (including strafe,
+pitch, jump, and hand pulse), grounded state, generic hand contact, request latency and
 transport status; it also separates receptors used by the current V2 compression (green and
 brightness means plus interoception), live-but-unused channels (red, blue, direction), and dead
 channels (chemicals, vibration). Rust returns these values only in a top-level `diagnostics`
@@ -98,13 +100,18 @@ the Rust/server logs.
 
 Manual graphical checklist:
 
-1. In `observe`, confirm the labelled glowing founder is visible from the initial framing and that
-   the HUD decision tick and `Rust action applied` fields update.
+1. In `observe`, confirm the labelled humanoid is visible from the initial framing: it is
+   approximately 1.85 room nodes tall, with readable head, face cues, torso, arms/hands, and
+   legs. The nearby grey interaction cube is visibly smaller (0.4 nodes) and begins to the
+   founder's right. The HUD decision tick and `Rust action applied` fields update.
 2. Move and jump: the observer explores normally, while the founder remains a separately visible
    Rust-bridge-controlled entity.
-3. In `demo-motion`, confirm the founder turns/moves with its amber face leading. This is the
-   documented actuator fixture, not a learned-action claim.
-4. Stop `sim-luanti` and confirm the founder halts within 0.5 seconds.
+3. In `demo-motion`, confirm the founder turns/moves with its face leading and its legs/arms
+   swing from movement. The HUD separates baseline from intrinsic action.
+4. In `smoke`, the deterministic fixture sends one generic hand pulse into the sole nearby grey
+   physical cube; verify the hand-contact indication. This does not identify the object to Rust
+   or enable inventory, pickup, use, mining, placement, crafting, rewards, or steering.
+5. Stop `sim-luanti` and confirm the founder halts within 0.5 seconds.
 
 If the untrained founder holds a forward action into a wall, the configured `observer` may enter
 `/founder_reset`. This is explicitly an observer-only scene reset: it returns the body to the

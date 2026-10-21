@@ -43,7 +43,11 @@ pub fn decode_motor_outputs(outputs: &[i16; OUTPUTS]) -> environment::PrimitiveA
     environment::PrimitiveAction {
         thrust: (outputs[1] - outputs[2]).clamp(-256, 256),
         turn: (outputs[3] - outputs[0]).clamp(-256, 256),
+        strafe: 0,
+        look_pitch: 0,
+        jump: 0,
         jaw: outputs[4].clamp(0, 256).cast_unsigned(),
+        hand_pulse: 0,
         acoustic: outputs[5].max(0).cast_unsigned(),
         chemical: outputs[6].max(0).cast_unsigned(),
         visual: outputs[7].max(0).cast_unsigned(),
