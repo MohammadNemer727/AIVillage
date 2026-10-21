@@ -85,6 +85,10 @@ pub struct AffordanceConfig {
     pub recency_rate: u64,
     /// Largest curiosity an untried experiment can gather.
     pub recency_cap: u64,
+    /// Decisions a chosen experiment is held for before the next choice, like an infant's
+    /// bout of kicking. One chooses afresh every decision. Short bouts also bridge short delays
+    /// between an action and its consequence.
+    pub bout_length: u16,
 }
 
 impl Default for AffordanceConfig {
@@ -97,6 +101,7 @@ impl Default for AffordanceConfig {
             eligibility_span: 4,
             recency_rate: 4,
             recency_cap: 1_024,
+            bout_length: 3,
         }
     }
 }
@@ -121,6 +126,9 @@ impl AffordanceConfig {
         }
         if self.recency_cap > u64::from(u32::MAX / 4) {
             return Err("recency cap is out of range".to_owned());
+        }
+        if !(1..=64).contains(&self.bout_length) {
+            return Err("bout length must be between 1 and 64".to_owned());
         }
         Ok(())
     }
@@ -169,6 +177,9 @@ pub struct AffordanceLearner {
     /// Previous retinal view, so the next outcome can report how much the view changed.
     #[serde(default)]
     pub previous_view: [[u16; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
+    /// Decisions left in the current bout before the next choice.
+    #[serde(default)]
+    pub bout_remaining: u16,
 }
 
 const fn no_recent_actions() -> [usize; MAX_ELIGIBILITY_SPAN] {
@@ -198,6 +209,7 @@ impl AffordanceLearner {
             previous_action: AFFORDANCE_ACTIONS,
             recent_actions: no_recent_actions(),
             previous_view: [[0; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
+            bout_remaining: 0,
         }
     }
 
@@ -205,6 +217,9 @@ impl AffordanceLearner {
     /// outside its fixed tables.
     fn validate(&self) -> Result<(), String> {
         self.config.validate()?;
+        if self.bout_remaining >= self.config.bout_length {
+            return Err("affordance bout is out of range".to_owned());
+        }
         if self.previous_action > AFFORDANCE_ACTIONS
             || self
                 .recent_actions
@@ -370,8 +385,24 @@ impl AffordanceLearner {
         gap / OUTCOME_SCALE.cast_unsigned()
     }
 
+    fn interest(&self, action: usize) -> u32 {
+        match self.config.rule {
+            ScoringRule::Contingency => self.contingency(action),
+            ScoringRule::LearningProgress => self.learning_progress(action),
+        }
+    }
+
     fn select(&mut self, seed: u64, tick: u64) -> (PrimitiveAction, u32) {
         let config = self.config;
+        if self.bout_remaining > 0 && self.previous_action < AFFORDANCE_ACTIONS {
+            // Continue the current bout: the experiment is held, but its outcomes keep teaching.
+            self.bout_remaining -= 1;
+            let held = self.previous_action;
+            self.recent_actions.rotate_right(1);
+            self.recent_actions[0] = held;
+            self.last_tried[held] = tick;
+            return (affordance_action(held), self.interest(held));
+        }
         let mut best = 0;
         let mut best_score = 0_u32;
         for candidate in 0..AFFORDANCE_ACTIONS {
@@ -385,17 +416,17 @@ impl AffordanceLearner {
             let curiosity = u32::try_from(since.min(config.recency_cap)).unwrap_or_default();
             // Seed-keyed tie breaking is endogenous deterministic initialization, not a schedule.
             let tie = (derive(seed, tick, candidate as u64, 0x4146_464F) & 0xff) as u32;
-            let interest = match config.rule {
-                ScoringRule::Contingency => self.contingency(candidate),
-                ScoringRule::LearningProgress => self.learning_progress(candidate),
-            };
-            let score = interest.saturating_add(curiosity).saturating_add(tie);
+            let score = self
+                .interest(candidate)
+                .saturating_add(curiosity)
+                .saturating_add(tie);
             if score > best_score {
                 best = candidate;
                 best_score = score;
             }
         }
         self.previous_action = best;
+        self.bout_remaining = config.bout_length - 1;
         self.recent_actions.rotate_right(1);
         self.recent_actions[0] = best;
         self.last_tried[best] = tick;
@@ -707,6 +738,8 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
         config.eligibility_span as u64,
         config.recency_rate,
         config.recency_cap,
+        u64::from(config.bout_length),
+        u64::from(learner.bout_remaining),
     ]
     .into_iter()
     .enumerate()
@@ -1190,6 +1223,25 @@ mod tests {
         });
         assert_eq!(default, run(AffordanceConfig::default()));
         assert_ne!(default, progress);
+    }
+
+    #[test]
+    fn chosen_experiments_are_held_for_a_bout() {
+        let mut runtime = affordance_runtime(AffordanceConfig {
+            bout_length: 3,
+            ..AffordanceConfig::default()
+        });
+        let mut environment = FakeEnvironment::new(71);
+        let actions: Vec<_> = (0..30)
+            .map(|_| {
+                let transition = runtime.step(environment.observe()).expect("in sequence");
+                environment.act(&transition.action);
+                transition.action
+            })
+            .collect();
+        for bout in actions.chunks(3) {
+            assert!(bout.iter().all(|action| *action == bout[0]), "{bout:?}");
+        }
     }
 
     #[test]

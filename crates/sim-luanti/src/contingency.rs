@@ -497,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn delayed_contingency_fades_with_delay_as_in_infants() {
+    fn short_delays_are_learned_and_long_delays_are_not() {
         let report = run();
         let delayed = |delay| {
             &report
@@ -509,9 +509,16 @@ mod tests {
                 .expect("every delay is run")
                 .cell
         };
-        assert!(delayed(0).shows_contingency);
+        // Short delays are bridged (bouts repeat the cause while its consequence arrives); long
+        // delays are not.
+        for short in [0, 1, 2] {
+            assert!(delayed(short).shows_contingency, "delay {short}");
+            assert!(
+                delayed(short).contingent[1].anticipation
+                    > 4 * delayed(8).contingent[1].anticipation,
+                "delay {short}"
+            );
+        }
         assert!(!delayed(8).shows_contingency);
-        assert!(delayed(1).contingent[1].anticipation > delayed(8).contingent[1].anticipation);
-        assert!(delayed(0).contingent[1].anticipation > delayed(1).contingent[1].anticipation);
     }
 }

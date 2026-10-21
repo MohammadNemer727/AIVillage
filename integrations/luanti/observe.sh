@@ -29,6 +29,8 @@ default_privs =
 ai_bridge_mode = observe
 ai_bridge_observer = observer
 EOF
+# Watching speed: seconds per founder decision (experiments use 0.1).
+printf 'ai_bridge_step_seconds = %s\n' "${OBSERVE_STEP_SECONDS:-0.25}" >>"$world/minetest.conf"
 
 bridge_log="$world/bridge.log"
 trace_log="$world/bridge-trace.ndjson"

@@ -19,22 +19,22 @@ python3 integrations/luanti/tools/analyze_learning.py docs/luanti-learning-run.m
 
 | condition | phase | decisions | hand pulses | contacts | cube in view | looking down |
 |---|---|---:|---:|---:|---:|---:|
-| free | baseline | 800 | 7.9 | 0.0 | 0.0 | 24.5 |
-| free | connected | 1600 | 16.0 | 2.9 | 3.9 | 19.5 |
-| free | extinction | 800 | 8.0 | 0.0 | 0.0 | 22.4 |
-| inert | baseline | 800 | 7.1 | 0.0 | 0.0 | 24.2 |
-| inert | connected | 1600 | 7.7 | 0.0 | 0.0 | 33.4 |
-| inert | extinction | 800 | 7.6 | 0.0 | 0.0 | 25.1 |
+| free | baseline | 800 | 6.8 | 0.0 | 0.0 | 30.0 |
+| free | connected | 1600 | 15.4 | 4.8 | 2.4 | 15.4 |
+| free | extinction | 800 | 8.1 | 0.0 | 0.0 | 16.4 |
+| inert | baseline | 800 | 6.8 | 0.0 | 0.0 | 30.0 |
+| inert | connected | 1600 | 6.9 | 0.0 | 0.7 | 19.5 |
+| inert | extinction | 800 | 7.9 | 0.0 | 0.0 | 23.0 |
 
 ## Per run (hand pulses per 100 decisions)
 
 | run | condition | seed | baseline | connected | extinction |
 |---|---|---:|---:|---:|---:|
-| free-seed1 | free | 1 | 5.5 | 15.2 | 5.5 |
-| free-seed2 | free | 2 | 9.5 | 17.0 | 8.0 |
-| free-seed3 | free | 3 | 11.0 | 15.5 | 8.5 |
-| free-seed4 | free | 4 | 5.5 | 16.2 | 10.0 |
-| inert-seed1 | inert | 1 | 7.0 | 6.2 | 6.0 |
-| inert-seed2 | inert | 2 | 8.0 | 7.0 | 8.0 |
-| inert-seed3 | inert | 3 | 7.0 | 8.2 | 8.0 |
-| inert-seed4 | inert | 4 | 6.5 | 9.2 | 8.5 |
+| free-seed1 | free | 1 | 6.0 | 12.8 | 7.5 |
+| free-seed2 | free | 2 | 7.5 | 15.8 | 8.5 |
+| free-seed3 | free | 3 | 7.5 | 17.2 | 9.0 |
+| free-seed4 | free | 4 | 6.0 | 15.8 | 7.5 |
+| inert-seed1 | inert | 1 | 6.0 | 6.8 | 7.5 |
+| inert-seed2 | inert | 2 | 7.5 | 6.8 | 9.0 |
+| inert-seed3 | inert | 3 | 7.5 | 6.8 | 7.5 |
+| inert-seed4 | inert | 4 | 6.0 | 7.5 | 7.5 |

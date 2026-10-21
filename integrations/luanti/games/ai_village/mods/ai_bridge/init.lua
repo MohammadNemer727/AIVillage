@@ -2,7 +2,10 @@
 -- No coordinates, node names, recipes, rewards, or world facts cross into Rust.
 local palette = dofile(minetest.get_modpath("ai_bridge") .. "/palette_generated.lua").colours
 local protocol, agent_id = 3, 1
-local step_seconds, request_timeout = 0.1, 0.5
+-- Seconds per decision. Experiments use 0.1; a slower clock makes behaviour easier to watch.
+local step_seconds = math.max(0.05, math.min(2,
+  tonumber(minetest.settings:get("ai_bridge_step_seconds") or "") or 0.1))
+local request_timeout = 0.5
 local endpoint = minetest.settings:get("ai_bridge_endpoint") or "http://127.0.0.1:8481/v1/transition"
 local http = minetest.request_http_api()
 local mode = minetest.settings:get("ai_bridge_mode") or "observe"

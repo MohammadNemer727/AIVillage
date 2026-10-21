@@ -240,8 +240,8 @@ peer-reviewed venue was listed when checked.
 
 As of 2026-10-21, the founder and its test harness implement these lessons. Results are on
 deterministic synthetic fixtures, and the core contingency result is confirmed in real Luanti: with
-a pushable cube the founder's hand pulses rise from 7.9 to 16.0 per 100 decisions and return to
-8.0 in extinction, while an inert cube leaves them flat (see
+a pushable cube the founder's hand pulses rise from 6.8 to 15.4 per 100 decisions and return to
+8.1 in extinction, while an inert cube leaves them flat (see
 [`luanti-learning-run.md`](luanti-learning-run.md)).
 
 | Lesson | Source | Implementation | Result |
@@ -254,6 +254,7 @@ a pushable cube the founder's hand pulses rise from 7.9 to 16.0 per 100 decision
 | Vision of objects, not only walls | Infant mobile studies are visual | Luanti eye rays see physical entities; learner tracks largest ray motion and change | Seen-only paradigm passes |
 | Memory that fades | Spisak et al., ICDL 2025 | Unused experiment memories drift to normal over about 32 decisions | Extinction ends instead of dragging on |
 | Delayed consequences | Millar 1972; MIMo v2 sensorimotor delays | Eligibility trace over the last 4 experiments | Learning fades with delay, as in infants |
+| Bouts of repeated movement | Infant kicking in bouts (Rovee-Collier; Fujihira et al. 2025) | Each chosen experiment is held for 3 decisions | Delays of up to 2 decisions are learned on 8/8 seeds; in Luanti 31% of pushes reach the cube, up from 18% |
 | Report curves, strategies and anticipation, not one rate | Fujihira et al. 2025; Rosales et al. 2025; Spisak et al. 2026 | Protocol harness | Per-seed curves, strategy mix and anticipation in every report |
 | Do not judge the extinction burst as failure | Xu & Triesch 2026; Diprossimo et al. 2026 | Verdict uses late extinction only | Burst is reported, not penalized |
 
