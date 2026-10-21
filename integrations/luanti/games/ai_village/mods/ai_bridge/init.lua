@@ -41,9 +41,9 @@ local founder_animations = {
 -- collisionbox bottoms directly on the floor node's upper face (y=0.5).
 local founder_spawn = {x = 0, y = 0.5, z = 0}
 local generic_spawn = {x = 1.2, y = 0.7, z = 0}
--- In learning runs the cube hangs at the founder's eye height, like a mobile in view: the eye
--- rays start 1 node above the founder's feet (y = 1.5), and the cube has no gravity. After a
--- push it swings back to this place a few decisions later.
+-- In learning runs and while observing, the cube hangs at the founder's eye height, like a
+-- mobile in view: the eye rays start 1 node above the founder's feet (y = 1.5), and the cube
+-- has no gravity. After a push it swings back to this place a few decisions later.
 local learn_cube_spawn = {x = 1.2, y = 1.5, z = 0}
 local learn_cube_return_decisions = 4
 local generic_visual_scale = 0.4
@@ -98,7 +98,8 @@ minetest.register_node("ai_bridge:observer_light", {
 local state = { sequence = 0, server_step = 0, pending = false, pending_at = 0, request_token = 0,
   held = { thrust = 0, turn = 0, strafe = 0, look_pitch = 0, jump = 0, jaw = 0, hand_pulse = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} },
   applied_step = 0, applied_steps = 0, elapsed = 0, previous_velocity = {x = 0, z = 0}, touch = 0, grounded = 0, hand_contact = 0, eye_pitch = 0, status = "healthy",
-  smoke = mode == "smoke", learn_decisions = 0, learn_phase = nil, learn_cube = nil, diagnostics = nil, latency_ms = 0, founder = nil, body_parts = {},
+  smoke = mode == "smoke", learn_decisions = 0, learn_phase = nil, learn_cube = nil,
+  decisions = 0, pushes = 0, hits = 0, pushed_at = nil, diagnostics = nil, latency_ms = 0, founder = nil, body_parts = {},
   observer_resets = 0, safety_resets = 0, last_safety_reset = "none" }
 
 local function smoke_log(event)
@@ -183,6 +184,12 @@ local function update_observer_hud()
       .. (curious and ("   (interest " .. tostring(diagnostics.intrinsic_score or 0) .. ")") or ""), 0xFFFFFF},
     {"Body:  " .. (state.grounded > 0 and "on the ground" or "in the air")
       .. "  |  hand contact: " .. (state.hand_contact > 0 and "YES" or "no"), 0xFFFFFF},
+    {(state.pushed_at and state.decisions - state.pushed_at < 3) and ">>> HIT! the push moved the cube <<<"
+      or ((state.held or {}).hand_pulse or 0) > 0 and ">>> PUSHING <<<" or " ",
+      (state.pushed_at and state.decisions - state.pushed_at < 3) and 0x7CFC8C or 0xFFC857},
+    {"Pushes:  " .. tostring(state.pushes) .. "  |  hits: " .. tostring(state.hits)
+      .. (state.pushes > 0 and ("  (" .. tostring(math.floor(100 * state.hits / state.pushes + 0.5)) .. "%)") or ""),
+      0xFFFFFF},
     {"Link:  " .. string.lower(transport_name[state.status]) .. "  |  " .. tostring(state.latency_ms)
       .. " ms  |  decision " .. tostring(diagnostics.decision_tick or "—"), 0xB8C4CE},
     {"Resets:  observer " .. tostring(state.observer_resets) .. "  |  containment "
@@ -252,6 +259,16 @@ local function sense(self, dt)
   return senses
 end
 
+-- Returns a pushed hanging cube to its place once enough decisions have passed.
+local function swing_back(cube)
+  if cube and cube:get_pos() and state.pushed_at
+      and state.decisions - state.pushed_at >= learn_cube_return_decisions then
+    cube:move_to(learn_cube_spawn, false)
+    cube:set_velocity({x = 0, y = 0, z = 0})
+    state.pushed_at = nil
+  end
+end
+
 local function learn_log(event)
   minetest.log("action", "AI_BRIDGE_LEARN " .. minetest.write_json(event))
 end
@@ -288,12 +305,7 @@ local function learn_step()
     cube:remove()
     state.learn_cube = nil
   end
-  if state.learn_cube and state.learn_pushed_at
-      and decision - state.learn_pushed_at >= learn_cube_return_decisions then
-    state.learn_cube:move_to(learn_cube_spawn, false)
-    state.learn_cube:set_velocity({x = 0, y = 0, z = 0})
-    state.learn_pushed_at = nil
-  end
+  swing_back(state.learn_cube)
   if (decision - 1) % learn_trial == 0 and founder and founder:get_pos() then
     founder:move_to(founder_spawn, false)
     founder:set_velocity({x = 0, y = 0, z = 0})
@@ -347,6 +359,8 @@ local function send_transition(self, dt)
       zero_action("rejected") return
     end
     state.held, state.status = reply.action, "healthy"
+    state.decisions = state.decisions + 1
+    if (state.held.hand_pulse or 0) > 0 then state.pushes = state.pushes + 1 end
     state.diagnostics = reply.diagnostics
     state.latency_ms = math.floor((minetest.get_us_time() - state.pending_at) / 1000 + 0.5)
     if scripted then
@@ -366,6 +380,7 @@ local function send_transition(self, dt)
         hand_pulse = state.held.hand_pulse})
     end
     if learn then learn_step() end
+    if mode == "observe" then swing_back(state.observe_cube) end
     state.sequence = state.sequence + 1
     state.applied_step, state.applied_steps, state.elapsed = state.server_step, 0, 0
     update_observer_hud()
@@ -381,12 +396,16 @@ local function update_humanoid_pose(object, action)
   -- This mesh can show one native animation at a time.  Locomotion therefore wins over
   -- the mine frame: a nonzero movement command (or residual physical movement) is always
   -- visibly walking, while hand is shown only for a nonzero pulse while stationary.
+  -- While observing, a push wins over walking instead, so every push is visible.
   local name = "idle"
   local velocity = object:get_velocity()
   local moving = math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z) > 0.08
-  if (action.thrust or 0) ~= 0 or (action.strafe or 0) ~= 0 or moving then
+  local pushing = (action.hand_pulse or 0) > 0
+  if pushing and mode == "observe" then
+    name = "hand"
+  elseif (action.thrust or 0) ~= 0 or (action.strafe or 0) ~= 0 or moving then
     name = "walk"
-  elseif (action.hand_pulse or 0) > 0 then
+  elseif pushing then
     name = "hand"
   end
   if state.founder_animation == name then return end
@@ -483,7 +502,7 @@ minetest.register_entity("ai_bridge:founder", {
           local entity = object:get_luaentity()
           if entity and entity.name == "ai_bridge:test_object" and not learn_inert then
             object:add_velocity({x = forward.x * 3, y = 1, z = forward.z * 3}); state.hand_contact = 255
-            state.learn_pushed_at = state.learn_decisions
+            state.pushed_at, state.hits = state.decisions, state.hits + 1
             smoke_log({event = "hand_contact", impulse = 3}); break
           end
         end
@@ -557,6 +576,8 @@ minetest.register_on_mods_loaded(function()
         for _, x in ipairs({-5, 5}) do for _, y in ipairs({-1, 5}) do for _, z in ipairs({-5, 5}) do
           minetest.forceload_block({x = x, y = y, z = z}, true)
         end end end
+      elseif mode == "observe" then
+        state.observe_cube = minetest.add_entity(learn_cube_spawn, "ai_bridge:test_object")
       else
         minetest.add_entity(generic_spawn, "ai_bridge:test_object")
       end
