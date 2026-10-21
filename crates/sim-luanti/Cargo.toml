@@ -1,0 +1,19 @@
+[package]
+name = "sim-luanti"
+description = "Loopback-only HTTP bridge between Luanti and the deterministic agent runtime."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sim-core = { path = "../sim-core" }
+sim-format = { path = "../sim-format" }
+tiny_http.workspace = true

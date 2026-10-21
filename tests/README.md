@@ -34,3 +34,22 @@ Regenerate only after an intentional behaviour change:
 ```sh
 UPDATE_AGENT_GOLDEN=1 cargo test -p sim-format --test agent_runtime_golden
 ```
+
+## Luanti headless bridge
+
+The original minimal game and loopback-only Lua adapter live in
+[`../integrations/luanti`](../integrations/luanti). Its generated colour lookup must be current:
+
+```sh
+python3 integrations/luanti/tools/generate_palette.py --check
+```
+
+See [`../integrations/luanti/FEDORA_PACKAGES.md`](../integrations/luanti/FEDORA_PACKAGES.md) for
+the Fedora package/version lock and user-terminal-only install commands. With the pinned server
+available, start `cargo run -p sim-luanti`, then run `integrations/luanti/ci/headless-smoke.sh`.
+Set `SIM_LUANTI_TRACE=trace.ndjson` to record accepted post-action transitions for exact Rust
+runtime replay; live Luanti physics itself is not claimed to be bit-identical.
+Acceleration is intentionally a bounded signed receptor: horizontal finite differences are scaled
+at 4 m/s² per full-scale unit and clamped to `[-255, 255]`. This can saturate during collisions or
+gravity-adjacent motion; changing the fixed receptor mapping requires a versioned V2 contract
+decision rather than a bridge-local adjustment.

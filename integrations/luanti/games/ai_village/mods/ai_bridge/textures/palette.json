@@ -1,0 +1,6 @@
+{
+  "ai_bridge:floor": [88, 104, 120],
+  "ai_bridge:wall_x": [190, 82, 58],
+  "ai_bridge:wall_z": [56, 150, 104],
+  "ai_bridge:ceiling": [216, 196, 118]
+}
