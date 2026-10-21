@@ -260,16 +260,7 @@ pub fn run() -> ContingencyReport {
     let delays = DELAYS
         .iter()
         .flat_map(|delay| {
-            [
-                Controller::Random,
-                Controller::AffordanceDiscovery,
-                Controller::LearningProgress,
-                Controller::ExpectileDiscovery,
-                Controller::LearnedSituations,
-                Controller::PerActionSituations,
-                Controller::SceneSituations,
-            ]
-            .map(|controller| DelayCell {
+            [Controller::Random, Controller::AffordanceDiscovery].map(|controller| DelayCell {
                 delay: *delay,
                 cell: cell(
                     Paradigm::Standard,

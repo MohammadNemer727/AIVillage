@@ -236,6 +236,18 @@ peer-reviewed venue was listed when checked.
     (Spisak et al., *Science Robotics*).
   - Memory span and motor noise matter: Spisak et al., ICDL 2025 and IEEE TCDS 2026.
 
+### Parked learner experiments
+
+On 2026-10-21 a series of learner extensions was built and evaluated: designed and learned
+situations, per-experiment situations, scenes learned from raw senses with foveation and
+attention, planning over learned scenes, CAIS-style outcome distributions and learning-progress
+curiosity. Each produced small measured effects but none made the founder visibly interact with
+its world: in observe mode the default founder walked about and touched the cube about once per
+600 decisions. They were removed from the code and remain recoverable at the git tag
+`experiments-2026-10-21`; the rows below record what each did. The next direction is to give
+the founder real bodily needs (its physiology is frozen in the Luanti bridge) and a world in
+which it can meet them, so that its learning serves something it wants.
+
 ### What AI Village has adopted
 
 As of 2026-10-21, the founder and its test harness implement these lessons. Results are on

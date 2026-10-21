@@ -14,96 +14,24 @@ Anticipation is the learner's expected contact after a hand pulse, as distance f
 | Standard | Random | Yoked | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Standard | AffordanceDiscovery | Contingent | 5.8 | 17.9 | 14.0 | 7.8 | 138 | 0 → 95 → 60 → 4 |
 | Standard | AffordanceDiscovery | Yoked | 5.8 | 7.0 | 7.8 | 7.8 | 138 | 0 → 24 → 32 → 4 |
-| Standard | LearningProgress | Contingent | 7.4 | 14.4 | 6.2 | 7.0 | 111 | 0 → 85 → 56 → 6 |
-| Standard | LearningProgress | Yoked | 7.4 | 7.0 | 8.5 | 7.8 | 111 | 0 → 23 → 25 → 2 |
-| Standard | ContextDiscovery | Contingent | 5.8 | 20.3 | 17.1 | 8.5 | 156 | 0 → 99 → 46 → 3 |
-| Standard | ContextDiscovery | Yoked | 5.8 | 8.2 | 6.2 | 7.0 | 156 | 0 → 26 → 32 → 4 |
-| Standard | ExpectileDiscovery | Contingent | 6.2 | 13.2 | 12.5 | 7.8 | 102 | 0 → 77 → 49 → 4 |
-| Standard | ExpectileDiscovery | Yoked | 6.2 | 7.0 | 7.8 | 7.8 | 102 | 0 → 16 → 24 → 2 |
-| Standard | LearnedSituations | Contingent | 5.8 | 16.7 | 11.7 | 8.5 | 129 | 0 → 94 → 54 → 4 |
-| Standard | LearnedSituations | Yoked | 5.8 | 6.2 | 7.0 | 7.8 | 129 | 0 → 22 → 22 → 3 |
-| Standard | PerActionSituations | Contingent | 5.8 | 16.7 | 12.5 | 7.0 | 129 | 0 → 94 → 50 → 4 |
-| Standard | PerActionSituations | Yoked | 5.8 | 7.0 | 4.6 | 6.2 | 129 | 0 → 22 → 26 → 3 |
-| Standard | SceneSituations | Contingent | 5.8 | 17.9 | 14.0 | 7.8 | 138 | 0 → 95 → 60 → 4 |
-| Standard | SceneSituations | Yoked | 5.8 | 7.0 | 7.8 | 7.8 | 138 | 0 → 24 → 32 → 4 |
-| Standard | ScenePlanner | Contingent | 5.8 | 17.9 | 14.0 | 10.9 | 138 | 0 → 95 → 60 → 4 |
-| Standard | ScenePlanner | Yoked | 5.8 | 7.0 | 7.8 | 7.0 | 138 | 0 → 24 → 32 → 4 |
-| Standard | FovealPlanner | Contingent | 5.8 | 18.3 | 17.4 | 11.1 | 141 | 0 → 95 → 56 → 3 |
-| Standard | FovealPlanner | Yoked | 5.8 | 7.0 | 8.0 | 8.0 | 141 | 0 → 24 → 29 → 4 |
-| Standard | SalientPlanner | Contingent | 5.8 | 18.3 | 17.4 | 11.1 | 141 | 0 → 95 → 56 → 3 |
-| Standard | SalientPlanner | Yoked | 5.8 | 7.0 | 8.0 | 8.0 | 141 | 0 → 24 → 29 → 4 |
 | Inverted | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Inverted | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Inverted | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Inverted | Random | Yoked | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Inverted | AffordanceDiscovery | Contingent | 5.8 | 17.9 | 14.0 | 7.8 | 138 | 0 → 96 → 61 → 5 |
 | Inverted | AffordanceDiscovery | Yoked | 5.8 | 7.0 | 7.8 | 7.8 | 138 | 0 → 25 → 33 → 5 |
-| Inverted | LearningProgress | Contingent | 7.4 | 14.4 | 6.2 | 7.0 | 111 | 0 → 86 → 57 → 7 |
-| Inverted | LearningProgress | Yoked | 7.4 | 7.0 | 8.5 | 7.8 | 111 | 0 → 24 → 26 → 3 |
-| Inverted | ContextDiscovery | Contingent | 5.8 | 20.3 | 17.1 | 8.5 | 156 | 0 → 100 → 47 → 4 |
-| Inverted | ContextDiscovery | Yoked | 5.8 | 8.2 | 6.2 | 7.0 | 156 | 0 → 27 → 33 → 5 |
-| Inverted | ExpectileDiscovery | Contingent | 6.2 | 13.2 | 12.5 | 7.8 | 102 | 0 → 78 → 50 → 5 |
-| Inverted | ExpectileDiscovery | Yoked | 6.2 | 7.0 | 7.8 | 7.8 | 102 | 0 → 17 → 25 → 3 |
-| Inverted | LearnedSituations | Contingent | 5.8 | 16.7 | 11.7 | 8.5 | 129 | 0 → 95 → 55 → 5 |
-| Inverted | LearnedSituations | Yoked | 5.8 | 6.2 | 7.0 | 7.8 | 129 | 0 → 23 → 23 → 4 |
-| Inverted | PerActionSituations | Contingent | 5.8 | 16.7 | 12.5 | 7.0 | 129 | 0 → 95 → 51 → 5 |
-| Inverted | PerActionSituations | Yoked | 5.8 | 7.0 | 4.6 | 6.2 | 129 | 0 → 23 → 27 → 4 |
-| Inverted | SceneSituations | Contingent | 5.8 | 17.9 | 14.0 | 7.8 | 138 | 0 → 96 → 61 → 5 |
-| Inverted | SceneSituations | Yoked | 5.8 | 7.0 | 7.8 | 7.8 | 138 | 0 → 25 → 33 → 5 |
-| Inverted | ScenePlanner | Contingent | 5.8 | 17.9 | 14.0 | 10.9 | 138 | 0 → 96 → 61 → 5 |
-| Inverted | ScenePlanner | Yoked | 5.8 | 7.0 | 7.8 | 7.0 | 138 | 0 → 25 → 33 → 5 |
-| Inverted | FovealPlanner | Contingent | 5.8 | 18.3 | 17.4 | 11.1 | 141 | 0 → 96 → 57 → 4 |
-| Inverted | FovealPlanner | Yoked | 5.8 | 7.0 | 8.0 | 8.0 | 141 | 0 → 25 → 30 → 5 |
-| Inverted | SalientPlanner | Contingent | 5.8 | 18.3 | 17.4 | 11.1 | 141 | 0 → 96 → 57 → 4 |
-| Inverted | SalientPlanner | Yoked | 5.8 | 7.0 | 8.0 | 8.0 | 141 | 0 → 25 → 30 → 5 |
 | Bimodal | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Bimodal | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Bimodal | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Bimodal | Random | Yoked | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Bimodal | AffordanceDiscovery | Contingent | 5.8 | 19.9 | 14.8 | 4.6 | 153 | 0 → 13 → 10 → 1 |
 | Bimodal | AffordanceDiscovery | Yoked | 5.8 | 7.8 | 8.5 | 5.4 | 153 | 0 → 4 → 6 → 1 |
-| Bimodal | LearningProgress | Contingent | 7.4 | 18.7 | 7.8 | 14.8 | 144 | 0 → 16 → 13 → 1 |
-| Bimodal | LearningProgress | Yoked | 7.4 | 6.6 | 7.8 | 6.2 | 144 | 0 → 4 → 4 → 0 |
-| Bimodal | ContextDiscovery | Contingent | 5.8 | 18.3 | 13.2 | 7.8 | 141 | 0 → 12 → 8 → 1 |
-| Bimodal | ContextDiscovery | Yoked | 5.8 | 7.0 | 8.5 | 6.2 | 141 | 0 → 3 → 5 → 0 |
-| Bimodal | ExpectileDiscovery | Contingent | 6.2 | 11.3 | 8.5 | 7.0 | 87 | 0 → 13 → 11 → 1 |
-| Bimodal | ExpectileDiscovery | Yoked | 6.2 | 7.8 | 7.0 | 7.0 | 87 | 0 → 2 → 5 → 1 |
-| Bimodal | LearnedSituations | Contingent | 5.8 | 19.1 | 10.9 | 8.5 | 147 | 0 → 14 → 8 → 1 |
-| Bimodal | LearnedSituations | Yoked | 5.8 | 7.4 | 6.2 | 6.2 | 147 | 0 → 4 → 4 → 0 |
-| Bimodal | PerActionSituations | Contingent | 5.8 | 19.5 | 13.2 | 5.4 | 150 | 0 → 13 → 10 → 1 |
-| Bimodal | PerActionSituations | Yoked | 5.8 | 7.0 | 5.4 | 7.0 | 150 | 0 → 3 → 4 → 1 |
-| Bimodal | SceneSituations | Contingent | 5.8 | 19.9 | 14.8 | 6.2 | 153 | 0 → 13 → 10 → 1 |
-| Bimodal | SceneSituations | Yoked | 5.8 | 7.8 | 8.5 | 5.4 | 153 | 0 → 4 → 6 → 1 |
-| Bimodal | ScenePlanner | Contingent | 5.8 | 21.8 | 28.1 | 9.6 | 168 | 0 → 14 → 8 → 1 |
-| Bimodal | ScenePlanner | Yoked | 5.8 | 7.0 | 7.8 | 5.4 | 168 | 0 → 4 → 4 → 1 |
-| Bimodal | FovealPlanner | Contingent | 5.8 | 20.4 | 37.2 | 16.4 | 157 | 0 → 12 → 5 → 0 |
-| Bimodal | FovealPlanner | Yoked | 5.8 | 7.4 | 7.8 | 6.2 | 157 | 0 → 4 → 3 → 0 |
-| Bimodal | SalientPlanner | Contingent | 5.8 | 20.4 | 37.2 | 16.4 | 157 | 0 → 12 → 5 → 0 |
-| Bimodal | SalientPlanner | Yoked | 5.8 | 7.4 | 7.8 | 6.2 | 157 | 0 → 4 → 3 → 0 |
 | Seen | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Seen | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Seen | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Seen | Random | Yoked | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Seen | AffordanceDiscovery | Contingent | 6.2 | 12.5 | 10.1 | 6.2 | 96 | 8 → 13 → 9 → 0 |
 | Seen | AffordanceDiscovery | Yoked | 6.2 | 6.6 | 6.2 | 5.4 | 96 | 8 → 4 → 4 → 0 |
-| Seen | LearningProgress | Contingent | 7.4 | 11.7 | 8.5 | 5.4 | 90 | 8 → 12 → 9 → 0 |
-| Seen | LearningProgress | Yoked | 7.4 | 6.6 | 7.8 | 7.0 | 90 | 8 → 4 → 4 → 0 |
-| Seen | ContextDiscovery | Contingent | 6.2 | 12.8 | 12.5 | 5.4 | 99 | 6 → 13 → 9 → 0 |
-| Seen | ContextDiscovery | Yoked | 6.2 | 6.2 | 7.0 | 4.6 | 99 | 6 → 3 → 6 → 0 |
-| Seen | ExpectileDiscovery | Contingent | 6.2 | 8.9 | 7.0 | 6.2 | 69 | 9 → 11 → 7 → 0 |
-| Seen | ExpectileDiscovery | Yoked | 6.2 | 7.8 | 7.8 | 6.2 | 69 | 9 → 4 → 3 → 0 |
-| Seen | LearnedSituations | Contingent | 6.2 | 11.3 | 10.1 | 4.6 | 87 | 9 → 12 → 8 → 0 |
-| Seen | LearnedSituations | Yoked | 6.2 | 5.8 | 7.8 | 3.1 | 87 | 9 → 4 → 4 → 0 |
-| Seen | PerActionSituations | Contingent | 6.2 | 10.1 | 7.0 | 7.0 | 78 | 9 → 11 → 8 → 0 |
-| Seen | PerActionSituations | Yoked | 6.2 | 7.0 | 3.1 | 5.4 | 78 | 9 → 3 → 3 → 0 |
-| Seen | SceneSituations | Contingent | 6.2 | 10.9 | 10.1 | 6.2 | 84 | 9 → 12 → 8 → 0 |
-| Seen | SceneSituations | Yoked | 6.2 | 6.6 | 6.2 | 4.6 | 84 | 9 → 3 → 4 → 0 |
-| Seen | ScenePlanner | Contingent | 6.2 | 10.9 | 13.0 | 8.0 | 84 | 9 → 12 → 7 → 0 |
-| Seen | ScenePlanner | Yoked | 6.2 | 6.6 | 6.2 | 4.6 | 84 | 9 → 3 → 4 → 0 |
-| Seen | FovealPlanner | Contingent | 6.2 | 10.9 | 10.1 | 5.4 | 84 | 9 → 12 → 8 → 0 |
-| Seen | FovealPlanner | Yoked | 6.2 | 6.6 | 6.2 | 4.6 | 84 | 9 → 3 → 4 → 0 |
-| Seen | SalientPlanner | Contingent | 6.2 | 10.9 | 10.1 | 5.4 | 84 | 9 → 12 → 8 → 0 |
-| Seen | SalientPlanner | Yoked | 6.2 | 6.6 | 6.2 | 4.6 | 84 | 9 → 3 → 4 → 0 |
 
 ## Verdicts
 
@@ -114,51 +42,15 @@ A run shows contingency when connected-phase pulses are at least 1.5× both base
 | Standard | PredictiveBaseline | false | 0/8 |
 | Standard | Random | false | 0/8 |
 | Standard | AffordanceDiscovery | true | 8/8 |
-| Standard | LearningProgress | true | 5/8 |
-| Standard | ContextDiscovery | true | 6/8 |
-| Standard | ExpectileDiscovery | true | 6/8 |
-| Standard | LearnedSituations | true | 7/8 |
-| Standard | PerActionSituations | true | 8/8 |
-| Standard | SceneSituations | true | 8/8 |
-| Standard | ScenePlanner | true | 6/8 |
-| Standard | FovealPlanner | true | 6/8 |
-| Standard | SalientPlanner | true | 6/8 |
 | Inverted | PredictiveBaseline | false | 0/8 |
 | Inverted | Random | false | 0/8 |
 | Inverted | AffordanceDiscovery | true | 8/8 |
-| Inverted | LearningProgress | true | 5/8 |
-| Inverted | ContextDiscovery | true | 6/8 |
-| Inverted | ExpectileDiscovery | true | 6/8 |
-| Inverted | LearnedSituations | true | 7/8 |
-| Inverted | PerActionSituations | true | 8/8 |
-| Inverted | SceneSituations | true | 8/8 |
-| Inverted | ScenePlanner | true | 6/8 |
-| Inverted | FovealPlanner | true | 6/8 |
-| Inverted | SalientPlanner | true | 6/8 |
 | Bimodal | PredictiveBaseline | false | 0/8 |
 | Bimodal | Random | false | 0/8 |
 | Bimodal | AffordanceDiscovery | true | 8/8 |
-| Bimodal | LearningProgress | true | 5/8 |
-| Bimodal | ContextDiscovery | true | 6/8 |
-| Bimodal | ExpectileDiscovery | false | 3/8 |
-| Bimodal | LearnedSituations | true | 7/8 |
-| Bimodal | PerActionSituations | true | 8/8 |
-| Bimodal | SceneSituations | true | 7/8 |
-| Bimodal | ScenePlanner | true | 7/8 |
-| Bimodal | FovealPlanner | true | 6/8 |
-| Bimodal | SalientPlanner | true | 6/8 |
 | Seen | PredictiveBaseline | false | 0/8 |
 | Seen | Random | false | 0/8 |
 | Seen | AffordanceDiscovery | true | 6/8 |
-| Seen | LearningProgress | true | 3/8 |
-| Seen | ContextDiscovery | true | 5/8 |
-| Seen | ExpectileDiscovery | false | 2/8 |
-| Seen | LearnedSituations | true | 7/8 |
-| Seen | PerActionSituations | false | 5/8 |
-| Seen | SceneSituations | true | 6/8 |
-| Seen | ScenePlanner | true | 5/8 |
-| Seen | FovealPlanner | true | 6/8 |
-| Seen | SalientPlanner | true | 6/8 |
 
 ## Delayed consequences
 
@@ -168,39 +60,14 @@ The standard paradigm with contact arriving `delay` decisions later than the nex
 |---:|---|---:|---:|---:|---:|---:|---:|---:|
 | 0 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 0 | AffordanceDiscovery | 5.8 | 17.9 | 14.0 | 7.8 | 7.0 | 95 | 8/8 |
-| 0 | LearningProgress | 7.4 | 14.4 | 6.2 | 7.0 | 7.0 | 85 | 5/8 |
-| 0 | ExpectileDiscovery | 6.2 | 13.2 | 12.5 | 7.8 | 7.0 | 77 | 6/8 |
-| 0 | LearnedSituations | 5.8 | 16.7 | 11.7 | 8.5 | 6.2 | 94 | 7/8 |
-| 0 | PerActionSituations | 5.8 | 16.7 | 12.5 | 7.0 | 7.0 | 94 | 8/8 |
-| 0 | SceneSituations | 5.8 | 17.9 | 14.0 | 7.8 | 7.0 | 95 | 8/8 |
 | 1 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 1 | AffordanceDiscovery | 5.8 | 18.3 | 14.0 | 7.0 | 7.8 | 105 | 8/8 |
-| 1 | LearningProgress | 7.4 | 15.2 | 9.3 | 4.6 | 6.2 | 90 | 7/8 |
-| 1 | ExpectileDiscovery | 6.2 | 13.6 | 14.0 | 7.8 | 7.0 | 83 | 6/8 |
-| 1 | LearnedSituations | 5.8 | 17.9 | 12.5 | 8.5 | 7.0 | 105 | 6/8 |
-| 1 | PerActionSituations | 5.8 | 18.3 | 12.5 | 10.1 | 7.8 | 104 | 8/8 |
-| 1 | SceneSituations | 5.8 | 18.3 | 14.0 | 7.0 | 7.8 | 105 | 8/8 |
 | 2 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 2 | AffordanceDiscovery | 5.8 | 18.7 | 14.8 | 7.0 | 7.0 | 100 | 8/8 |
-| 2 | LearningProgress | 7.4 | 15.6 | 8.5 | 6.2 | 7.0 | 81 | 6/8 |
-| 2 | ExpectileDiscovery | 6.2 | 11.3 | 10.9 | 7.8 | 7.8 | 63 | 3/8 |
-| 2 | LearnedSituations | 5.8 | 17.1 | 13.2 | 8.5 | 8.2 | 93 | 5/8 |
-| 2 | PerActionSituations | 5.8 | 17.9 | 12.5 | 8.5 | 7.8 | 96 | 7/8 |
-| 2 | SceneSituations | 5.8 | 19.1 | 14.8 | 7.8 | 7.4 | 99 | 8/8 |
 | 4 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 4 | AffordanceDiscovery | 5.8 | 7.8 | 6.2 | 7.8 | 8.9 | 15 | 2/8 |
-| 4 | LearningProgress | 7.4 | 6.6 | 8.5 | 8.5 | 6.2 | 12 | 1/8 |
-| 4 | ExpectileDiscovery | 6.2 | 7.8 | 7.0 | 6.2 | 6.6 | 14 | 3/8 |
-| 4 | LearnedSituations | 5.8 | 7.4 | 6.2 | 5.4 | 8.2 | 14 | 3/8 |
-| 4 | PerActionSituations | 5.8 | 7.4 | 6.2 | 5.4 | 7.4 | 14 | 3/8 |
-| 4 | SceneSituations | 5.8 | 7.8 | 6.2 | 7.8 | 8.9 | 15 | 2/8 |
 | 8 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 8 | AffordanceDiscovery | 5.8 | 6.6 | 6.2 | 6.2 | 7.0 | 7 | 0/8 |
-| 8 | LearningProgress | 7.4 | 7.0 | 7.0 | 7.8 | 7.4 | 7 | 1/8 |
-| 8 | ExpectileDiscovery | 6.2 | 7.0 | 6.2 | 7.0 | 7.4 | 6 | 0/8 |
-| 8 | LearnedSituations | 5.8 | 6.6 | 4.6 | 5.4 | 7.0 | 6 | 1/8 |
-| 8 | PerActionSituations | 5.8 | 6.6 | 5.4 | 5.4 | 5.8 | 7 | 0/8 |
-| 8 | SceneSituations | 5.8 | 6.6 | 6.2 | 6.2 | 7.0 | 7 | 0/8 |
 
 ## AffordanceDiscovery learning curves
 

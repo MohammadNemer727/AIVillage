@@ -140,8 +140,8 @@ The founder's body (contract version 4) also sends a forward retina of 24 x 5 ey
 the legacy 16; the smoke test checks every request carries 120 bounded points that see the room.
 In learning runs the cube hangs at the founder's eye height. `LEARN_FACING=turned` starts each
 trial facing one of eight directions instead of the cube (the reaching test), and
-`SIM_LUANTI_AFFORDANCE='{"context":"SenseBits"}' LEARN_LABEL=context` runs the context-conditioned
-learner. The synthetic counterpart is `cargo run -p sim-luanti -- reaching`
+`SIM_LUANTI_AFFORDANCE` with `LEARN_LABEL` runs other learner settings. The synthetic
+counterpart is `cargo run -p sim-luanti -- reaching`
 ([`../docs/reaching-test.md`](../docs/reaching-test.md)).
 
 Set distinct `SIM_LUANTI_PORT` and `LUANTI_SMOKE_PORT` values to run several at once. Current

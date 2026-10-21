@@ -16,7 +16,6 @@
 )]
 
 use serde::Serialize;
-use sim_core::runtime::fact_name;
 
 use crate::harness::{
     self, Controller, Coupling, HAND_PULSE, Object, Phase, PhaseSummary, SEEDS, Sense, Trace, rate,
@@ -44,18 +43,8 @@ pub const OBJECT: Object = Object {
     facing: true,
 };
 
-pub const REACHING_CONTROLLERS: [Controller; 10] = [
-    Controller::Random,
-    Controller::AffordanceDiscovery,
-    Controller::ContextDiscovery,
-    Controller::ExpectileDiscovery,
-    Controller::LearnedSituations,
-    Controller::PerActionSituations,
-    Controller::SceneSituations,
-    Controller::ScenePlanner,
-    Controller::FovealPlanner,
-    Controller::SalientPlanner,
-];
+pub const REACHING_CONTROLLERS: [Controller; 2] =
+    [Controller::Random, Controller::AffordanceDiscovery];
 
 /// One controller over every seed.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -65,8 +54,6 @@ pub struct Row {
     pub phases: Vec<PhaseSummary>,
     /// Late-phase hit rate of each seed, in tenths of a percent of its pushes.
     pub late_hit_rates: Vec<u32>,
-    /// Sense facts each seed's learner split on, in order.
-    pub learned_facts: Vec<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -110,24 +97,10 @@ pub fn run() -> ReachingReport {
                     hit_rate(&harness::summarize(&PHASES, OBJECT, std::slice::from_ref(trace))[1])
                 })
                 .collect();
-            let learned_facts = traces
-                .iter()
-                .map(|trace| {
-                    trace
-                        .splits
-                        .iter()
-                        .map(|(fact, _)| {
-                            let perception = controller.learner().unwrap_or_default().perception;
-                            fact_name(perception, *fact)
-                        })
-                        .collect()
-                })
-                .collect();
             Row {
                 controller: *controller,
                 phases: harness::summarize(&PHASES, OBJECT, &traces),
                 late_hit_rates,
-                learned_facts,
             }
         })
         .collect();
@@ -188,31 +161,6 @@ pub fn markdown(report: &ReachingReport) -> String {
             seeds.join(" · ")
         ));
     }
-    for (controller, title) in [
-        (Controller::LearnedSituations, "shared situations"),
-        (Controller::PerActionSituations, "the push's own situations"),
-        (
-            Controller::SceneSituations,
-            "the push's own situations over learned scenes",
-        ),
-    ] {
-        text.push_str(&format!(
-            "\n## {controller:?}: {title}\n\nSense facts each seed split on, in order.\n\n\
-             | seed | facts |\n|---:|---|\n"
-        ));
-        for (seed, facts) in report
-            .seeds
-            .iter()
-            .zip(&report.row(controller).learned_facts)
-        {
-            let facts = if facts.is_empty() {
-                "none".to_owned()
-            } else {
-                facts.join(", ")
-            };
-            text.push_str(&format!("| {seed} | {facts} |\n"));
-        }
-    }
     text
 }
 
@@ -234,54 +182,5 @@ mod tests {
                 assert_eq!(summary.consequences, summary.target_while_facing, "{row:?}");
             }
         }
-    }
-
-    #[test]
-    fn telling_situations_apart_improves_aim() {
-        let report = run();
-        let late = |controller| hit_rate(&report.row(controller).phases[1]);
-        assert!(late(Controller::ContextDiscovery) > late(Controller::AffordanceDiscovery));
-        assert!(late(Controller::ContextDiscovery) > late(Controller::Random));
-    }
-
-    #[test]
-    fn learned_situations_discover_where_the_object_is() {
-        let report = run();
-        let pushes = report.row(Controller::PerActionSituations);
-        for facts in &pushes.learned_facts {
-            assert!(
-                facts.iter().any(|fact| fact.starts_with("near ")),
-                "{facts:?}"
-            );
-        }
-        let context_free = hit_rate(&report.row(Controller::AffordanceDiscovery).phases[1]);
-        for controller in [
-            Controller::LearnedSituations,
-            Controller::PerActionSituations,
-        ] {
-            assert!(
-                hit_rate(&report.row(controller).phases[1]) > context_free,
-                "{controller:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn planning_seeks_out_the_object() {
-        let report = run();
-        let late = |controller| report.row(controller).phases[1].clone();
-        let (planner, scenes) = (
-            late(Controller::ScenePlanner),
-            late(Controller::SceneSituations),
-        );
-        let facing = |summary: &PhaseSummary| summary.facing_decisions * 1_000 / summary.decisions;
-        // The object is a small patch on the retina and invisible behind, so the planner faces it
-        // a quarter more often than without planning, well above the one-in-eight chance.
-        assert!(
-            facing(&planner) > facing(&scenes) * 5 / 4,
-            "{planner:?} {scenes:?}"
-        );
-        assert!(facing(&planner) > 160, "{planner:?}");
-        assert!(hit_rate(&planner) > hit_rate(&scenes));
     }
 }

@@ -595,7 +595,6 @@ mod tests {
     #[test]
     fn custom_learner_settings_are_recorded_and_replayed() {
         let settings = AffordanceConfig {
-            rule: sim_core::runtime::ScoringRule::LearningProgress,
             action_horizon: 16,
             ..AffordanceConfig::default()
         };

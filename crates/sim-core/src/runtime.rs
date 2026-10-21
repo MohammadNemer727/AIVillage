@@ -8,19 +8,13 @@ use sim_kernels::{brain::EPISODE_CAPACITY, derive, gpu::GpuBrain, heading};
 
 use crate::{
     BrainConfig, CHEMICAL_RECEPTOR_COUNT, PredictiveBrain, RETINAL_RAY_COUNT, RawSensoryFrame,
-    RetinalSample, adapt_chemical_receptors, compose_raw_sensory_frame, decode_motor_outputs,
+    adapt_chemical_receptors, compose_raw_sensory_frame, decode_motor_outputs,
     environment::{
         DeadChannels, EnvironmentAdapter, EnvironmentCapabilities, EnvironmentObservation,
         EnvironmentTransition, PrimitiveAction, TransportStatus,
     },
     scale_v2_orientation_turn,
 };
-
-mod perception;
-mod situations;
-
-pub use perception::{MAX_SCENES, RETINA_SENSE_DIMENSIONS, SENSE_DIMENSIONS, ScenePerception};
-pub use situations::{ActionSituations, MAX_ACTION_SITUATIONS, SituationStats};
 
 /// Explicit action-selection policy for a standalone founder.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -56,87 +50,12 @@ const FEATURE_POINTS_CAP: i64 = 8 * SPREAD_POINTS;
 /// Longest supported eligibility span; [`AffordanceConfig::eligibility_span`] selects how much
 /// of it is used.
 pub const MAX_ELIGIBILITY_SPAN: usize = 8;
-/// Expectiles tracked per outcome feature, at asymmetries 0.1 to 0.9 in steps of 0.1.
-pub const EXPECTILES: usize = 9;
-
-/// What makes an experiment interesting to the affordance learner.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ScoringRule {
-    /// How far an experiment's outcomes differ from normal, in average and spread (after Xu &
-    /// Triesch's causal action influence).
-    #[default]
-    Contingency,
-    /// How fast the learner's prediction error for an experiment is changing (after Oudeyer's
-    /// learning progress): interesting while being learned, boring once mastered or
-    /// unlearnable.
-    LearningProgress,
-}
-
-/// What a learned-situation founder splits its situations on.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub enum Perception {
-    /// The [`SENSE_FACTS`] generic, designer-chosen sense facts.
-    #[default]
-    Designed,
-    /// Up to [`MAX_SCENES`] scenes the founder learns from its raw senses; fact `k` holds while
-    /// the founder is in scene `k`.
-    Scenes,
-    /// Learned scenes seen through a fovea: eye rays near straight ahead weigh more than the
-    /// periphery, so scenes are shaped mostly by what is in front of the founder rather than by
-    /// how the whole surroundings are turned. An anatomical prior, not world knowledge (after
-    /// `MIMo` v2's foveated vision).
-    FoveatedScenes,
-    /// Foveated learned scenes seen through a spotlight of attention: each eye point's colour
-    /// has a bottom-up salience learned from how rarely the founder has seen it, and only the
-    /// most salient points in view shape the scene, so what stands out from the usual walls and
-    /// floor decides the scene whenever something does.
-    SalientScenes,
-}
-
-impl Perception {
-    /// Whether situations are split on learned scenes.
-    #[must_use]
-    pub const fn uses_scenes(self) -> bool {
-        matches!(
-            self,
-            Self::Scenes | Self::FoveatedScenes | Self::SalientScenes
-        )
-    }
-}
-
-/// A readable name for `fact` under `perception`, for reports.
-#[must_use]
-pub fn fact_name(perception: Perception, fact: usize) -> String {
-    match perception {
-        Perception::Designed => sense_fact_name(fact),
-        Perception::Scenes | Perception::FoveatedScenes | Perception::SalientScenes => {
-            format!("scene {fact}")
-        }
-    }
-}
-
-/// How the affordance learner summarizes the outcomes that follow an experiment.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub enum OutcomeModel {
-    /// Average and mean absolute deviation per outcome feature.
-    #[default]
-    Moments,
-    /// Nine expectiles per outcome feature: asymmetric running averages that together describe
-    /// the outcome distribution's shape, as in distributional reinforcement learning (Rowland et
-    /// al.). They are compared by their mean absolute gap, a distributional distance after Xu &
-    /// Triesch's causal action influence score, so any change in an outcome's shape counts, not
-    /// only its average or spread. Unlike quantiles they move in proportion to the error, so they
-    /// learn as fast as averages.
-    Expectiles,
-}
 
 /// Tunable settings of the affordance learner. They are checkpointed with its statistics, so a
 /// resumed run keeps the settings it started with.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
 pub struct AffordanceConfig {
-    /// What makes an experiment interesting.
-    pub rule: ScoringRule,
     /// Tries after which an experiment's averages stop settling and keep tracking a changed
     /// world: the learner's memory window.
     pub action_horizon: u16,
@@ -155,25 +74,11 @@ pub struct AffordanceConfig {
     /// bout of kicking. One chooses afresh every decision. Short bouts also bridge short delays
     /// between an action and its consequence.
     pub bout_length: u16,
-    /// Which situations the learner tells apart.
-    pub context: ContextMode,
-    /// Tries of an experiment within a situation at which the situation's own statistics weigh
-    /// as much as the pooled ones.
-    pub context_prior: u16,
-    /// How outcomes are summarized when judging contingency.
-    pub outcome_model: OutcomeModel,
-    /// What learned situations are split on.
-    pub perception: Perception,
-    /// Whether the founder plans over its learned scenes: it learns where each experiment leads
-    /// and values an experiment also by the scenes it leads to, so it can do one thing in order
-    /// to do another (means-end behaviour). Needs [`Perception::Scenes`].
-    pub planning: bool,
 }
 
 impl Default for AffordanceConfig {
     fn default() -> Self {
         Self {
-            rule: ScoringRule::Contingency,
             action_horizon: 8,
             overall_horizon: 16,
             forgetting_horizon: 32,
@@ -181,11 +86,6 @@ impl Default for AffordanceConfig {
             recency_rate: 4,
             recency_cap: 1_024,
             bout_length: 3,
-            context: ContextMode::None,
-            context_prior: 8,
-            outcome_model: OutcomeModel::Moments,
-            perception: Perception::Designed,
-            planning: false,
         }
     }
 }
@@ -208,515 +108,54 @@ impl AffordanceConfig {
                 "eligibility span must be between 1 and {MAX_ELIGIBILITY_SPAN}"
             ));
         }
-        if self.planning && !self.perception.uses_scenes() {
-            return Err("planning needs learned scenes".to_owned());
-        }
         if self.recency_cap > u64::from(u32::MAX / 4) {
             return Err("recency cap is out of range".to_owned());
         }
         if !(1..=64).contains(&self.bout_length) {
             return Err("bout length must be between 1 and 64".to_owned());
         }
-        if !(1..=1_024).contains(&self.context_prior) {
-            return Err("context prior must be between 1 and 1024".to_owned());
-        }
         Ok(())
     }
 }
 
-/// Running outcome statistics for every experiment, either over all situations or within one.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Statistics {
-    /// Number of observed direct outcomes per experiment, saturating.
-    pub visits: [u16; AFFORDANCE_ACTIONS],
-    /// Recent average outcome following each experiment, scaled by 256.
-    pub after: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
-    /// Recent mean absolute deviation of the outcome following each experiment, scaled by 256.
-    pub after_spread: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
-    /// Recent average outcome over all experiments, scaled by 256.
-    pub overall: [i32; OUTCOME_FEATURES],
-    /// Recent mean absolute deviation of the outcome over all experiments, scaled by 256.
-    pub overall_spread: [i32; OUTCOME_FEATURES],
-    /// Whether `overall` has been set from a first outcome.
-    pub primed: bool,
-    /// Recent expectiles of the outcome following each experiment, scaled by 256.
-    #[serde(default)]
-    pub after_expectiles: [[[i32; EXPECTILES]; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
-    /// Recent expectiles of the outcome over all experiments, scaled by 256.
-    #[serde(default)]
-    pub overall_expectiles: [[i32; EXPECTILES]; OUTCOME_FEATURES],
-}
-
-/// Moves expectiles toward `value` over `horizon`: each is a running average that weighs values
-/// above it by tau and values below it by 1 - tau (doubled, so tau 0.5 is the plain average).
-fn track_expectiles(expectiles: &mut [i32; EXPECTILES], value: i32, horizon: i32) {
-    let levels = i64::try_from(EXPECTILES).unwrap_or(i64::MAX) + 1;
-    for (tau, expectile) in (1_i64..).zip(expectiles.iter_mut()) {
-        let weight = if value >= *expectile {
-            tau
-        } else {
-            levels - tau
-        };
-        let error = i64::from(value - *expectile);
-        let step = error * 2 * weight / (levels * i64::from(horizon));
-        *expectile += i32::try_from(step).unwrap_or_default();
-    }
-}
-
-impl Statistics {
-    /// Starts the overall averages from a first outcome.
-    fn prime(&mut self, now: &[i32; OUTCOME_FEATURES]) {
-        self.overall = *now;
-        self.overall_expectiles = now.map(|value| [value; EXPECTILES]);
-        self.primed = true;
-    }
-
-    /// Credits `now` to `action`, taken `age` decisions ago; credit halves with each decision of
-    /// age. Spreads are measured against the averages before this outcome joins them, and an
-    /// experiment's first outcome sets its average and has no spread yet.
-    fn credit(
-        &mut self,
-        action: usize,
-        age: usize,
-        now: &[i32; OUTCOME_FEATURES],
-        config: &AffordanceConfig,
-    ) {
-        let count = self.visits[action];
-        if count == 0 {
-            return;
-        }
-        let horizon = i32::from(count.min(config.action_horizon)) << age;
-        for (feature, value) in now.iter().copied().enumerate() {
-            if count > 1 {
-                let deviation = (value - self.after[action][feature]).abs();
-                self.after_spread[action][feature] +=
-                    (deviation - self.after_spread[action][feature]) / horizon;
-                track_expectiles(&mut self.after_expectiles[action][feature], value, horizon);
-            } else if age == 0 {
-                self.after_expectiles[action][feature] = [value; EXPECTILES];
-            }
-            self.after[action][feature] += (value - self.after[action][feature]) / horizon;
-        }
-    }
-
-    /// Moves the overall averages toward `now`, or starts them from it.
-    fn observe_overall(&mut self, now: &[i32; OUTCOME_FEATURES], config: &AffordanceConfig) {
-        if !self.primed {
-            self.prime(now);
-            return;
-        }
-        let horizon = i32::from(config.overall_horizon);
-        for (feature, value) in now.iter().copied().enumerate() {
-            track_expectiles(&mut self.overall_expectiles[feature], value, horizon);
-            let deviation = (value - self.overall[feature]).abs();
-            self.overall_spread[feature] += (deviation - self.overall_spread[feature]) / horizon;
-            self.overall[feature] += (value - self.overall[feature]) / horizon;
-        }
-    }
-
-    /// Lets every experiment but `kept` drift back toward the overall outcome.
-    fn forget(&mut self, kept: usize, config: &AffordanceConfig) {
-        let forgetting = i32::from(config.forgetting_horizon);
-        for other in (0..AFFORDANCE_ACTIONS).filter(|other| *other != kept) {
-            for feature in 0..OUTCOME_FEATURES {
-                self.after[other][feature] +=
-                    (self.overall[feature] - self.after[other][feature]) / forgetting;
-                self.after_spread[other][feature] +=
-                    (self.overall_spread[feature] - self.after_spread[other][feature]) / forgetting;
-                for (expectile, normal) in self.after_expectiles[other][feature]
-                    .iter_mut()
-                    .zip(self.overall_expectiles[feature])
-                {
-                    *expectile += (normal - *expectile) / forgetting;
-                }
-            }
-        }
-    }
-
-    /// Score points for a `difference` on `feature`, in units of that feature's overall spread.
-    fn points(&self, feature: usize, difference: i32) -> i64 {
-        let spread = i64::from(self.overall_spread[feature].max(SPREAD_FLOOR));
-        (i64::from(difference.abs()) * SPREAD_POINTS / spread).min(FEATURE_POINTS_CAP)
-    }
-
-    /// How badly `now` was predicted after `action`, in score points scaled by 256.
-    fn prediction_error(&self, action: usize, now: &[i32; OUTCOME_FEATURES]) -> i32 {
-        let points: i64 = (0..OUTCOME_FEATURES)
-            .map(|feature| self.points(feature, now[feature] - self.after[action][feature]))
-            .sum();
-        i32::try_from(points * i64::from(OUTCOME_SCALE)).unwrap_or(i32::MAX)
-    }
-
-    /// How strongly an experiment's outcomes differ from the overall outcomes, with each
-    /// feature judged in units of its overall spread: by average and spread, or by the mean gap
-    /// between their expectiles.
-    fn contingency(&self, action: usize, model: OutcomeModel) -> u32 {
-        if self.visits[action] == 0 {
-            return 0;
-        }
-        let points: i64 = (0..OUTCOME_FEATURES)
-            .map(|feature| {
-                let difference = match model {
-                    OutcomeModel::Moments => {
-                        let average = (self.after[action][feature] - self.overall[feature]).abs();
-                        let spread = (self.after_spread[action][feature]
-                            - self.overall_spread[feature])
-                            .abs();
-                        average.saturating_add(spread)
-                    }
-                    OutcomeModel::Expectiles => {
-                        let gap: i64 = self.after_expectiles[action][feature]
-                            .iter()
-                            .zip(self.overall_expectiles[feature])
-                            .map(|(after, normal)| i64::from((after - normal).abs()))
-                            .sum();
-                        let count = i64::try_from(EXPECTILES).unwrap_or(i64::MAX);
-                        i32::try_from(gap / count).unwrap_or(i32::MAX)
-                    }
-                };
-                self.points(feature, difference)
-            })
-            .sum();
-        u32::try_from(points).unwrap_or(u32::MAX)
-    }
-
-    fn fingerprint(&self, mut fingerprint: u64, tag: u64) -> u64 {
-        let words = self
-            .visits
-            .iter()
-            .map(|value| i64::from(*value))
-            .chain(self.after.iter().flatten().map(|value| i64::from(*value)))
-            .chain(
-                self.after_spread
-                    .iter()
-                    .flatten()
-                    .map(|value| i64::from(*value)),
-            )
-            .chain(self.overall.iter().map(|value| i64::from(*value)))
-            .chain(self.overall_spread.iter().map(|value| i64::from(*value)))
-            .chain([i64::from(self.primed)])
-            .chain(
-                self.after_expectiles
-                    .iter()
-                    .flatten()
-                    .flatten()
-                    .map(|value| i64::from(*value)),
-            )
-            .chain(
-                self.overall_expectiles
-                    .iter()
-                    .flatten()
-                    .map(|value| i64::from(*value)),
-            );
-        for (index, value) in words.enumerate() {
-            fingerprint = derive(fingerprint, value.cast_unsigned(), index as u64, tag);
-        }
-        fingerprint
-    }
-}
-
-/// Situation bits a context-conditioned learner reads from its senses. They are fixed, bounded
-/// receptor thresholds and never name an object, place, or task.
-pub mod context_bits {
-    /// The eye rays nearest straight ahead are blocked within about two nodes.
-    pub const CLOSE_AHEAD: usize = 1;
-    /// Something moves noticeably on some eye ray.
-    pub const MOTION_IN_VIEW: usize = 2;
-    /// The body felt touch or hand contact.
-    pub const CONTACT: usize = 4;
-    /// The eyes are tilted down.
-    pub const LOOKING_DOWN: usize = 8;
-}
-
-/// Number of situations a context-conditioned learner distinguishes.
-pub const CONTEXTS: usize = 16;
-/// Occlusion from which a ray counts as blocked close ahead (about 2.2 nodes away).
-const CLOSE_OCCLUSION: u16 = 160;
-/// Retinal motion from which something counts as moving in view.
-const NOTICEABLE_MOTION: u16 = 64;
-/// Eye pitch below which the eyes count as tilted down (centred at 128).
-const LOOKING_DOWN_BELOW: u16 = 112;
-
-/// Which situations the affordance learner tells apart.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ContextMode {
-    /// One situation: contingency is pooled over everything (after Xu & Triesch).
-    #[default]
-    None,
-    /// Sixteen situations from four sense bits (see [`context_bits`]): contingency is judged
-    /// within the current situation, borrowing from the pooled statistics while a situation is
-    /// still rarely seen.
-    SenseBits,
-    /// Situations the founder discovers itself (after Oudeyer's IAC): it starts with one and
-    /// splits a situation on one of [`SENSE_FACTS`] generic sense facts only when the effect of
-    /// some experiment clearly differs between the two sides.
-    Learned,
-    /// Situations the founder discovers separately for each experiment: each experiment splits
-    /// its own situations on the sense facts that change its effect, so a distinction that
-    /// matters for one experiment never fragments another's experience.
-    PerAction,
-}
-
-/// Generic sense facts a learned-situation founder may split on: for each of four directions
-/// whether something is near, blocked within range, moving, or standing out in colour, and five
-/// body facts. They are fixed receptor thresholds that never name an object; the founder chooses
-/// which, if any, matter.
-pub const SENSE_FACTS: usize = 21;
-/// Eye rays of each direction: ahead, left, behind, right.
-const SECTORS: [[usize; 3]; 4] = [[15, 0, 1], [3, 4, 5], [7, 8, 9], [11, 12, 13]];
-const SECTOR_NAMES: [&str; 4] = ["ahead", "left", "behind", "right"];
-const SECTOR_FACT_NAMES: [&str; 4] = ["near", "blocked", "moving", "stands out"];
-const BODY_FACT_NAMES: [&str; 5] = [
-    "touch",
-    "hand contact",
-    "looking down",
-    "looking up",
-    "in the air",
-];
-/// Occlusion from which a ray counts as blocked within range (about 4.5 nodes away).
-const BLOCKED_OCCLUSION: u16 = 64;
-/// Colour difference (sum over red, green, blue) from the average of all rays from which a
-/// direction stands out.
-const COLOUR_CONTRAST: u32 = 96;
-/// Eye pitch above which the eyes count as tilted up (centred at 128).
-const LOOKING_UP_ABOVE: u16 = 144;
-/// Recent experiences kept for judging splits.
-pub const EXPERIENCE_MEMORY: usize = 256;
-/// Decisions between attempts to split a situation.
-const SPLIT_INTERVAL: u64 = 32;
-/// A transition row's counts halve once they exceed this total.
-const TRANSITION_MEMORY: u32 = 64;
-/// Tries of an experiment in a scene before the planner trusts where it leads.
-const PLAN_MIN_TRIES: u32 = 4;
-/// Steps of lookahead when valuing scenes.
-const PLAN_DEPTH: usize = 3;
-/// Weight of an expected scene improvement against immediate interest.
-const PLAN_WEIGHT: u32 = 32;
-/// Quarters of a reachable scene's value a scene inherits per step of lookahead.
-const PLAN_DISCOUNT: u32 = 3;
-
-/// Expected value under scene `chances` scaled to 256.
-fn expected(chances: &[u32; MAX_SCENES], values: &[u32; MAX_SCENES]) -> u32 {
-    let total: u64 = chances
-        .iter()
-        .zip(values)
-        .map(|(chance, value)| u64::from(*chance) * u64::from(*value))
-        .sum();
-    u32::try_from(total / 256).unwrap_or(u32::MAX)
-}
-
-/// How many times slower an experiment's memory fades in situations the founder is not in.
-const DISTANT_FORGETTING: u16 = 4;
-/// Experiences each side of a split needs before the split is judged.
-const SPLIT_MIN_SIDE: i64 = 16;
-/// Tries of an experiment each side of a split needs for the experiment to count.
-const SPLIT_MIN_TRIES: i64 = 8;
-/// Score points by which an experiment's effect must differ between the two sides.
-const SPLIT_GAIN: i64 = 128;
-
-/// The [`SENSE_FACTS`] an observation makes true, one bit each.
-#[must_use]
-pub fn sense_facts(observation: &EnvironmentObservation) -> u32 {
-    let retinal = &observation.senses.retinal;
-    let colour = |sample: &RetinalSample| {
-        u32::from(sample.red) + u32::from(sample.green) + u32::from(sample.blue)
-    };
-    let rays = u32::try_from(RETINAL_RAY_COUNT).unwrap_or(u32::MAX);
-    let average = retinal.iter().map(colour).sum::<u32>() / rays;
-    let mut facts = 0;
-    for (sector, rays) in SECTORS.iter().enumerate() {
-        let samples = rays.map(|ray| retinal[ray]);
-        let checks = [
-            samples
-                .iter()
-                .any(|sample| sample.occlusion >= CLOSE_OCCLUSION),
-            samples
-                .iter()
-                .any(|sample| sample.occlusion >= BLOCKED_OCCLUSION),
-            samples
-                .iter()
-                .any(|sample| sample.motion.unsigned_abs() >= NOTICEABLE_MOTION),
-            samples
-                .iter()
-                .any(|sample| colour(sample).abs_diff(average) >= COLOUR_CONTRAST),
-        ];
-        for (index, check) in checks.into_iter().enumerate() {
-            facts |= u32::from(check) << (sector * 4 + index);
-        }
-    }
-    let body = observation.body;
-    let checks = [
-        observation.senses.touch > 0,
-        body.hand_contact > 0,
-        body.eye_pitch < LOOKING_DOWN_BELOW,
-        body.eye_pitch > LOOKING_UP_ABOVE,
-        body.grounded == 0,
-    ];
-    for (index, check) in checks.into_iter().enumerate() {
-        facts |= u32::from(check) << (16 + index);
-    }
-    facts
-}
-
-/// A readable name for sense fact `fact`, for reports.
-#[must_use]
-pub fn sense_fact_name(fact: usize) -> String {
-    if fact < 16 {
-        format!("{} {}", SECTOR_FACT_NAMES[fact % 4], SECTOR_NAMES[fact / 4])
-    } else {
-        BODY_FACT_NAMES
-            .get(fact - 16)
-            .copied()
-            .unwrap_or("unknown")
-            .to_owned()
-    }
-}
-
-/// One remembered decision: the sense facts it was made in, its situation, the experiment, and
-/// the outcome that followed, in receptor units.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Experience {
-    /// Sense facts true when the decision was made.
-    pub facts: u32,
-    /// Learned situation the decision was made in.
-    pub situation: u8,
-    /// Experiment chosen.
-    pub action: u8,
-    /// Outcome that followed, in receptor units.
-    pub outcome: [i16; OUTCOME_FEATURES],
-}
-
-/// A situation the founder split on a sense fact: decisions in `parent` where `fact` holds
-/// belong to `child` from then on.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Split {
-    /// Situation that was split.
-    pub parent: u8,
-    /// Sense fact it was split on.
-    pub fact: u8,
-    /// New situation for decisions where the fact holds.
-    pub child: u8,
-    /// Outcomes seen when the split was made.
-    pub at: u64,
-}
-
-/// The situation an observation puts the founder in, as a [`context_bits`] combination.
-#[must_use]
-pub fn sense_context(observation: &EnvironmentObservation) -> usize {
-    let retinal = &observation.senses.retinal;
-    let ahead = [RETINAL_RAY_COUNT - 1, 0, 1];
-    let mut context = 0;
-    if ahead
-        .iter()
-        .any(|ray| retinal[*ray].occlusion >= CLOSE_OCCLUSION)
-    {
-        context |= context_bits::CLOSE_AHEAD;
-    }
-    if retinal
-        .iter()
-        .any(|sample| sample.motion.unsigned_abs() >= NOTICEABLE_MOTION)
-    {
-        context |= context_bits::MOTION_IN_VIEW;
-    }
-    if observation.senses.touch > 0 || observation.body.hand_contact > 0 {
-        context |= context_bits::CONTACT;
-    }
-    if observation.body.eye_pitch < LOOKING_DOWN_BELOW {
-        context |= context_bits::LOOKING_DOWN;
-    }
-    context
-}
-
 /// Checkpointed bounded statistics for intrinsic action discovery.
 ///
-/// Under the default [`ScoringRule::Contingency`] the learner measures how far the outcomes that
+/// The learner measures how far the outcomes that
 /// follow an experiment differ from the outcomes overall, in both their average and their
 /// spread. Each outcome is judged in units of its own overall spread, so a small visual change
 /// can matter as much as a large change of body posture. An effect that follows regardless of
 /// action, or that stops following, carries no contingency, so neither keeps attracting
-/// experiments. With a [`ContextMode`] other than `None` the same is judged within the current
-/// situation as well.
+/// experiments.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AffordanceLearner {
     /// Settings the statistics below were gathered with.
     #[serde(default)]
     pub config: AffordanceConfig,
-    /// Statistics pooled over every situation.
-    pub pooled: Statistics,
-    /// Statistics within each of the [`CONTEXTS`] situations, used with
-    /// a [`ContextMode`] other than `None`. Held on the heap: together they are large.
-    #[serde(default = "blank_contexts")]
-    pub contexts: Box<[Statistics]>,
-    /// Recent prediction error of each experiment's direct outcome over a short window, in
-    /// score points scaled by 256.
+    /// Number of observed outcomes per experiment, saturating.
+    pub visits: [u16; AFFORDANCE_ACTIONS],
+    /// Recent average outcome following each experiment, scaled by 256.
+    pub after: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+    /// Recent average outcome over all decisions, scaled by 256.
+    pub overall: [i32; OUTCOME_FEATURES],
+    /// Recent mean absolute deviation of the outcome following each experiment, scaled by 256.
     #[serde(default)]
-    pub error_fast: [i32; AFFORDANCE_ACTIONS],
-    /// The same prediction error over a long window; its gap to the short window is learning
-    /// progress.
+    pub after_spread: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+    /// Recent mean absolute deviation of the outcome over all decisions, scaled by 256.
     #[serde(default)]
-    pub error_slow: [i32; AFFORDANCE_ACTIONS],
+    pub overall_spread: [i32; OUTCOME_FEATURES],
     /// Decision tick at which each experiment was last selected.
     pub last_tried: [u64; AFFORDANCE_ACTIONS],
-    /// Decision tick at which each experiment was last selected in each situation, so curiosity
-    /// is per situation under a [`ContextMode`] other than `None`.
-    #[serde(default)]
-    pub last_tried_in: [[u64; AFFORDANCE_ACTIONS]; CONTEXTS],
     /// Last selected experiment, whose outcome the next observation reports.
     pub previous_action: usize,
     /// Recent experiments, most recent first, that share credit for the next outcome.
     #[serde(default = "no_recent_actions")]
     pub recent_actions: [usize; MAX_ELIGIBILITY_SPAN],
-    /// The situation each recent experiment was chosen in.
-    #[serde(default)]
-    pub recent_contexts: [usize; MAX_ELIGIBILITY_SPAN],
-    /// The situation the latest observation puts the founder in.
-    #[serde(default)]
-    pub current_context: usize,
-    /// The sense facts of the latest observation, under [`ContextMode::Learned`].
-    #[serde(default)]
-    pub current_facts: u32,
-    /// The splits the founder has made, in order, under [`ContextMode::Learned`].
-    #[serde(default)]
-    pub splits: Vec<Split>,
-    /// Recent experiences for judging splits, a ring of at most [`EXPERIENCE_MEMORY`].
-    #[serde(default)]
-    pub experiences: Vec<Experience>,
-    /// Where the next experience is written once the ring is full.
-    #[serde(default)]
-    pub next_experience: usize,
-    /// Outcomes observed so far.
-    #[serde(default)]
-    pub outcomes_seen: u64,
-    /// Each experiment's own situations, under [`ContextMode::PerAction`].
-    #[serde(default)]
-    pub per_action: Vec<ActionSituations>,
-    /// The sense facts each recent experiment was chosen with.
-    #[serde(default)]
-    pub recent_facts: [u32; MAX_ELIGIBILITY_SPAN],
-    /// Scenes learned from raw senses, under [`Perception::Scenes`].
-    #[serde(default)]
-    pub scenes: ScenePerception,
-    /// With planning, how often each experiment in each scene led to each scene: row
-    /// `scene * AFFORDANCE_ACTIONS + experiment`, column the following scene.
-    #[serde(default)]
-    pub transitions: Vec<[u16; MAX_SCENES]>,
-    /// The scene the last experiment was chosen in, once scenes have formed.
-    #[serde(default)]
-    pub decision_scene: Option<u8>,
-    /// With planning, each experiment's outcome statistics in each scene: index
-    /// `scene * AFFORDANCE_ACTIONS + experiment`. They tell the planner what can be done where.
-    #[serde(default)]
-    pub scene_stats: Vec<SituationStats>,
     /// Previous retinal view, so the next outcome can report how much the view changed.
     #[serde(default)]
     pub previous_view: [[u16; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
     /// Decisions left in the current bout before the next choice.
     #[serde(default)]
     pub bout_remaining: u16,
-}
-
-fn blank_contexts() -> Box<[Statistics]> {
-    vec![Statistics::default(); CONTEXTS].into_boxed_slice()
 }
 
 const fn no_recent_actions() -> [usize; MAX_ELIGIBILITY_SPAN] {
@@ -732,54 +171,26 @@ impl Default for AffordanceLearner {
 impl AffordanceLearner {
     /// A blank learner with the given settings.
     #[must_use]
-    pub fn new(config: AffordanceConfig) -> Self {
+    pub const fn new(config: AffordanceConfig) -> Self {
         Self {
             config,
-            pooled: Statistics::default(),
-            contexts: blank_contexts(),
-            error_fast: [0; AFFORDANCE_ACTIONS],
-            error_slow: [0; AFFORDANCE_ACTIONS],
+            visits: [0; AFFORDANCE_ACTIONS],
+            after: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+            overall: [0; OUTCOME_FEATURES],
+            after_spread: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+            overall_spread: [0; OUTCOME_FEATURES],
             last_tried: [0; AFFORDANCE_ACTIONS],
-            last_tried_in: [[0; AFFORDANCE_ACTIONS]; CONTEXTS],
             previous_action: AFFORDANCE_ACTIONS,
             recent_actions: no_recent_actions(),
-            recent_contexts: [0; MAX_ELIGIBILITY_SPAN],
-            current_context: 0,
-            current_facts: 0,
-            splits: Vec::new(),
-            experiences: Vec::new(),
-            next_experience: 0,
-            outcomes_seen: 0,
-            per_action: if config.context == ContextMode::PerAction {
-                vec![ActionSituations::default(); AFFORDANCE_ACTIONS]
-            } else {
-                Vec::new()
-            },
-            recent_facts: [0; MAX_ELIGIBILITY_SPAN],
-            scenes: ScenePerception::default(),
-            transitions: if config.planning {
-                vec![[0; MAX_SCENES]; MAX_SCENES * AFFORDANCE_ACTIONS]
-            } else {
-                Vec::new()
-            },
-            decision_scene: None,
-            scene_stats: if config.planning {
-                vec![SituationStats::default(); MAX_SCENES * AFFORDANCE_ACTIONS]
-            } else {
-                Vec::new()
-            },
             previous_view: [[0; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
             bout_remaining: 0,
         }
     }
 
-    /// Checks settings and every stored experiment and situation index, so a decoded learner
-    /// cannot index outside its fixed tables.
+    /// Checks settings and every stored experiment index, so a decoded learner cannot index
+    /// outside its fixed tables.
     fn validate(&self) -> Result<(), String> {
         self.config.validate()?;
-        if self.contexts.len() != CONTEXTS {
-            return Err(format!("affordance learner needs {CONTEXTS} situations"));
-        }
         if self.bout_remaining >= self.config.bout_length {
             return Err("affordance bout is out of range".to_owned());
         }
@@ -790,49 +201,6 @@ impl AffordanceLearner {
                 .any(|action| *action > AFFORDANCE_ACTIONS)
         {
             return Err("affordance experiment index is out of range".to_owned());
-        }
-        if self.current_context >= CONTEXTS
-            || self
-                .recent_contexts
-                .iter()
-                .any(|context| *context >= CONTEXTS)
-        {
-            return Err("affordance situation index is out of range".to_owned());
-        }
-        let splits_valid = self.splits.len() < CONTEXTS
-            && self.splits.iter().enumerate().all(|(index, split)| {
-                usize::from(split.child) == index + 1
-                    && split.parent < split.child
-                    && usize::from(split.fact) < SENSE_FACTS
-            });
-        let experiences_valid = self.experiences.len() <= EXPERIENCE_MEMORY
-            && self.next_experience < EXPERIENCE_MEMORY
-            && self.experiences.iter().all(|experience| {
-                usize::from(experience.situation) <= self.splits.len()
-                    && usize::from(experience.action) < AFFORDANCE_ACTIONS
-            });
-        let per_action_valid = (self.per_action.is_empty()
-            && self.config.context != ContextMode::PerAction)
-            || (self.per_action.len() == AFFORDANCE_ACTIONS
-                && self
-                    .per_action
-                    .iter()
-                    .all(|situations| situations.is_valid(SENSE_FACTS)));
-        let planning_valid = if self.config.planning {
-            self.transitions.len() == MAX_SCENES * AFFORDANCE_ACTIONS
-                && self.scene_stats.len() == MAX_SCENES * AFFORDANCE_ACTIONS
-        } else {
-            self.transitions.is_empty() && self.scene_stats.is_empty()
-        } && self
-            .decision_scene
-            .is_none_or(|scene| usize::from(scene) < MAX_SCENES);
-        if !splits_valid
-            || !experiences_valid
-            || !per_action_valid
-            || !planning_valid
-            || !self.scenes.is_valid()
-        {
-            return Err("learned situations are out of range".to_owned());
         }
         Ok(())
     }
@@ -881,328 +249,57 @@ impl AffordanceLearner {
         .map(|value| value * OUTCOME_SCALE)
     }
 
+    /// Score points for a `difference` on `feature`, in units of that feature's overall spread.
+    fn points(&self, feature: usize, difference: i32) -> i64 {
+        let spread = i64::from(self.overall_spread[feature].max(SPREAD_FLOOR));
+        (i64::from(difference.abs()) * SPREAD_POINTS / spread).min(FEATURE_POINTS_CAP)
+    }
+
     fn observe(&mut self, observation: &EnvironmentObservation) {
         let now = self.outcome(observation);
-        let previous_context = self.current_context;
-        let previous_facts = self.current_facts;
-        if matches!(
-            self.config.context,
-            ContextMode::Learned | ContextMode::PerAction
-        ) {
-            self.current_facts = match self.config.perception {
-                Perception::Designed => sense_facts(observation),
-                perception @ (Perception::Scenes
-                | Perception::FoveatedScenes
-                | Perception::SalientScenes) => self
-                    .scenes
-                    .observe(
-                        observation,
-                        perception != Perception::Scenes,
-                        perception == Perception::SalientScenes,
-                    )
-                    .map_or(0, |scene| 1 << scene),
-            };
-        }
-        self.current_context = match self.config.context {
-            ContextMode::None | ContextMode::PerAction => 0,
-            ContextMode::SenseBits => sense_context(observation),
-            ContextMode::Learned => self.situation_of(self.current_facts),
-        };
         if self.previous_action >= AFFORDANCE_ACTIONS {
-            self.pooled.prime(&now);
+            self.overall = now;
             return;
         }
         let config = self.config;
         let action = self.previous_action;
-        let visits = self.pooled.visits[action].saturating_add(1);
-        self.pooled.visits[action] = visits;
-        if visits > 1 {
-            // Learning progress compares the direct outcome's prediction error over a short and
-            // a long window, before this outcome updates the prediction.
-            let error = self.pooled.prediction_error(action, &now);
-            if visits == 2 {
-                self.error_fast[action] = error;
-                self.error_slow[action] = error;
-            } else {
-                let fast = i32::from((config.action_horizon / 2).max(1));
-                let slow = i32::from(config.action_horizon) * 2;
-                self.error_fast[action] += (error - self.error_fast[action]) / fast;
-                self.error_slow[action] += (error - self.error_slow[action]) / slow;
-            }
-        }
-        let credited = self
+        self.visits[action] = self.visits[action].saturating_add(1);
+        for (age, credited) in self
             .recent_actions
             .into_iter()
-            .zip(self.recent_contexts)
-            .take(config.eligibility_span)
-            .enumerate()
-            .filter(|(_, (credited, _))| *credited < AFFORDANCE_ACTIONS);
-        for (age, (credited, _)) in credited.clone() {
-            self.pooled.credit(credited, age, &now, &config);
-        }
-        self.pooled.observe_overall(&now, &config);
-        self.pooled.forget(action, &config);
-        if matches!(
-            config.context,
-            ContextMode::SenseBits | ContextMode::Learned
-        ) {
-            // The direct outcome belongs to the situation the last experiment was chosen in.
-            let situation = &mut self.contexts[previous_context];
-            situation.visits[action] = situation.visits[action].saturating_add(1);
-            for (age, (credited, context)) in credited {
-                self.contexts[context].credit(credited, age, &now, &config);
-            }
-            let situation = &mut self.contexts[previous_context];
-            situation.observe_overall(&now, &config);
-            situation.forget(action, &config);
-        }
-        self.outcomes_seen += 1;
-        if config.context == ContextMode::Learned {
-            self.remember(previous_facts, previous_context, action, &now);
-            if self.outcomes_seen.is_multiple_of(SPLIT_INTERVAL) {
-                self.try_split();
-                self.current_context = self.situation_of(self.current_facts);
-            }
-        }
-        if config.planning {
-            self.learn_transition(action, &now);
-        }
-        if config.context == ContextMode::PerAction {
-            self.learn_per_action(previous_facts, action, &now);
-            self.remember(previous_facts, 0, action, &now);
-            if self.outcomes_seen.is_multiple_of(SPLIT_INTERVAL) {
-                self.try_split_per_action();
-            }
-        }
-    }
-
-    /// Updates each experiment's own situation statistics with an outcome that followed
-    /// `action`, chosen with `facts`.
-    fn learn_per_action(&mut self, facts: u32, action: usize, now: &[i32; OUTCOME_FEATURES]) {
-        let config = self.config;
-        let situation = self.per_action[action].situation_of(facts);
-        let stats = &mut self.per_action[action].stats[situation];
-        stats.visits = stats.visits.saturating_add(1);
-        for (age, (credited, credited_facts)) in self
-            .recent_actions
-            .into_iter()
-            .zip(self.recent_facts)
             .take(config.eligibility_span)
             .enumerate()
         {
-            if credited < AFFORDANCE_ACTIONS {
-                let situations = &mut self.per_action[credited];
-                let situation = situations.situation_of(credited_facts);
-                situations.stats[situation].credit(age, now, &config);
-            }
-        }
-        // Memories fade with time, not only when revisited: where the founder stands, every
-        // experiment but the one just credited drifts back to normal as for pooled statistics;
-        // elsewhere every experiment's memory drifts back four times slower. Fading only where
-        // the founder stands would make experience split over many situations fade that many
-        // times slower; fading everywhere at full speed would erase what rarely visited
-        // situations taught between visits.
-        let distant = AffordanceConfig {
-            forgetting_horizon: config.forgetting_horizon.saturating_mul(DISTANT_FORGETTING),
-            ..config
-        };
-        for (other, situations) in self.per_action.iter_mut().enumerate() {
-            let current = situations.situation_of(facts);
-            situations.stats[current].observe_overall(now, &config);
-            for (index, stats) in situations.stats.iter_mut().enumerate() {
-                if index != current {
-                    stats.forget(&distant);
-                } else if other != action {
-                    stats.forget(&config);
-                }
-            }
-        }
-    }
-
-    /// How much splitting `action`'s `situation` on `fact` would change the action's effect:
-    /// the gap between its effect (its average outcome minus every experiment's average outcome
-    /// in the same situation of its tree) on the two sides, in score points.
-    fn action_split_gain(
-        &self,
-        action: usize,
-        situations: &[usize],
-        situation: usize,
-        fact: usize,
-    ) -> i64 {
-        let mut tries = [0_i64; 2];
-        let mut sums = [[0_i64; OUTCOME_FEATURES]; 2];
-        let mut side_count = [0_i64; 2];
-        let mut side_sums = [[0_i64; OUTCOME_FEATURES]; 2];
-        for (experience, here) in self.experiences.iter().zip(situations) {
-            if *here != situation {
+            if credited >= AFFORDANCE_ACTIONS || self.visits[credited] == 0 {
                 continue;
             }
-            let side = usize::from(experience.facts & (1 << fact) != 0);
-            let mine = usize::from(experience.action) == action;
-            side_count[side] += 1;
-            tries[side] += i64::from(mine);
-            for (feature, value) in experience.outcome.iter().enumerate() {
-                side_sums[side][feature] += i64::from(*value);
-                if mine {
-                    sums[side][feature] += i64::from(*value);
+            let count = self.visits[credited];
+            let horizon = i32::from(count.min(config.action_horizon)) << age;
+            for (feature, value) in now.into_iter().enumerate() {
+                // Spreads are measured against the averages before this outcome joins them;
+                // an experiment's first outcome sets its average and has no spread yet.
+                if count > 1 {
+                    let deviation = (value - self.after[credited][feature]).abs();
+                    self.after_spread[credited][feature] +=
+                        (deviation - self.after_spread[credited][feature]) / horizon;
                 }
+                self.after[credited][feature] += (value - self.after[credited][feature]) / horizon;
             }
         }
-        if side_count.iter().any(|count| *count < SPLIT_MIN_SIDE)
-            || tries.iter().any(|count| *count < SPLIT_MIN_TRIES)
-        {
-            return 0;
+        let overall_horizon = i32::from(config.overall_horizon);
+        for (feature, value) in now.into_iter().enumerate() {
+            let deviation = (value - self.overall[feature]).abs();
+            self.overall_spread[feature] +=
+                (deviation - self.overall_spread[feature]) / overall_horizon;
+            self.overall[feature] += (value - self.overall[feature]) / overall_horizon;
         }
-        let scale = i64::from(OUTCOME_SCALE);
-        (0..OUTCOME_FEATURES)
-            .map(|feature| {
-                let effect = |side: usize| {
-                    sums[side][feature] * scale / tries[side]
-                        - side_sums[side][feature] * scale / side_count[side]
-                };
-                let gap = (effect(1) - effect(0)).abs();
-                self.pooled
-                    .points(feature, i32::try_from(gap).unwrap_or(i32::MAX))
-            })
-            .sum()
-    }
-
-    /// For each experiment, splits its situation and sense fact with the largest gain, if it is
-    /// clear enough and the experiment has room for another situation.
-    fn try_split_per_action(&mut self) {
-        for action in 0..AFFORDANCE_ACTIONS {
-            let tree = &self.per_action[action];
-            if tree.stats.len() >= MAX_ACTION_SITUATIONS {
-                continue;
-            }
-            let situations: Vec<usize> = self
-                .experiences
-                .iter()
-                .map(|experience| tree.situation_of(experience.facts))
-                .collect();
-            let mut best: Option<(i64, usize, usize)> = None;
-            for situation in 0..tree.stats.len() {
-                for fact in 0..SENSE_FACTS {
-                    let gain = self.action_split_gain(action, &situations, situation, fact);
-                    if gain >= SPLIT_GAIN && best.is_none_or(|(most, _, _)| gain > most) {
-                        best = Some((gain, situation, fact));
-                    }
-                }
-            }
-            if let Some((_, parent, fact)) = best {
-                let at = self.outcomes_seen;
-                self.per_action[action].split(parent, fact, at);
-            }
-        }
-    }
-
-    /// The learned situation of an observation with `facts`: splits refine situations in the
-    /// order they were made.
-    fn situation_of(&self, facts: u32) -> usize {
-        self.splits.iter().fold(0, |situation, split| {
-            if situation == usize::from(split.parent) && facts & (1 << split.fact) != 0 {
-                usize::from(split.child)
-            } else {
-                situation
-            }
-        })
-    }
-
-    fn remember(
-        &mut self,
-        facts: u32,
-        situation: usize,
-        action: usize,
-        now: &[i32; OUTCOME_FEATURES],
-    ) {
-        let experience = Experience {
-            facts,
-            situation: u8::try_from(situation).unwrap_or_default(),
-            action: u8::try_from(action).unwrap_or_default(),
-            outcome: now.map(|value| i16::try_from(value / OUTCOME_SCALE).unwrap_or_default()),
-        };
-        if self.experiences.len() < EXPERIENCE_MEMORY {
-            self.experiences.push(experience);
-        } else {
-            self.experiences[self.next_experience] = experience;
-        }
-        self.next_experience = (self.next_experience + 1) % EXPERIENCE_MEMORY;
-    }
-
-    /// How much splitting `situation` on `fact` would change what some experiment does: the
-    /// largest, over experiments tried enough on both sides, of the gap between its effect (its
-    /// average outcome minus the side's average outcome) on the two sides, in score points.
-    fn split_gain(&self, situation: usize, fact: usize) -> i64 {
-        let mut tries = [[0_i64; AFFORDANCE_ACTIONS]; 2];
-        let mut sums = [[[0_i64; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS]; 2];
-        let mut side_count = [0_i64; 2];
-        let mut side_sums = [[0_i64; OUTCOME_FEATURES]; 2];
-        for experience in &self.experiences {
-            if usize::from(experience.situation) != situation {
-                continue;
-            }
-            let side = usize::from(experience.facts & (1 << fact) != 0);
-            let action = usize::from(experience.action);
-            tries[side][action] += 1;
-            side_count[side] += 1;
-            for (feature, value) in experience.outcome.iter().enumerate() {
-                sums[side][action][feature] += i64::from(*value);
-                side_sums[side][feature] += i64::from(*value);
-            }
-        }
-        if side_count.iter().any(|count| *count < SPLIT_MIN_SIDE) {
-            return 0;
-        }
-        let scale = i64::from(OUTCOME_SCALE);
-        (0..AFFORDANCE_ACTIONS)
-            .filter(|action| tries.iter().all(|side| side[*action] >= SPLIT_MIN_TRIES))
-            .map(|action| {
-                (0..OUTCOME_FEATURES)
-                    .map(|feature| {
-                        let effect = |side: usize| {
-                            sums[side][action][feature] * scale / tries[side][action]
-                                - side_sums[side][feature] * scale / side_count[side]
-                        };
-                        let gap = (effect(1) - effect(0)).abs();
-                        self.pooled
-                            .points(feature, i32::try_from(gap).unwrap_or(i32::MAX))
-                    })
-                    .sum::<i64>()
-            })
-            .max()
-            .unwrap_or(0)
-    }
-
-    /// Splits the situation and sense fact with the largest gain, if it is clear enough and
-    /// room remains. The new situation starts from a copy of its parent's experience.
-    fn try_split(&mut self) {
-        if self.splits.len() + 1 >= CONTEXTS {
-            return;
-        }
-        let mut best: Option<(i64, usize, usize)> = None;
-        for situation in 0..=self.splits.len() {
-            for fact in 0..SENSE_FACTS {
-                let gain = self.split_gain(situation, fact);
-                if gain >= SPLIT_GAIN && best.is_none_or(|(most, _, _)| gain > most) {
-                    best = Some((gain, situation, fact));
-                }
-            }
-        }
-        let Some((_, parent, fact)) = best else {
-            return;
-        };
-        let child = self.splits.len() + 1;
-        self.splits.push(Split {
-            parent: u8::try_from(parent).unwrap_or_default(),
-            fact: u8::try_from(fact).unwrap_or_default(),
-            child: u8::try_from(child).unwrap_or_default(),
-            at: self.outcomes_seen,
-        });
-        self.contexts[child] = self.contexts[parent];
-        self.last_tried_in[child] = self.last_tried_in[parent];
-        for experience in &mut self.experiences {
-            if usize::from(experience.situation) == parent && experience.facts & (1 << fact) != 0 {
-                experience.situation = u8::try_from(child).unwrap_or_default();
+        let forgetting = i32::from(config.forgetting_horizon);
+        for other in (0..AFFORDANCE_ACTIONS).filter(|other| *other != action) {
+            for feature in 0..OUTCOME_FEATURES {
+                self.after[other][feature] +=
+                    (self.overall[feature] - self.after[other][feature]) / forgetting;
+                self.after_spread[other][feature] +=
+                    (self.overall_spread[feature] - self.after_spread[other][feature]) / forgetting;
             }
         }
     }
@@ -1212,172 +309,24 @@ impl AffordanceLearner {
     /// outcome arrives.
     #[must_use]
     pub fn expected_after(&self, action: usize) -> Option<[i32; OUTCOME_FEATURES]> {
-        (self.pooled.visits[action] > 0)
-            .then(|| self.pooled.after[action].map(|value| value / OUTCOME_SCALE))
+        (self.visits[action] > 0).then(|| self.after[action].map(|value| value / OUTCOME_SCALE))
     }
 
-    /// Contingency of `action` in the current situation. A situation's own statistics are
-    /// blended with the pooled ones by how often the action has been tried there, so a rarely
-    /// seen situation borrows from general experience instead of starting from nothing.
-    fn contextual_contingency(&self, action: usize) -> u32 {
-        let model = self.config.outcome_model;
-        let pooled = u64::from(self.pooled.contingency(action, model));
-        let (tried, local) = match self.config.context {
-            ContextMode::None => return u32::try_from(pooled).unwrap_or(u32::MAX),
-            ContextMode::SenseBits | ContextMode::Learned => {
-                let situation = &self.contexts[self.current_context];
-                (
-                    u64::from(situation.visits[action]),
-                    u64::from(situation.contingency(action, model)),
-                )
-            }
-            ContextMode::PerAction => {
-                let situations = &self.per_action[action];
-                let stats = &situations.stats[situations.situation_of(self.current_facts)];
-                (u64::from(stats.visits), u64::from(stats.contingency()))
-            }
-        };
-        let prior = u64::from(self.config.context_prior);
-        u32::try_from((tried * local + prior * pooled) / (tried + prior)).unwrap_or(u32::MAX)
-    }
-
-    /// How fast an experiment's prediction error is changing, in either direction: rising
-    /// error marks a consequence that changed, falling error one being learned.
-    fn learning_progress(&self, action: usize) -> u32 {
-        let gap = (self.error_slow[action] - self.error_fast[action]).unsigned_abs();
-        gap / OUTCOME_SCALE.cast_unsigned()
-    }
-
-    fn interest(&self, action: usize) -> u32 {
-        match self.config.rule {
-            ScoringRule::Contingency => self.contextual_contingency(action),
-            ScoringRule::LearningProgress => self.learning_progress(action),
-        }
-    }
-
-    /// The founder's current learned scene, if scenes have formed.
-    fn current_scene(&self) -> Option<usize> {
-        (self.config.perception.uses_scenes() && self.current_facts != 0)
-            .then(|| self.current_facts.trailing_zeros() as usize)
-    }
-
-    /// Counts that `action`, chosen in the remembered scene, led to the current scene. Old
-    /// counts halve as a row fills, so the model keeps tracking a changing world.
-    fn learn_transition(&mut self, action: usize, now: &[i32; OUTCOME_FEATURES]) {
-        let Some(from) = self.decision_scene.map(usize::from) else {
-            return;
-        };
-        // What follows each experiment in the scene it was chosen in, with the same averages,
-        // spreads and fading as situation statistics.
-        let config = self.config;
-        let distant = AffordanceConfig {
-            forgetting_horizon: config.forgetting_horizon.saturating_mul(DISTANT_FORGETTING),
-            ..config
-        };
-        let direct = &mut self.scene_stats[from * AFFORDANCE_ACTIONS + action];
-        direct.visits = direct.visits.saturating_add(1);
-        direct.credit(0, now, &config);
-        for (index, stats) in self.scene_stats.iter_mut().enumerate() {
-            let (scene, experiment) = (index / AFFORDANCE_ACTIONS, index % AFFORDANCE_ACTIONS);
-            if scene == from {
-                stats.observe_overall(now, &config);
-                if experiment != action {
-                    stats.forget(&config);
-                }
-            } else {
-                stats.forget(&distant);
-            }
-        }
-        let Some(to) = self.current_scene() else {
-            return;
-        };
-        let row = &mut self.transitions[from * AFFORDANCE_ACTIONS + action];
-        row[to] = row[to].saturating_add(1);
-        if row.iter().map(|count| u32::from(*count)).sum::<u32>() > TRANSITION_MEMORY {
-            for count in row.iter_mut() {
-                *count /= 2;
-            }
-        }
-    }
-
-    /// Contingency of `action` from its own statistics in `scene`, once tried there enough to
-    /// trust; zero before.
-    fn scene_contingency(&self, action: usize, scene: usize) -> u32 {
-        let stats = &self.scene_stats[scene * AFFORDANCE_ACTIONS + action];
-        if u32::from(stats.visits) >= PLAN_MIN_TRIES {
-            stats.contingency()
-        } else {
-            0
-        }
-    }
-
-    /// Where `action` in `scene` leads, as probabilities scaled to 256, once tried enough.
-    fn leads_to(&self, scene: usize, action: usize) -> Option<[u32; MAX_SCENES]> {
-        let row = &self.transitions[scene * AFFORDANCE_ACTIONS + action];
-        let total: u32 = row.iter().map(|count| u32::from(*count)).sum();
-        (total >= PLAN_MIN_TRIES).then(|| row.map(|count| u32::from(count) * 256 / total))
-    }
-
-    /// Value of each scene: what is special about it, the most any experiment's own contingency
-    /// there exceeds its contingency in general, or, discounted, the value of the scenes some
-    /// experiment there leads to. Experiments that work the same everywhere, such as turning,
-    /// make no scene more valuable than another.
-    fn scene_values(&self) -> [u32; MAX_SCENES] {
-        let scenes = self.scenes.prototypes.len();
-        let model = self.config.outcome_model;
-        let mut values = [0_u32; MAX_SCENES];
-        for (scene, value) in values.iter_mut().enumerate().take(scenes) {
-            *value = (0..AFFORDANCE_ACTIONS)
-                .map(|action| {
-                    self.scene_contingency(action, scene)
-                        .saturating_sub(self.pooled.contingency(action, model))
-                })
-                .max()
-                .unwrap_or(0);
-        }
-        let own = values;
-        for _ in 0..PLAN_DEPTH {
-            let previous = values;
-            for scene in 0..scenes {
-                let reachable = (0..AFFORDANCE_ACTIONS)
-                    .filter_map(|action| self.leads_to(scene, action))
-                    .map(|chances| expected(&chances, &previous))
-                    .max()
-                    .unwrap_or(0);
-                values[scene] = own[scene].max(reachable * PLAN_DISCOUNT / 4);
-            }
-        }
-        values
-    }
-
-    /// How much `action` is expected to improve the founder's scene, judged by `values`.
-    fn planning_bonus(&self, action: usize, values: &[u32; MAX_SCENES]) -> u32 {
-        let Some(scene) = self.current_scene() else {
+    /// How strongly an experiment's outcomes differ from the overall outcomes, in average and
+    /// in spread, with each feature judged in units of its overall spread.
+    fn contingency(&self, action: usize) -> u32 {
+        if self.visits[action] == 0 {
             return 0;
-        };
-        self.leads_to(scene, action).map_or(0, |chances| {
-            expected(&chances, values)
-                .saturating_sub(values[scene])
-                .saturating_mul(PLAN_WEIGHT)
-        })
-    }
-
-    fn remember_choice(&mut self, action: usize, tick: u64) {
-        self.recent_actions.rotate_right(1);
-        self.recent_actions[0] = action;
-        self.recent_contexts.rotate_right(1);
-        self.recent_contexts[0] = self.current_context;
-        self.recent_facts.rotate_right(1);
-        self.recent_facts[0] = self.current_facts;
-        self.decision_scene = self
-            .current_scene()
-            .map(|scene| u8::try_from(scene).unwrap_or_default());
-        self.last_tried[action] = tick;
-        self.last_tried_in[self.current_context][action] = tick;
-        if let Some(situations) = self.per_action.get_mut(action) {
-            let situation = situations.situation_of(self.current_facts);
-            situations.last_tried[situation] = tick;
         }
+        let points: i64 = (0..OUTCOME_FEATURES)
+            .map(|feature| {
+                let average = (self.after[action][feature] - self.overall[feature]).abs();
+                let spread =
+                    (self.after_spread[action][feature] - self.overall_spread[feature]).abs();
+                self.points(feature, average.saturating_add(spread))
+            })
+            .sum();
+        u32::try_from(points).unwrap_or(u32::MAX)
     }
 
     fn select(&mut self, seed: u64, tick: u64) -> (PrimitiveAction, u32) {
@@ -1386,63 +335,38 @@ impl AffordanceLearner {
             // Continue the current bout: the experiment is held, but its outcomes keep teaching.
             self.bout_remaining -= 1;
             let held = self.previous_action;
-            self.remember_choice(held, tick);
-            return (affordance_action(held), self.interest(held));
+            self.recent_actions.rotate_right(1);
+            self.recent_actions[0] = held;
+            self.last_tried[held] = tick;
+            return (affordance_action(held), self.contingency(held));
         }
-        let values = config.planning.then(|| self.scene_values());
         let mut best = 0;
         let mut best_score = 0_u32;
-        let mut best_planned = 0_u32;
         for candidate in 0..AFFORDANCE_ACTIONS {
             // Curiosity regrows while an experiment goes untried, so exploration never stops
-            // and a world that changed is noticed again. Telling situations apart, curiosity is
-            // per situation: an experiment never tried here is as tempting as one never tried.
-            let (tried, last) = match config.context {
-                ContextMode::None => (self.pooled.visits[candidate], self.last_tried[candidate]),
-                ContextMode::SenseBits | ContextMode::Learned => (
-                    self.contexts[self.current_context].visits[candidate],
-                    self.last_tried_in[self.current_context][candidate],
-                ),
-                ContextMode::PerAction => {
-                    let situations = &self.per_action[candidate];
-                    let situation = situations.situation_of(self.current_facts);
-                    (
-                        situations.stats[situation].visits,
-                        situations.last_tried[situation],
-                    )
-                }
-            };
-            let since = if tried == 0 {
+            // and a world that changed is noticed again.
+            let since = if self.visits[candidate] == 0 {
                 config.recency_cap
             } else {
-                (tick - last).saturating_mul(config.recency_rate)
+                (tick - self.last_tried[candidate]).saturating_mul(config.recency_rate)
             };
             let curiosity = u32::try_from(since.min(config.recency_cap)).unwrap_or_default();
             // Seed-keyed tie breaking is endogenous deterministic initialization, not a schedule.
             let tie = (derive(seed, tick, candidate as u64, 0x4146_464F) & 0xff) as u32;
-            let planned = values
-                .as_ref()
-                .map_or(0, |values| self.planning_bonus(candidate, values));
             let score = self
-                .interest(candidate)
-                .saturating_add(planned)
+                .contingency(candidate)
                 .saturating_add(curiosity)
                 .saturating_add(tie);
             if score > best_score {
                 best = candidate;
                 best_score = score;
-                best_planned = planned;
             }
         }
         self.previous_action = best;
-        // Babbling comes in bouts; a step taken for the plan is taken once, and the plan is
-        // revised from where it leads.
-        self.bout_remaining = if best_planned > 0 {
-            0
-        } else {
-            config.bout_length - 1
-        };
-        self.remember_choice(best, tick);
+        self.bout_remaining = config.bout_length - 1;
+        self.recent_actions.rotate_right(1);
+        self.recent_actions[0] = best;
+        self.last_tried[best] = tick;
         (affordance_action(best), best_score)
     }
 }
@@ -1748,7 +672,6 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
     let mut fingerprint = derive(0, learner.previous_action as u64, 0, 0x4146_4650);
     let config = learner.config;
     for (index, value) in [
-        u64::from(config.rule == ScoringRule::LearningProgress),
         u64::from(config.action_horizon),
         u64::from(config.overall_horizon),
         u64::from(config.forgetting_horizon),
@@ -1756,38 +679,31 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
         config.recency_rate,
         config.recency_cap,
         u64::from(config.bout_length),
-        match config.context {
-            ContextMode::None => 0,
-            ContextMode::SenseBits => 1,
-            ContextMode::Learned => 2,
-            ContextMode::PerAction => 3,
-        },
-        u64::from(config.context_prior),
-        u64::from(config.outcome_model == OutcomeModel::Expectiles),
-        match config.perception {
-            Perception::Designed => 0,
-            Perception::Scenes => 1,
-            Perception::FoveatedScenes => 2,
-            Perception::SalientScenes => 3,
-        },
-        u64::from(config.planning),
-        learner.decision_scene.map_or(u64::MAX, u64::from),
         u64::from(learner.bout_remaining),
-        learner.current_context as u64,
     ]
     .into_iter()
     .enumerate()
     {
         fingerprint = derive(fingerprint, value, index as u64, 0x4346_4746);
     }
-    for (age, (action, context)) in learner
-        .recent_actions
-        .iter()
-        .zip(learner.recent_contexts)
-        .enumerate()
-    {
+    for (age, action) in learner.recent_actions.iter().enumerate() {
         fingerprint = derive(fingerprint, *action as u64, age as u64, 0x5245_434E);
-        fingerprint = derive(fingerprint, context as u64, age as u64, 0x5243_5458);
+    }
+    for (feature, value) in learner.overall_spread.iter().enumerate() {
+        fingerprint = derive(
+            fingerprint,
+            i64::from(*value).cast_unsigned(),
+            feature as u64,
+            0x4F53_5052,
+        );
+    }
+    for (feature, value) in learner.overall.iter().enumerate() {
+        fingerprint = derive(
+            fingerprint,
+            i64::from(*value).cast_unsigned(),
+            feature as u64,
+            0x4F56_4552,
+        );
     }
     for (ray, view) in learner.previous_view.iter().enumerate() {
         for (channel, value) in view.iter().enumerate() {
@@ -1799,159 +715,31 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
             );
         }
     }
-    for action in 0..AFFORDANCE_ACTIONS {
-        for (tag, value) in [
-            (0x4552_4646, i64::from(learner.error_fast[action])),
-            (0x4552_5353, i64::from(learner.error_slow[action])),
-            (
-                0x4C41_5354,
-                i64::try_from(learner.last_tried[action]).unwrap_or(i64::MAX),
-            ),
-        ] {
-            fingerprint = derive(fingerprint, value.cast_unsigned(), action as u64, tag);
-        }
-    }
-    fingerprint = learner.pooled.fingerprint(fingerprint, 0x504F_4F4C);
-    if config.context == ContextMode::PerAction {
-        fingerprint = per_action_fingerprint(learner, fingerprint);
-    }
-    if matches!(
-        config.context,
-        ContextMode::Learned | ContextMode::PerAction
-    ) {
-        fingerprint = learned_situations_fingerprint(learner, fingerprint);
-    }
-    if matches!(
-        config.context,
-        ContextMode::SenseBits | ContextMode::Learned
-    ) {
-        for (context, statistics) in learner.contexts.iter().enumerate() {
-            fingerprint = statistics.fingerprint(fingerprint, 0x4354_0000 | context as u64);
-            for (action, tick) in learner.last_tried_in[context].iter().enumerate() {
-                fingerprint = derive(
-                    fingerprint,
-                    *tick,
-                    action as u64,
-                    0x4C54_0000 | context as u64,
-                );
-            }
-        }
-    }
-    fingerprint
-}
-
-fn per_action_fingerprint(learner: &AffordanceLearner, mut fingerprint: u64) -> u64 {
-    for (action, situations) in learner.per_action.iter().enumerate() {
-        let tag = 0x5041_0000 | action as u64;
-        for split in &situations.splits {
-            let word =
-                u64::from(split.parent) | u64::from(split.fact) << 8 | u64::from(split.child) << 16;
-            fingerprint = derive(fingerprint, word, split.at, tag);
-        }
-        for (index, value) in situations
-            .stats
-            .iter()
-            .flat_map(SituationStats::words)
-            .chain(
-                situations
-                    .last_tried
-                    .iter()
-                    .map(|tick| i64::try_from(*tick).unwrap_or(i64::MAX)),
-            )
-            .enumerate()
-        {
-            fingerprint = derive(fingerprint, value.cast_unsigned(), index as u64, tag);
-        }
-    }
-    for (age, facts) in learner.recent_facts.iter().enumerate() {
-        fingerprint = derive(fingerprint, u64::from(*facts), age as u64, 0x5246_4354);
-    }
-    fingerprint
-}
-
-fn transitions_fingerprint(transitions: &[[u16; MAX_SCENES]], mut fingerprint: u64) -> u64 {
-    for (index, count) in transitions.iter().flatten().enumerate() {
-        fingerprint = derive(fingerprint, u64::from(*count), index as u64, 0x5452_414E);
-    }
-    fingerprint
-}
-
-fn scenes_fingerprint(scenes: &ScenePerception, mut fingerprint: u64) -> u64 {
-    let words = [
-        i64::from(scenes.seen),
-        scenes.typical_distance,
-        i64::try_from(scenes.current).unwrap_or(i64::MAX),
-    ]
-    .into_iter()
-    .chain(scenes.mean.iter().map(|value| i64::from(*value)))
-    .chain(scenes.spread.iter().map(|value| i64::from(*value)))
-    .chain(scenes.members.iter().map(|value| i64::from(*value)))
-    .chain(
-        scenes
-            .prototypes
-            .iter()
-            .flatten()
-            .map(|value| i64::from(*value)),
-    )
-    .chain(scenes.colour_counts.iter().map(|value| i64::from(*value)))
-    .chain([i64::from(scenes.colour_total)]);
-    for (index, value) in words.enumerate() {
+    for (action, count) in learner.visits.iter().enumerate() {
+        fingerprint = derive(fingerprint, u64::from(*count), action as u64, 0x5649_5349);
         fingerprint = derive(
             fingerprint,
-            value.cast_unsigned(),
-            index as u64,
-            0x5343_454E,
+            learner.last_tried[action],
+            action as u64,
+            0x4C41_5354,
         );
-    }
-    fingerprint
-}
-
-fn learned_situations_fingerprint(learner: &AffordanceLearner, mut fingerprint: u64) -> u64 {
-    if learner.config.perception.uses_scenes() {
-        fingerprint = scenes_fingerprint(&learner.scenes, fingerprint);
-    }
-    if learner.config.planning {
-        fingerprint = transitions_fingerprint(&learner.transitions, fingerprint);
-        for (index, value) in learner
-            .scene_stats
-            .iter()
-            .flat_map(SituationStats::words)
-            .enumerate()
-        {
+        for (feature, value) in learner.after_spread[action].iter().enumerate() {
             fingerprint = derive(
                 fingerprint,
-                value.cast_unsigned(),
-                index as u64,
-                0x5353_5441,
+                i64::from(*value).cast_unsigned(),
+                feature as u64,
+                0x4153_5052,
+            );
+        }
+        for (feature, value) in learner.after[action].iter().enumerate() {
+            fingerprint = derive(
+                fingerprint,
+                i64::from(*value).cast_unsigned(),
+                feature as u64,
+                0x4146_5452,
             );
         }
     }
-    for split in &learner.splits {
-        let word =
-            u64::from(split.parent) | u64::from(split.fact) << 8 | u64::from(split.child) << 16;
-        fingerprint = derive(fingerprint, word, split.at, 0x5350_4C54);
-    }
-    for (index, experience) in learner.experiences.iter().enumerate() {
-        let mut word = u64::from(experience.facts) << 16
-            | u64::from(experience.situation) << 8
-            | u64::from(experience.action);
-        for value in experience.outcome {
-            word = derive(word, i64::from(value).cast_unsigned(), 0, 0x4F55_5443);
-        }
-        fingerprint = derive(fingerprint, word, index as u64, 0x4558_5045);
-    }
-    fingerprint = derive(
-        fingerprint,
-        learner.next_experience as u64,
-        learner.outcomes_seen,
-        0x5249_4E47,
-    );
-    fingerprint = derive(
-        fingerprint,
-        u64::from(learner.current_facts),
-        0,
-        0x4641_4354,
-    );
     fingerprint
 }
 
@@ -2141,7 +929,7 @@ mod tests {
 
     use super::{
         AFFORDANCE_ACTIONS, AffordanceConfig, AgentRuntime, FakeEnvironment, FrozenPhysiology,
-        MAX_ELIGIBILITY_SPAN, RuntimeError, ScoringRule,
+        MAX_ELIGIBILITY_SPAN, RuntimeError,
     };
     use crate::{
         BrainConfig, RawSensoryFrame, compose_raw_sensory_frame,
@@ -2318,9 +1106,8 @@ mod tests {
     }
 
     #[test]
-    fn affordance_settings_and_learning_progress_survive_a_checkpoint() {
+    fn affordance_settings_survive_a_checkpoint() {
         let settings = AffordanceConfig {
-            rule: ScoringRule::LearningProgress,
             action_horizon: 16,
             eligibility_span: 2,
             ..AffordanceConfig::default()
@@ -2358,12 +1145,12 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         let default = run(AffordanceConfig::default());
-        let progress = run(AffordanceConfig {
-            rule: ScoringRule::LearningProgress,
+        let longer_memory = run(AffordanceConfig {
+            action_horizon: 16,
             ..AffordanceConfig::default()
         });
         assert_eq!(default, run(AffordanceConfig::default()));
-        assert_ne!(default, progress);
+        assert_ne!(default, longer_memory);
     }
 
     #[test]

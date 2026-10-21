@@ -24,8 +24,8 @@ use sim_core::{
         RETINA_ROWS, Retina,
     },
     runtime::{
-        AFFORDANCE_ACTIONS, AffordanceConfig, AgentRuntime, ContextMode, ExperimentMode,
-        HAND_CONTACT_FEATURE, OutcomeModel, Perception, ScoringRule, VISUAL_CHANGE_FEATURE,
+        AFFORDANCE_ACTIONS, AffordanceConfig, AgentRuntime, ExperimentMode, HAND_CONTACT_FEATURE,
+        VISUAL_CHANGE_FEATURE,
     },
 };
 
@@ -55,102 +55,22 @@ const REACHABLE_OCCLUSION: u16 = 200;
 pub enum Controller {
     PredictiveBaseline,
     Random,
-    /// The affordance learner with its default contingency rule.
+    /// The founder's affordance learner.
     AffordanceDiscovery,
-    /// The affordance learner scoring experiments by learning progress instead.
-    LearningProgress,
-    /// The affordance learner judging contingency within the situation its senses report.
-    ContextDiscovery,
-    /// The affordance learner judging contingency by full outcome distributions (expectiles).
-    ExpectileDiscovery,
-    /// The affordance learner judging contingency within situations it discovers itself.
-    LearnedSituations,
-    /// The affordance learner with situations it discovers separately for each experiment.
-    PerActionSituations,
-    /// Per-experiment situations split on scenes the founder learns from its raw senses.
-    SceneSituations,
-    /// Learned scenes plus planning over where experiments lead.
-    ScenePlanner,
-    /// Foveated learned scenes plus planning.
-    FovealPlanner,
-    /// Salience-weighted foveated learned scenes plus planning.
-    SalientPlanner,
 }
 
 impl Controller {
     /// Settings of the affordance learner this controller runs, if it runs one.
     #[must_use]
     pub fn learner(self) -> Option<AffordanceConfig> {
-        let perception = match self {
-            Self::SceneSituations | Self::ScenePlanner => Perception::Scenes,
-            Self::FovealPlanner => Perception::FoveatedScenes,
-            Self::SalientPlanner => Perception::SalientScenes,
-            _ => Perception::Designed,
-        };
-        let (rule, context, outcome_model) = match self {
-            Self::PredictiveBaseline | Self::Random => return None,
-            Self::AffordanceDiscovery => (
-                ScoringRule::Contingency,
-                ContextMode::None,
-                OutcomeModel::Moments,
-            ),
-            Self::LearningProgress => (
-                ScoringRule::LearningProgress,
-                ContextMode::None,
-                OutcomeModel::Moments,
-            ),
-            Self::ContextDiscovery => (
-                ScoringRule::Contingency,
-                ContextMode::SenseBits,
-                OutcomeModel::Moments,
-            ),
-            Self::ExpectileDiscovery => (
-                ScoringRule::Contingency,
-                ContextMode::None,
-                OutcomeModel::Expectiles,
-            ),
-            Self::LearnedSituations => (
-                ScoringRule::Contingency,
-                ContextMode::Learned,
-                OutcomeModel::Moments,
-            ),
-            Self::PerActionSituations
-            | Self::SceneSituations
-            | Self::ScenePlanner
-            | Self::FovealPlanner
-            | Self::SalientPlanner => (
-                ScoringRule::Contingency,
-                ContextMode::PerAction,
-                OutcomeModel::Moments,
-            ),
-        };
-        Some(AffordanceConfig {
-            rule,
-            context,
-            outcome_model,
-            perception,
-            planning: matches!(
-                self,
-                Self::ScenePlanner | Self::FovealPlanner | Self::SalientPlanner
-            ),
-            ..AffordanceConfig::default()
-        })
+        (self == Self::AffordanceDiscovery).then(AffordanceConfig::default)
     }
 }
 
-pub const CONTROLLERS: [Controller; 12] = [
+pub const CONTROLLERS: [Controller; 3] = [
     Controller::PredictiveBaseline,
     Controller::Random,
     Controller::AffordanceDiscovery,
-    Controller::LearningProgress,
-    Controller::ContextDiscovery,
-    Controller::ExpectileDiscovery,
-    Controller::LearnedSituations,
-    Controller::PerActionSituations,
-    Controller::SceneSituations,
-    Controller::ScenePlanner,
-    Controller::FovealPlanner,
-    Controller::SalientPlanner,
 ];
 
 /// How the founder senses the coupled object.
@@ -227,9 +147,6 @@ pub struct Trace {
     pub expected: Vec<Option<u16>>,
     /// Whether the founder faced the object at each decision; always true without facing.
     pub facing: Vec<bool>,
-    /// Situations the learner split on by the end of the run, as (sense fact, outcomes seen): the
-    /// shared situations, or the target experiment's own under per-experiment situations.
-    pub splits: Vec<(usize, u64)>,
 }
 
 /// Maps an action to its experiment slot, in the learner's primitive order.
@@ -366,7 +283,6 @@ pub fn run(
         levels: Vec::with_capacity(total as usize),
         expected: Vec::with_capacity(total as usize),
         facing: Vec::with_capacity(total as usize),
-        splits: Vec::new(),
     };
     let ranges = phase_ranges(phases);
     let mut heading = 0;
@@ -425,19 +341,6 @@ pub fn run(
         body.vertical_motion = if action.jump > 0 { 255 } else { 0 };
         acceleration = (action.thrust / 2).clamp(-255, 255);
     }
-    let learner = &runtime.state().affordance;
-    trace.splits = learner
-        .splits
-        .iter()
-        .chain(
-            learner
-                .per_action
-                .get(object.target)
-                .map(|situations| situations.splits.as_slice())
-                .unwrap_or_default(),
-        )
-        .map(|split| (usize::from(split.fact), split.at))
-        .collect();
     trace
 }
 
