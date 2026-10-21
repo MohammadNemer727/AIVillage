@@ -22,7 +22,7 @@ use sim_core::{
     environment::{BodyProprioception, PrimitiveAction},
     runtime::{
         AFFORDANCE_ACTIONS, AffordanceConfig, AgentRuntime, ContextMode, ExperimentMode,
-        HAND_CONTACT_FEATURE, ScoringRule, VISUAL_CHANGE_FEATURE,
+        HAND_CONTACT_FEATURE, OutcomeModel, ScoringRule, VISUAL_CHANGE_FEATURE,
     },
 };
 
@@ -58,32 +58,53 @@ pub enum Controller {
     LearningProgress,
     /// The affordance learner judging contingency within the situation its senses report.
     ContextDiscovery,
+    /// The affordance learner judging contingency by full outcome distributions (expectiles).
+    ExpectileDiscovery,
 }
 
 impl Controller {
     /// Settings of the affordance learner this controller runs, if it runs one.
     #[must_use]
     pub fn learner(self) -> Option<AffordanceConfig> {
-        let (rule, context) = match self {
+        let (rule, context, outcome_model) = match self {
             Self::PredictiveBaseline | Self::Random => return None,
-            Self::AffordanceDiscovery => (ScoringRule::Contingency, ContextMode::None),
-            Self::LearningProgress => (ScoringRule::LearningProgress, ContextMode::None),
-            Self::ContextDiscovery => (ScoringRule::Contingency, ContextMode::SenseBits),
+            Self::AffordanceDiscovery => (
+                ScoringRule::Contingency,
+                ContextMode::None,
+                OutcomeModel::Moments,
+            ),
+            Self::LearningProgress => (
+                ScoringRule::LearningProgress,
+                ContextMode::None,
+                OutcomeModel::Moments,
+            ),
+            Self::ContextDiscovery => (
+                ScoringRule::Contingency,
+                ContextMode::SenseBits,
+                OutcomeModel::Moments,
+            ),
+            Self::ExpectileDiscovery => (
+                ScoringRule::Contingency,
+                ContextMode::None,
+                OutcomeModel::Expectiles,
+            ),
         };
         Some(AffordanceConfig {
             rule,
             context,
+            outcome_model,
             ..AffordanceConfig::default()
         })
     }
 }
 
-pub const CONTROLLERS: [Controller; 5] = [
+pub const CONTROLLERS: [Controller; 6] = [
     Controller::PredictiveBaseline,
     Controller::Random,
     Controller::AffordanceDiscovery,
     Controller::LearningProgress,
     Controller::ContextDiscovery,
+    Controller::ExpectileDiscovery,
 ];
 
 /// How the founder senses the coupled object.

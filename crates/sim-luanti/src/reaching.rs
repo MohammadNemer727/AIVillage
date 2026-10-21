@@ -43,10 +43,11 @@ pub const OBJECT: Object = Object {
     facing: true,
 };
 
-pub const REACHING_CONTROLLERS: [Controller; 3] = [
+pub const REACHING_CONTROLLERS: [Controller; 4] = [
     Controller::Random,
     Controller::AffordanceDiscovery,
     Controller::ContextDiscovery,
+    Controller::ExpectileDiscovery,
 ];
 
 /// One controller over every seed.

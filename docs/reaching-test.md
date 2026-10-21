@@ -12,6 +12,8 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | AffordanceDiscovery | late | 7.8 | 13.6 | 12.6 | 12.6 |
 | ContextDiscovery | early | 8.7 | 13.6 | 19.6 | 19.6 |
 | ContextDiscovery | late | 9.7 | 14.0 | 26.4 | 26.4 |
+| ExpectileDiscovery | early | 7.6 | 10.8 | 10.4 | 10.4 |
+| ExpectileDiscovery | late | 8.7 | 13.6 | 18.3 | 18.3 |
 
 ## Late-phase hit rate per seed (%)
 
@@ -20,3 +22,4 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | Random | 15.1 · 17.9 · 6.8 · 12.9 · 13.9 · 19.2 · 6.0 · 16.1 |
 | AffordanceDiscovery | 11.9 · 25.2 · 7.0 · 16.0 · 18.6 · 0.0 · 7.2 · 4.3 |
 | ContextDiscovery | 37.9 · 32.3 · 26.2 · 33.6 · 27.3 · 6.6 · 19.2 · 19.3 |
+| ExpectileDiscovery | 17.8 · 21.1 · 11.1 · 16.6 · 30.3 · 14.8 · 17.2 · 14.2 |

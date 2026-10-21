@@ -50,6 +50,8 @@ const FEATURE_POINTS_CAP: i64 = 8 * SPREAD_POINTS;
 /// Longest supported eligibility span; [`AffordanceConfig::eligibility_span`] selects how much
 /// of it is used.
 pub const MAX_ELIGIBILITY_SPAN: usize = 8;
+/// Expectiles tracked per outcome feature, at asymmetries 0.1 to 0.9 in steps of 0.1.
+pub const EXPECTILES: usize = 9;
 
 /// What makes an experiment interesting to the affordance learner.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -62,6 +64,21 @@ pub enum ScoringRule {
     /// learning progress): interesting while being learned, boring once mastered or
     /// unlearnable.
     LearningProgress,
+}
+
+/// How the affordance learner summarizes the outcomes that follow an experiment.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum OutcomeModel {
+    /// Average and mean absolute deviation per outcome feature.
+    #[default]
+    Moments,
+    /// Nine expectiles per outcome feature: asymmetric running averages that together describe
+    /// the outcome distribution's shape, as in distributional reinforcement learning (Rowland et
+    /// al.). They are compared by their mean absolute gap, a distributional distance after Xu &
+    /// Triesch's causal action influence score, so any change in an outcome's shape counts, not
+    /// only its average or spread. Unlike quantiles they move in proportion to the error, so they
+    /// learn as fast as averages.
+    Expectiles,
 }
 
 /// Tunable settings of the affordance learner. They are checkpointed with its statistics, so a
@@ -94,6 +111,8 @@ pub struct AffordanceConfig {
     /// Tries of an experiment within a situation at which the situation's own statistics weigh
     /// as much as the pooled ones.
     pub context_prior: u16,
+    /// How outcomes are summarized when judging contingency.
+    pub outcome_model: OutcomeModel,
 }
 
 impl Default for AffordanceConfig {
@@ -109,6 +128,7 @@ impl Default for AffordanceConfig {
             bout_length: 3,
             context: ContextMode::None,
             context_prior: 8,
+            outcome_model: OutcomeModel::Moments,
         }
     }
 }
@@ -159,12 +179,35 @@ pub struct Statistics {
     pub overall_spread: [i32; OUTCOME_FEATURES],
     /// Whether `overall` has been set from a first outcome.
     pub primed: bool,
+    /// Recent expectiles of the outcome following each experiment, scaled by 256.
+    #[serde(default)]
+    pub after_expectiles: [[[i32; EXPECTILES]; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+    /// Recent expectiles of the outcome over all experiments, scaled by 256.
+    #[serde(default)]
+    pub overall_expectiles: [[i32; EXPECTILES]; OUTCOME_FEATURES],
+}
+
+/// Moves expectiles toward `value` over `horizon`: each is a running average that weighs values
+/// above it by tau and values below it by 1 - tau (doubled, so tau 0.5 is the plain average).
+fn track_expectiles(expectiles: &mut [i32; EXPECTILES], value: i32, horizon: i32) {
+    let levels = i64::try_from(EXPECTILES).unwrap_or(i64::MAX) + 1;
+    for (tau, expectile) in (1_i64..).zip(expectiles.iter_mut()) {
+        let weight = if value >= *expectile {
+            tau
+        } else {
+            levels - tau
+        };
+        let error = i64::from(value - *expectile);
+        let step = error * 2 * weight / (levels * i64::from(horizon));
+        *expectile += i32::try_from(step).unwrap_or_default();
+    }
 }
 
 impl Statistics {
     /// Starts the overall averages from a first outcome.
     fn prime(&mut self, now: &[i32; OUTCOME_FEATURES]) {
         self.overall = *now;
+        self.overall_expectiles = now.map(|value| [value; EXPECTILES]);
         self.primed = true;
     }
 
@@ -188,6 +231,9 @@ impl Statistics {
                 let deviation = (value - self.after[action][feature]).abs();
                 self.after_spread[action][feature] +=
                     (deviation - self.after_spread[action][feature]) / horizon;
+                track_expectiles(&mut self.after_expectiles[action][feature], value, horizon);
+            } else if age == 0 {
+                self.after_expectiles[action][feature] = [value; EXPECTILES];
             }
             self.after[action][feature] += (value - self.after[action][feature]) / horizon;
         }
@@ -201,6 +247,7 @@ impl Statistics {
         }
         let horizon = i32::from(config.overall_horizon);
         for (feature, value) in now.iter().copied().enumerate() {
+            track_expectiles(&mut self.overall_expectiles[feature], value, horizon);
             let deviation = (value - self.overall[feature]).abs();
             self.overall_spread[feature] += (deviation - self.overall_spread[feature]) / horizon;
             self.overall[feature] += (value - self.overall[feature]) / horizon;
@@ -216,6 +263,12 @@ impl Statistics {
                     (self.overall[feature] - self.after[other][feature]) / forgetting;
                 self.after_spread[other][feature] +=
                     (self.overall_spread[feature] - self.after_spread[other][feature]) / forgetting;
+                for (expectile, normal) in self.after_expectiles[other][feature]
+                    .iter_mut()
+                    .zip(self.overall_expectiles[feature])
+                {
+                    *expectile += (normal - *expectile) / forgetting;
+                }
             }
         }
     }
@@ -234,18 +287,34 @@ impl Statistics {
         i32::try_from(points * i64::from(OUTCOME_SCALE)).unwrap_or(i32::MAX)
     }
 
-    /// How strongly an experiment's outcomes differ from the overall outcomes, in average and
-    /// in spread, with each feature judged in units of its overall spread.
-    fn contingency(&self, action: usize) -> u32 {
+    /// How strongly an experiment's outcomes differ from the overall outcomes, with each
+    /// feature judged in units of its overall spread: by average and spread, or by the mean gap
+    /// between their expectiles.
+    fn contingency(&self, action: usize, model: OutcomeModel) -> u32 {
         if self.visits[action] == 0 {
             return 0;
         }
         let points: i64 = (0..OUTCOME_FEATURES)
             .map(|feature| {
-                let average = (self.after[action][feature] - self.overall[feature]).abs();
-                let spread =
-                    (self.after_spread[action][feature] - self.overall_spread[feature]).abs();
-                self.points(feature, average.saturating_add(spread))
+                let difference = match model {
+                    OutcomeModel::Moments => {
+                        let average = (self.after[action][feature] - self.overall[feature]).abs();
+                        let spread = (self.after_spread[action][feature]
+                            - self.overall_spread[feature])
+                            .abs();
+                        average.saturating_add(spread)
+                    }
+                    OutcomeModel::Expectiles => {
+                        let gap: i64 = self.after_expectiles[action][feature]
+                            .iter()
+                            .zip(self.overall_expectiles[feature])
+                            .map(|(after, normal)| i64::from((after - normal).abs()))
+                            .sum();
+                        let count = i64::try_from(EXPECTILES).unwrap_or(i64::MAX);
+                        i32::try_from(gap / count).unwrap_or(i32::MAX)
+                    }
+                };
+                self.points(feature, difference)
             })
             .sum();
         u32::try_from(points).unwrap_or(u32::MAX)
@@ -265,7 +334,20 @@ impl Statistics {
             )
             .chain(self.overall.iter().map(|value| i64::from(*value)))
             .chain(self.overall_spread.iter().map(|value| i64::from(*value)))
-            .chain([i64::from(self.primed)]);
+            .chain([i64::from(self.primed)])
+            .chain(
+                self.after_expectiles
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .map(|value| i64::from(*value)),
+            )
+            .chain(
+                self.overall_expectiles
+                    .iter()
+                    .flatten()
+                    .map(|value| i64::from(*value)),
+            );
         for (index, value) in words.enumerate() {
             fingerprint = derive(fingerprint, value.cast_unsigned(), index as u64, tag);
         }
@@ -350,9 +432,10 @@ pub struct AffordanceLearner {
     pub config: AffordanceConfig,
     /// Statistics pooled over every situation.
     pub pooled: Statistics,
-    /// Statistics within each situation, used with [`ContextMode::SenseBits`].
-    #[serde(default)]
-    pub contexts: [Statistics; CONTEXTS],
+    /// Statistics within each of the [`CONTEXTS`] situations, used with
+    /// [`ContextMode::SenseBits`]. Held on the heap: together they are large.
+    #[serde(default = "blank_contexts")]
+    pub contexts: Box<[Statistics]>,
     /// Recent prediction error of each experiment's direct outcome over a short window, in
     /// score points scaled by 256.
     #[serde(default)]
@@ -386,6 +469,10 @@ pub struct AffordanceLearner {
     pub bout_remaining: u16,
 }
 
+fn blank_contexts() -> Box<[Statistics]> {
+    vec![Statistics::default(); CONTEXTS].into_boxed_slice()
+}
+
 const fn no_recent_actions() -> [usize; MAX_ELIGIBILITY_SPAN] {
     [AFFORDANCE_ACTIONS; MAX_ELIGIBILITY_SPAN]
 }
@@ -403,7 +490,7 @@ impl AffordanceLearner {
         Self {
             config,
             pooled: Statistics::default(),
-            contexts: [Statistics::default(); CONTEXTS],
+            contexts: blank_contexts(),
             error_fast: [0; AFFORDANCE_ACTIONS],
             error_slow: [0; AFFORDANCE_ACTIONS],
             last_tried: [0; AFFORDANCE_ACTIONS],
@@ -421,6 +508,9 @@ impl AffordanceLearner {
     /// cannot index outside its fixed tables.
     fn validate(&self) -> Result<(), String> {
         self.config.validate()?;
+        if self.contexts.len() != CONTEXTS {
+            return Err(format!("affordance learner needs {CONTEXTS} situations"));
+        }
         if self.bout_remaining >= self.config.bout_length {
             return Err("affordance bout is out of range".to_owned());
         }
@@ -554,14 +644,15 @@ impl AffordanceLearner {
     /// blended with the pooled ones by how often the action has been tried there, so a rarely
     /// seen situation borrows from general experience instead of starting from nothing.
     fn contextual_contingency(&self, action: usize) -> u32 {
-        let pooled = u64::from(self.pooled.contingency(action));
+        let model = self.config.outcome_model;
+        let pooled = u64::from(self.pooled.contingency(action, model));
         if self.config.context == ContextMode::None {
             return u32::try_from(pooled).unwrap_or(u32::MAX);
         }
         let situation = &self.contexts[self.current_context];
         let tried = u64::from(situation.visits[action]);
         let prior = u64::from(self.config.context_prior);
-        let local = u64::from(situation.contingency(action));
+        let local = u64::from(situation.contingency(action, model));
         u32::try_from((tried * local + prior * pooled) / (tried + prior)).unwrap_or(u32::MAX)
     }
 
@@ -941,6 +1032,7 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
         u64::from(config.bout_length),
         u64::from(config.context == ContextMode::SenseBits),
         u64::from(config.context_prior),
+        u64::from(config.outcome_model == OutcomeModel::Expectiles),
         u64::from(learner.bout_remaining),
         learner.current_context as u64,
     ]

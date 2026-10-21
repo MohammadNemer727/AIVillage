@@ -264,6 +264,7 @@ pub fn run() -> ContingencyReport {
                 Controller::Random,
                 Controller::AffordanceDiscovery,
                 Controller::LearningProgress,
+                Controller::ExpectileDiscovery,
             ]
             .map(|controller| DelayCell {
                 delay: *delay,
