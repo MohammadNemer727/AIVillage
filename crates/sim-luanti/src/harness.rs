@@ -73,6 +73,8 @@ pub enum Controller {
     ScenePlanner,
     /// Foveated learned scenes plus planning.
     FovealPlanner,
+    /// Salience-weighted foveated learned scenes plus planning.
+    SalientPlanner,
 }
 
 impl Controller {
@@ -82,6 +84,7 @@ impl Controller {
         let perception = match self {
             Self::SceneSituations | Self::ScenePlanner => Perception::Scenes,
             Self::FovealPlanner => Perception::FoveatedScenes,
+            Self::SalientPlanner => Perception::SalientScenes,
             _ => Perception::Designed,
         };
         let (rule, context, outcome_model) = match self {
@@ -114,7 +117,8 @@ impl Controller {
             Self::PerActionSituations
             | Self::SceneSituations
             | Self::ScenePlanner
-            | Self::FovealPlanner => (
+            | Self::FovealPlanner
+            | Self::SalientPlanner => (
                 ScoringRule::Contingency,
                 ContextMode::PerAction,
                 OutcomeModel::Moments,
@@ -125,13 +129,16 @@ impl Controller {
             context,
             outcome_model,
             perception,
-            planning: matches!(self, Self::ScenePlanner | Self::FovealPlanner),
+            planning: matches!(
+                self,
+                Self::ScenePlanner | Self::FovealPlanner | Self::SalientPlanner
+            ),
             ..AffordanceConfig::default()
         })
     }
 }
 
-pub const CONTROLLERS: [Controller; 11] = [
+pub const CONTROLLERS: [Controller; 12] = [
     Controller::PredictiveBaseline,
     Controller::Random,
     Controller::AffordanceDiscovery,
@@ -143,6 +150,7 @@ pub const CONTROLLERS: [Controller; 11] = [
     Controller::SceneSituations,
     Controller::ScenePlanner,
     Controller::FovealPlanner,
+    Controller::SalientPlanner,
 ];
 
 /// How the founder senses the coupled object.

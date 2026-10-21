@@ -86,13 +86,21 @@ pub enum Perception {
     /// how the whole surroundings are turned. An anatomical prior, not world knowledge (after
     /// `MIMo` v2's foveated vision).
     FoveatedScenes,
+    /// Foveated learned scenes seen through a spotlight of attention: each eye point's colour
+    /// has a bottom-up salience learned from how rarely the founder has seen it, and only the
+    /// most salient points in view shape the scene, so what stands out from the usual walls and
+    /// floor decides the scene whenever something does.
+    SalientScenes,
 }
 
 impl Perception {
     /// Whether situations are split on learned scenes.
     #[must_use]
     pub const fn uses_scenes(self) -> bool {
-        matches!(self, Self::Scenes | Self::FoveatedScenes)
+        matches!(
+            self,
+            Self::Scenes | Self::FoveatedScenes | Self::SalientScenes
+        )
     }
 }
 
@@ -101,7 +109,9 @@ impl Perception {
 pub fn fact_name(perception: Perception, fact: usize) -> String {
     match perception {
         Perception::Designed => sense_fact_name(fact),
-        Perception::Scenes | Perception::FoveatedScenes => format!("scene {fact}"),
+        Perception::Scenes | Perception::FoveatedScenes | Perception::SalientScenes => {
+            format!("scene {fact}")
+        }
     }
 }
 
@@ -881,11 +891,14 @@ impl AffordanceLearner {
         ) {
             self.current_facts = match self.config.perception {
                 Perception::Designed => sense_facts(observation),
-                Perception::Scenes | Perception::FoveatedScenes => self
+                perception @ (Perception::Scenes
+                | Perception::FoveatedScenes
+                | Perception::SalientScenes) => self
                     .scenes
                     .observe(
                         observation,
-                        self.config.perception == Perception::FoveatedScenes,
+                        perception != Perception::Scenes,
+                        perception == Perception::SalientScenes,
                     )
                     .map_or(0, |scene| 1 << scene),
             };
@@ -1755,6 +1768,7 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
             Perception::Designed => 0,
             Perception::Scenes => 1,
             Perception::FoveatedScenes => 2,
+            Perception::SalientScenes => 3,
         },
         u64::from(config.planning),
         learner.decision_scene.map_or(u64::MAX, u64::from),
@@ -1878,7 +1892,9 @@ fn scenes_fingerprint(scenes: &ScenePerception, mut fingerprint: u64) -> u64 {
             .iter()
             .flatten()
             .map(|value| i64::from(*value)),
-    );
+    )
+    .chain(scenes.colour_counts.iter().map(|value| i64::from(*value)))
+    .chain([i64::from(scenes.colour_total)]);
     for (index, value) in words.enumerate() {
         fingerprint = derive(
             fingerprint,

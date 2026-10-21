@@ -23,6 +23,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 
 | condition / learner / facing | phase | decisions | hand pulses | hit rate % | cube ahead % | pulses while ahead % | looking down % |
 |---|---|---:|---:|---:|---:|---:|---:|
+| free / attention-planner / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 29.9 |
+| free / attention-planner / turned | connected | 4000 | 11.1 | 32.9 | 15.1 | 21.4 | 30.3 |
+| free / attention-planner / turned | extinction | 800 | 7.9 | 0.0 | 0.0 | 0.0 | 14.8 |
 | free / context / toward | baseline | 800 | 7.9 | 0.0 | 0.0 | 0.0 | 25.4 |
 | free / context / toward | connected | 4000 | 11.3 | 45.5 | 42.0 | 44.2 | 26.4 |
 | free / context / toward | extinction | 800 | 10.0 | 0.0 | 0.2 | 0.0 | 32.5 |
@@ -59,6 +62,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | free / scenes-slowfade / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 20.6 |
 | free / scenes-slowfade / turned | connected | 4000 | 11.9 | 30.6 | 17.1 | 21.4 | 25.9 |
 | free / scenes-slowfade / turned | extinction | 800 | 10.9 | 0.0 | 0.2 | 0.0 | 31.1 |
+| inert / attention-planner / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 27.2 |
+| inert / attention-planner / turned | connected | 4000 | 7.4 | 0.0 | 15.2 | 13.2 | 27.2 |
+| inert / attention-planner / turned | extinction | 800 | 8.6 | 0.0 | 0.1 | 0.0 | 28.4 |
 | inert / context / toward | baseline | 800 | 8.6 | 0.0 | 0.0 | 0.0 | 22.5 |
 | inert / context / toward | connected | 4000 | 8.0 | 0.0 | 39.6 | 36.5 | 34.7 |
 | inert / context / toward | extinction | 800 | 7.9 | 0.0 | 0.1 | 0.0 | 31.5 |
@@ -182,3 +188,11 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | retina-scenes-free-seed2 | free / retina-scenes / turned | 2 | 7.0 | 16.0 | 13.5 |
 | retina-scenes-free-seed3 | free / retina-scenes / turned | 3 | 7.5 | 12.6 | 15.0 |
 | retina-scenes-free-seed4 | free / retina-scenes / turned | 4 | 6.0 | 12.3 | 13.5 |
+| at-free-seed1 | free / attention-planner / turned | 1 | 6.0 | 10.1 | 9.0 |
+| at-free-seed2 | free / attention-planner / turned | 2 | 6.0 | 11.5 | 9.0 |
+| at-free-seed3 | free / attention-planner / turned | 3 | 7.5 | 11.2 | 7.5 |
+| at-free-seed4 | free / attention-planner / turned | 4 | 7.5 | 11.6 | 6.0 |
+| at-inert-seed1 | inert / attention-planner / turned | 1 | 6.0 | 7.0 | 7.5 |
+| at-inert-seed2 | inert / attention-planner / turned | 2 | 7.5 | 7.6 | 10.5 |
+| at-inert-seed3 | inert / attention-planner / turned | 3 | 7.5 | 7.6 | 7.5 |
+| at-inert-seed4 | inert / attention-planner / turned | 4 | 7.5 | 7.4 | 9.0 |

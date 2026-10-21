@@ -78,6 +78,23 @@ pub struct ScenePerception {
     pub typical_distance: i64,
     /// The scene of the latest sense vector.
     pub current: usize,
+    /// With salience, how often each coarse colour (3 bits per channel) has been seen on any eye
+    /// point.
+    #[serde(default)]
+    pub colour_counts: Vec<u32>,
+    /// Total of `colour_counts`.
+    #[serde(default)]
+    pub colour_total: u32,
+}
+
+/// Coarse colour bins for salience: 8 levels per channel.
+pub const COLOUR_BINS: usize = 512;
+/// Colour counts halve once their total exceeds this, so salience tracks recent experience.
+const COLOUR_MEMORY: u32 = 1 << 20;
+
+fn colour_bin(red: i32, green: i32, blue: i32) -> usize {
+    let level = |value: i32| usize::try_from(value.clamp(0, 255) >> 5).unwrap_or_default();
+    level(red) << 6 | level(green) << 3 | level(blue)
 }
 
 /// The raw sense vector of an observation, in receptor units: the forward retina when the body
@@ -113,7 +130,8 @@ fn sense_vector(observation: &EnvironmentObservation) -> Vec<i32> {
 impl ScenePerception {
     pub(super) fn is_valid(&self) -> bool {
         let dimensions = self.mean.len();
-        matches!(dimensions, 0 | SENSE_DIMENSIONS | RETINA_SENSE_DIMENSIONS)
+        matches!(self.colour_counts.len(), 0 | COLOUR_BINS)
+            && matches!(dimensions, 0 | SENSE_DIMENSIONS | RETINA_SENSE_DIMENSIONS)
             && self.spread.len() == dimensions
             && self.prototypes.len() <= MAX_SCENES
             && self.prototypes.len() == self.members.len()
@@ -129,6 +147,7 @@ impl ScenePerception {
         &mut self,
         observation: &EnvironmentObservation,
         foveated: bool,
+        salient: bool,
     ) -> Option<usize> {
         let raw = sense_vector(observation);
         if self.mean.is_empty() {
@@ -145,10 +164,36 @@ impl ScenePerception {
             *spread += ((scaled - *mean).abs() - *spread) / STATS_HORIZON;
             *mean += (scaled - *mean) / STATS_HORIZON;
         }
+        let points = (raw.len() - BODY_CHANNELS) / RAY_CHANNELS;
+        let bins: Vec<usize> = (0..points)
+            .map(|point| {
+                let channels = &raw[point * RAY_CHANNELS..];
+                colour_bin(channels[0], channels[1], channels[2])
+            })
+            .collect();
+        if salient {
+            self.count_colours(&bins);
+        }
         self.seen = self.seen.saturating_add(1);
         if self.seen < WARM_UP {
             return None;
         }
+        // Attention as a spotlight (winner-take-all, after Itti & Koch): when something stands out,
+        // only the most salient eye points shape the scene; when nothing does, the whole view does.
+        let saliences: Vec<i32> = if salient {
+            bins.iter().map(|bin| self.salience(*bin)).collect()
+        } else {
+            Vec::new()
+        };
+        let spotlight = saliences.iter().copied().max().unwrap_or(1);
+        // Attention has a fixed budget: the points in the spotlight carry the whole view's
+        // weight, so a focused view counts as much as an unfocused one.
+        let attended = saliences
+            .iter()
+            .filter(|salience| **salience == spotlight)
+            .count()
+            .max(1);
+        let budget = i32::try_from(points / attended).unwrap_or(1).max(1);
         let point: Vec<i16> = raw
             .iter()
             .zip(&self.mean)
@@ -156,12 +201,18 @@ impl ScenePerception {
             .enumerate()
             .map(|(dimension, ((value, mean), spread))| {
                 let units = (value * 16 - mean) * SPREAD_UNIT / (*spread).max(SPREAD_FLOOR * 16);
-                let weight = if foveated {
+                let mut weight = if foveated {
                     foveal_weight(dimension, raw.len())
                 } else {
                     1
                 };
-                i16::try_from(units.clamp(-1_024, 1_024) * weight).unwrap_or_default()
+                if salient && dimension < points * RAY_CHANNELS {
+                    let salience = saliences[dimension / RAY_CHANNELS];
+                    weight *= if salience == spotlight { budget } else { 0 };
+                }
+                let weighted = units.clamp(-1_024, 1_024) * weight;
+                i16::try_from(weighted.clamp(i32::from(i16::MIN), i32::from(i16::MAX)))
+                    .unwrap_or_default()
             })
             .collect();
         let nearest = self
@@ -195,6 +246,38 @@ impl ScenePerception {
         }
         self.current = scene;
         Some(scene)
+    }
+}
+
+impl ScenePerception {
+    /// Counts the colours of one view; counts halve as they accumulate, so salience tracks
+    /// recent experience.
+    fn count_colours(&mut self, bins: &[usize]) {
+        if self.colour_counts.is_empty() {
+            self.colour_counts = vec![0; COLOUR_BINS];
+        }
+        for bin in bins {
+            self.colour_counts[*bin] = self.colour_counts[*bin].saturating_add(1);
+        }
+        self.colour_total = self
+            .colour_total
+            .saturating_add(u32::try_from(bins.len()).unwrap_or(u32::MAX));
+        if self.colour_total > COLOUR_MEMORY {
+            for count in &mut self.colour_counts {
+                *count /= 2;
+            }
+            self.colour_total = self.colour_counts.iter().sum();
+        }
+    }
+
+    /// Bottom-up salience of a colour: its self-information, how many halvings rarer it is than
+    /// certain, less two, between one and eight. Colours seen everywhere weigh once; a colour
+    /// seen on one point in a thousand weighs eight. Learned from experience, after
+    /// information-maximisation models of attention (Bruce & Tsotsos).
+    fn salience(&self, bin: usize) -> i32 {
+        let count = self.colour_counts[bin].max(1);
+        let rarity = (self.colour_total / count).max(1).ilog2();
+        i32::try_from(rarity.saturating_sub(2).clamp(1, 8)).unwrap_or(1)
     }
 }
 
