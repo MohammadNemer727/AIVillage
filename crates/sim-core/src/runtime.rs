@@ -54,6 +54,9 @@ const SPREAD_POINTS: i64 = 64;
 const FORGETTING_HORIZON: i32 = 32;
 /// Contingency points one outcome feature can contribute at most.
 const FEATURE_POINTS_CAP: i64 = 8 * SPREAD_POINTS;
+/// Recent experiments that share credit for each outcome, so a consequence that arrives a few
+/// decisions late still reaches its cause. Credit halves with each decision of age.
+const ELIGIBILITY_SPAN: usize = 4;
 /// Curiosity gained per decision since an experiment was last tried, up to the cap.
 const RECENCY_RATE: u64 = 4;
 const RECENCY_CAP: u64 = 1_024;
@@ -83,9 +86,16 @@ pub struct AffordanceLearner {
     pub last_tried: [u64; AFFORDANCE_ACTIONS],
     /// Last selected experiment, whose outcome the next observation reports.
     pub previous_action: usize,
+    /// Recent experiments, most recent first, that share credit for the next outcome.
+    #[serde(default = "no_recent_actions")]
+    pub recent_actions: [usize; ELIGIBILITY_SPAN],
     /// Previous retinal view, so the next outcome can report how much the view changed.
     #[serde(default)]
     pub previous_view: [[u16; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
+}
+
+const fn no_recent_actions() -> [usize; ELIGIBILITY_SPAN] {
+    [AFFORDANCE_ACTIONS; ELIGIBILITY_SPAN]
 }
 
 impl Default for AffordanceLearner {
@@ -98,6 +108,7 @@ impl Default for AffordanceLearner {
             overall_spread: [0; OUTCOME_FEATURES],
             last_tried: [0; AFFORDANCE_ACTIONS],
             previous_action: AFFORDANCE_ACTIONS,
+            recent_actions: no_recent_actions(),
             previous_view: [[0; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
         }
     }
@@ -155,21 +166,28 @@ impl AffordanceLearner {
             return;
         }
         let action = self.previous_action;
-        let count = self.visits[action].saturating_add(1);
-        self.visits[action] = count;
-        let horizon = i32::from(count.min(ACTION_HORIZON));
-        for (feature, value) in now.into_iter().enumerate() {
-            // Spreads are measured against the averages before this outcome joins them; an
-            // experiment's first outcome sets its average and has no spread yet.
-            if count > 1 {
-                let deviation = (value - self.after[action][feature]).abs();
-                self.after_spread[action][feature] +=
-                    (deviation - self.after_spread[action][feature]) / horizon;
+        self.visits[action] = self.visits[action].saturating_add(1);
+        for (age, credited) in self.recent_actions.into_iter().enumerate() {
+            if credited >= AFFORDANCE_ACTIONS || self.visits[credited] == 0 {
+                continue;
             }
+            let count = self.visits[credited];
+            let horizon = i32::from(count.min(ACTION_HORIZON)) << age;
+            for (feature, value) in now.into_iter().enumerate() {
+                // Spreads are measured against the averages before this outcome joins them;
+                // an experiment's first outcome sets its average and has no spread yet.
+                if count > 1 {
+                    let deviation = (value - self.after[credited][feature]).abs();
+                    self.after_spread[credited][feature] +=
+                        (deviation - self.after_spread[credited][feature]) / horizon;
+                }
+                self.after[credited][feature] += (value - self.after[credited][feature]) / horizon;
+            }
+        }
+        for (feature, value) in now.into_iter().enumerate() {
             let deviation = (value - self.overall[feature]).abs();
             self.overall_spread[feature] +=
                 (deviation - self.overall_spread[feature]) / OVERALL_HORIZON;
-            self.after[action][feature] += (value - self.after[action][feature]) / horizon;
             self.overall[feature] += (value - self.overall[feature]) / OVERALL_HORIZON;
         }
         for other in (0..AFFORDANCE_ACTIONS).filter(|other| *other != action) {
@@ -236,6 +254,8 @@ impl AffordanceLearner {
             }
         }
         self.previous_action = best;
+        self.recent_actions.rotate_right(1);
+        self.recent_actions[0] = best;
         self.last_tried[best] = tick;
         (affordance_action(best), best_score)
     }
@@ -514,6 +534,9 @@ impl AgentRuntime {
 #[must_use]
 pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
     let mut fingerprint = derive(0, learner.previous_action as u64, 0, 0x4146_4650);
+    for (age, action) in learner.recent_actions.iter().enumerate() {
+        fingerprint = derive(fingerprint, *action as u64, age as u64, 0x5245_434E);
+    }
     for (feature, value) in learner.overall_spread.iter().enumerate() {
         fingerprint = derive(
             fingerprint,

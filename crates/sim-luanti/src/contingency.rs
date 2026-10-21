@@ -46,6 +46,9 @@ use crate::harness::{
 const PHASE: u64 = 96;
 const CURVE_BLOCK: usize = 24;
 const CONTACT: u16 = 255;
+/// Delays, in decisions, between a standard-paradigm hand pulse and its contact. Infants learn
+/// with short delays but not at about three seconds (Millar, 1972).
+pub const DELAYS: [u64; 5] = [0, 1, 2, 4, 8];
 
 const CONTINGENT: [Phase; 4] = [
     Phase {
@@ -105,12 +108,14 @@ impl Paradigm {
                 sense: Sense::Contact,
                 resting: 0,
                 caused: |_, _| CONTACT,
+                delay: 0,
             },
             Self::Inverted => Object {
                 target: HAND_PULSE,
                 sense: Sense::Contact,
                 resting: CONTACT,
                 caused: |_, _| 0,
+                delay: 0,
             },
             Self::Bimodal => Object {
                 target: HAND_PULSE,
@@ -123,12 +128,14 @@ impl Paradigm {
                         0
                     }
                 },
+                delay: 0,
             },
             Self::Seen => Object {
                 target: HAND_PULSE,
                 sense: Sense::Sight,
                 resting: 160,
                 caused: |_, _| 64,
+                delay: 0,
             },
         }
     }
@@ -159,6 +166,13 @@ pub struct Cell {
     pub curves: Vec<SeedCurve>,
 }
 
+/// The standard paradigm with its contact delayed by `delay` extra decisions.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DelayCell {
+    pub delay: u64,
+    pub cell: Cell,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ContingencyReport {
     pub schema_version: u16,
@@ -166,6 +180,7 @@ pub struct ContingencyReport {
     pub phases: [Phase; 4],
     pub curve_block: usize,
     pub cells: Vec<Cell>,
+    pub delays: Vec<DelayCell>,
 }
 
 impl ContingencyReport {
@@ -191,8 +206,7 @@ fn shows_contingency(contingent: &[PhaseSummary], yoked: &[PhaseSummary], object
         && late * contingent[1].decisions < middle * contingent[3].decisions
 }
 
-fn cell(paradigm: Paradigm, controller: Controller) -> Cell {
-    let object = paradigm.object();
+fn cell(paradigm: Paradigm, object: Object, controller: Controller) -> Cell {
     let contingent: Vec<Trace> = SEEDS
         .iter()
         .map(|seed| harness::run(controller, &CONTINGENT, object, *seed, None))
@@ -236,15 +250,32 @@ pub fn run() -> ContingencyReport {
         .flat_map(|paradigm| {
             CONTROLLERS
                 .iter()
-                .map(|controller| cell(*paradigm, *controller))
+                .map(|controller| cell(*paradigm, paradigm.object(), *controller))
+        })
+        .collect();
+    let delays = DELAYS
+        .iter()
+        .flat_map(|delay| {
+            [Controller::Random, Controller::AffordanceDiscovery].map(|controller| DelayCell {
+                delay: *delay,
+                cell: cell(
+                    Paradigm::Standard,
+                    Object {
+                        delay: *delay,
+                        ..Paradigm::Standard.object()
+                    },
+                    controller,
+                ),
+            })
         })
         .collect();
     ContingencyReport {
-        schema_version: 3,
+        schema_version: 4,
         seeds: SEEDS,
         phases: CONTINGENT,
         curve_block: CURVE_BLOCK,
         cells,
+        delays,
     }
 }
 
@@ -317,8 +348,39 @@ pub fn markdown(report: &ContingencyReport) -> String {
             cell.curves.len()
         ));
     }
+    text.push_str(&delays_markdown(report));
     text.push_str(&curves_markdown(report));
     text.push_str(&strategy_markdown(report));
+    text
+}
+
+/// Standard-paradigm results with the contact delayed.
+fn delays_markdown(report: &ContingencyReport) -> String {
+    let mut text = String::from(
+        "\n## Delayed consequences\n\nThe standard paradigm with contact arriving `delay` \
+         decisions later than the next observation. Hand pulses per 100 decisions; \
+         anticipation is the connected-phase mean.\n\n\
+         | delay | controller | baseline | connected | early extinction | late extinction | yoked | anticipation | seeds passing |\n\
+         |---:|---|---:|---:|---:|---:|---:|---:|---:|\n",
+    );
+    let object = Paradigm::Standard.object();
+    for row in &report.delays {
+        let phases = &row.cell.contingent;
+        let yoked = &row.cell.yoked[1];
+        text.push_str(&format!(
+            "| {} | {:?} | {} | {} | {} | {} | {} | {} | {}/{} |\n",
+            row.delay,
+            row.cell.controller,
+            rate(phases[0].target(object), phases[0].decisions),
+            rate(phases[1].target(object), phases[1].decisions),
+            rate(phases[2].target(object), phases[2].decisions),
+            rate(phases[3].target(object), phases[3].decisions),
+            rate(yoked.target(object), yoked.decisions),
+            phases[1].anticipation,
+            row.cell.seeds_passing,
+            row.cell.curves.len()
+        ));
+    }
     text
 }
 
@@ -427,5 +489,24 @@ mod tests {
                 "{paradigm:?} anticipates caused contact: {cell:?}"
             );
         }
+    }
+
+    #[test]
+    fn delayed_contingency_fades_with_delay_as_in_infants() {
+        let report = run();
+        let delayed = |delay| {
+            &report
+                .delays
+                .iter()
+                .find(|row| {
+                    row.delay == delay && row.cell.controller == Controller::AffordanceDiscovery
+                })
+                .expect("every delay is run")
+                .cell
+        };
+        assert!(delayed(0).shows_contingency);
+        assert!(!delayed(8).shows_contingency);
+        assert!(delayed(1).contingent[1].anticipation > delayed(8).contingent[1].anticipation);
+        assert!(delayed(0).contingent[1].anticipation > delayed(1).contingent[1].anticipation);
     }
 }

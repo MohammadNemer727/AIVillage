@@ -92,6 +92,9 @@ pub struct Object {
     pub resting: u16,
     /// Level after the target experiment while contingent, keyed by seed and decision.
     pub caused: fn(u64, u64) -> u16,
+    /// Extra decisions before a caused level arrives; zero delivers it with the next
+    /// observation.
+    pub delay: u64,
 }
 
 impl Object {
@@ -181,6 +184,7 @@ pub fn run(
     let mut previous_level = level;
     let mut acceleration = 0;
     let total: u64 = phases.iter().map(|phase| phase.decisions).sum();
+    let mut scheduled = vec![None; (total + object.delay) as usize];
     let mut trace = Trace {
         seed,
         slots: Vec::with_capacity(total as usize),
@@ -219,11 +223,13 @@ pub fn run(
             .then(|| runtime.state().affordance.expected_after(object.target))
             .flatten()
             .map(|outcome| object.anticipation(outcome));
+        if phases[phase].coupling == Coupling::Contingent && chosen == object.target {
+            scheduled[index + object.delay as usize] = Some((object.caused)(seed, tick));
+        }
         previous_level = level;
         level = match phases[phase].coupling {
-            Coupling::Contingent if chosen == object.target => (object.caused)(seed, tick),
-            Coupling::Rest | Coupling::Contingent => object.resting,
             Coupling::Yoked => partner.expect("yoked phase needs a partner").levels[index],
+            Coupling::Rest | Coupling::Contingent => scheduled[index].unwrap_or(object.resting),
         };
         trace.slots.push(chosen);
         trace.levels.push(level);
@@ -340,6 +346,7 @@ mod tests {
         sense: Sense::Contact,
         resting: 0,
         caused: |_, _| 255,
+        delay: 0,
     };
 
     #[test]
@@ -358,6 +365,20 @@ mod tests {
         for (index, (slot, level)) in trace.slots.iter().zip(&trace.levels).enumerate() {
             let caused = index >= 16 && *slot == HAND_PULSE;
             assert_eq!(*level, if caused { 255 } else { 0 }, "decision {index}");
+        }
+    }
+
+    #[test]
+    fn delayed_consequences_arrive_after_the_delay() {
+        let object = Object { delay: 2, ..OBJECT };
+        let trace = run(Controller::Random, &PHASES, object, 7, None);
+        for index in 0..trace.levels.len() {
+            let caused = index >= 18 && trace.slots[index - 2] == HAND_PULSE;
+            assert_eq!(
+                trace.levels[index],
+                if caused { 255 } else { 0 },
+                "decision {index}"
+            );
         }
     }
 
