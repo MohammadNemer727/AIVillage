@@ -16,8 +16,10 @@ use crate::{
     scale_v2_orientation_turn,
 };
 
+mod perception;
 mod situations;
 
+pub use perception::{MAX_SCENES, SENSE_DIMENSIONS, ScenePerception};
 pub use situations::{ActionSituations, MAX_ACTION_SITUATIONS, SituationStats};
 
 /// Explicit action-selection policy for a standalone founder.
@@ -70,6 +72,26 @@ pub enum ScoringRule {
     LearningProgress,
 }
 
+/// What a learned-situation founder splits its situations on.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Perception {
+    /// The [`SENSE_FACTS`] generic, designer-chosen sense facts.
+    #[default]
+    Designed,
+    /// Up to [`MAX_SCENES`] scenes the founder learns from its raw senses; fact `k` holds while
+    /// the founder is in scene `k`.
+    Scenes,
+}
+
+/// A readable name for `fact` under `perception`, for reports.
+#[must_use]
+pub fn fact_name(perception: Perception, fact: usize) -> String {
+    match perception {
+        Perception::Designed => sense_fact_name(fact),
+        Perception::Scenes => format!("scene {fact}"),
+    }
+}
+
 /// How the affordance learner summarizes the outcomes that follow an experiment.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum OutcomeModel {
@@ -117,6 +139,8 @@ pub struct AffordanceConfig {
     pub context_prior: u16,
     /// How outcomes are summarized when judging contingency.
     pub outcome_model: OutcomeModel,
+    /// What learned situations are split on.
+    pub perception: Perception,
 }
 
 impl Default for AffordanceConfig {
@@ -133,6 +157,7 @@ impl Default for AffordanceConfig {
             context: ContextMode::None,
             context_prior: 8,
             outcome_model: OutcomeModel::Moments,
+            perception: Perception::Designed,
         }
     }
 }
@@ -614,6 +639,9 @@ pub struct AffordanceLearner {
     /// The sense facts each recent experiment was chosen with.
     #[serde(default)]
     pub recent_facts: [u32; MAX_ELIGIBILITY_SPAN],
+    /// Scenes learned from raw senses, under [`Perception::Scenes`].
+    #[serde(default)]
+    pub scenes: ScenePerception,
     /// Previous retinal view, so the next outcome can report how much the view changed.
     #[serde(default)]
     pub previous_view: [[u16; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
@@ -663,6 +691,7 @@ impl AffordanceLearner {
                 Vec::new()
             },
             recent_facts: [0; MAX_ELIGIBILITY_SPAN],
+            scenes: ScenePerception::default(),
             previous_view: [[0; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
             bout_remaining: 0,
         }
@@ -713,7 +742,7 @@ impl AffordanceLearner {
                     .per_action
                     .iter()
                     .all(|situations| situations.is_valid(SENSE_FACTS)));
-        if !splits_valid || !experiences_valid || !per_action_valid {
+        if !splits_valid || !experiences_valid || !per_action_valid || !self.scenes.is_valid() {
             return Err("learned situations are out of range".to_owned());
         }
         Ok(())
@@ -771,7 +800,13 @@ impl AffordanceLearner {
             self.config.context,
             ContextMode::Learned | ContextMode::PerAction
         ) {
-            self.current_facts = sense_facts(observation);
+            self.current_facts = match self.config.perception {
+                Perception::Designed => sense_facts(observation),
+                Perception::Scenes => self
+                    .scenes
+                    .observe(observation)
+                    .map_or(0, |scene| 1 << scene),
+            };
         }
         self.current_context = match self.config.context {
             ContextMode::None | ContextMode::PerAction => 0,
@@ -1490,6 +1525,7 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
         },
         u64::from(config.context_prior),
         u64::from(config.outcome_model == OutcomeModel::Expectiles),
+        u64::from(config.perception == Perception::Scenes),
         u64::from(learner.bout_remaining),
         learner.current_context as u64,
     ]
@@ -1587,7 +1623,38 @@ fn per_action_fingerprint(learner: &AffordanceLearner, mut fingerprint: u64) -> 
     fingerprint
 }
 
+fn scenes_fingerprint(scenes: &ScenePerception, mut fingerprint: u64) -> u64 {
+    let words = [
+        i64::from(scenes.seen),
+        scenes.typical_distance,
+        i64::try_from(scenes.current).unwrap_or(i64::MAX),
+    ]
+    .into_iter()
+    .chain(scenes.mean.iter().map(|value| i64::from(*value)))
+    .chain(scenes.spread.iter().map(|value| i64::from(*value)))
+    .chain(scenes.members.iter().map(|value| i64::from(*value)))
+    .chain(
+        scenes
+            .prototypes
+            .iter()
+            .flatten()
+            .map(|value| i64::from(*value)),
+    );
+    for (index, value) in words.enumerate() {
+        fingerprint = derive(
+            fingerprint,
+            value.cast_unsigned(),
+            index as u64,
+            0x5343_454E,
+        );
+    }
+    fingerprint
+}
+
 fn learned_situations_fingerprint(learner: &AffordanceLearner, mut fingerprint: u64) -> u64 {
+    if learner.config.perception == Perception::Scenes {
+        fingerprint = scenes_fingerprint(&learner.scenes, fingerprint);
+    }
     for split in &learner.splits {
         let word =
             u64::from(split.parent) | u64::from(split.fact) << 8 | u64::from(split.child) << 16;

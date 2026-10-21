@@ -22,7 +22,7 @@ use sim_core::{
     environment::{BodyProprioception, PrimitiveAction},
     runtime::{
         AFFORDANCE_ACTIONS, AffordanceConfig, AgentRuntime, ContextMode, ExperimentMode,
-        HAND_CONTACT_FEATURE, OutcomeModel, ScoringRule, VISUAL_CHANGE_FEATURE,
+        HAND_CONTACT_FEATURE, OutcomeModel, Perception, ScoringRule, VISUAL_CHANGE_FEATURE,
     },
 };
 
@@ -64,12 +64,19 @@ pub enum Controller {
     LearnedSituations,
     /// The affordance learner with situations it discovers separately for each experiment.
     PerActionSituations,
+    /// Per-experiment situations split on scenes the founder learns from its raw senses.
+    SceneSituations,
 }
 
 impl Controller {
     /// Settings of the affordance learner this controller runs, if it runs one.
     #[must_use]
     pub fn learner(self) -> Option<AffordanceConfig> {
+        let perception = if self == Self::SceneSituations {
+            Perception::Scenes
+        } else {
+            Perception::Designed
+        };
         let (rule, context, outcome_model) = match self {
             Self::PredictiveBaseline | Self::Random => return None,
             Self::AffordanceDiscovery => (
@@ -97,7 +104,7 @@ impl Controller {
                 ContextMode::Learned,
                 OutcomeModel::Moments,
             ),
-            Self::PerActionSituations => (
+            Self::PerActionSituations | Self::SceneSituations => (
                 ScoringRule::Contingency,
                 ContextMode::PerAction,
                 OutcomeModel::Moments,
@@ -107,12 +114,13 @@ impl Controller {
             rule,
             context,
             outcome_model,
+            perception,
             ..AffordanceConfig::default()
         })
     }
 }
 
-pub const CONTROLLERS: [Controller; 8] = [
+pub const CONTROLLERS: [Controller; 9] = [
     Controller::PredictiveBaseline,
     Controller::Random,
     Controller::AffordanceDiscovery,
@@ -121,6 +129,7 @@ pub const CONTROLLERS: [Controller; 8] = [
     Controller::ExpectileDiscovery,
     Controller::LearnedSituations,
     Controller::PerActionSituations,
+    Controller::SceneSituations,
 ];
 
 /// How the founder senses the coupled object.

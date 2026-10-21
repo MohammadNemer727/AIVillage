@@ -73,7 +73,7 @@ fn replay(
                 EXPERIMENTS[action],
                 split.child,
                 split.parent,
-                sim_core::runtime::sense_fact_name(usize::from(split.fact)),
+                sim_core::runtime::fact_name(learner.config.perception, usize::from(split.fact)),
                 split.at
             );
         }
@@ -83,7 +83,7 @@ fn replay(
             "learned situation {} from {} where {} (after {} outcomes)",
             split.child,
             split.parent,
-            sim_core::runtime::sense_fact_name(usize::from(split.fact)),
+            sim_core::runtime::fact_name(learner.config.perception, usize::from(split.fact)),
             split.at
         );
     }

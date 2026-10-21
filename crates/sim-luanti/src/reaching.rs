@@ -16,7 +16,7 @@
 )]
 
 use serde::Serialize;
-use sim_core::runtime::sense_fact_name;
+use sim_core::runtime::fact_name;
 
 use crate::harness::{
     self, Controller, Coupling, HAND_PULSE, Object, Phase, PhaseSummary, SEEDS, Sense, Trace, rate,
@@ -44,13 +44,14 @@ pub const OBJECT: Object = Object {
     facing: true,
 };
 
-pub const REACHING_CONTROLLERS: [Controller; 6] = [
+pub const REACHING_CONTROLLERS: [Controller; 7] = [
     Controller::Random,
     Controller::AffordanceDiscovery,
     Controller::ContextDiscovery,
     Controller::ExpectileDiscovery,
     Controller::LearnedSituations,
     Controller::PerActionSituations,
+    Controller::SceneSituations,
 ];
 
 /// One controller over every seed.
@@ -112,7 +113,10 @@ pub fn run() -> ReachingReport {
                     trace
                         .splits
                         .iter()
-                        .map(|(fact, _)| sense_fact_name(*fact))
+                        .map(|(fact, _)| {
+                            let perception = controller.learner().unwrap_or_default().perception;
+                            fact_name(perception, *fact)
+                        })
                         .collect()
                 })
                 .collect();
@@ -184,6 +188,10 @@ pub fn markdown(report: &ReachingReport) -> String {
     for (controller, title) in [
         (Controller::LearnedSituations, "shared situations"),
         (Controller::PerActionSituations, "the push's own situations"),
+        (
+            Controller::SceneSituations,
+            "the push's own situations over learned scenes",
+        ),
     ] {
         text.push_str(&format!(
             "\n## {controller:?}: {title}\n\nSense facts each seed split on, in order.\n\n\

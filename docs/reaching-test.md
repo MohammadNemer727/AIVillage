@@ -18,6 +18,8 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | LearnedSituations | late | 8.4 | 13.9 | 18.5 | 18.5 |
 | PerActionSituations | early | 8.8 | 12.6 | 17.7 | 17.7 |
 | PerActionSituations | late | 11.0 | 15.5 | 24.7 | 24.7 |
+| SceneSituations | early | 7.6 | 11.9 | 12.8 | 12.8 |
+| SceneSituations | late | 10.0 | 14.6 | 21.1 | 21.1 |
 
 ## Late-phase hit rate per seed (%)
 
@@ -29,6 +31,7 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | ExpectileDiscovery | 17.8 · 21.1 · 11.1 · 16.6 · 30.3 · 14.8 · 17.2 · 14.2 |
 | LearnedSituations | 16.6 · 33.3 · 20.9 · 15.3 · 19.7 · 14.8 · 13.9 · 13.7 |
 | PerActionSituations | 31.4 · 37.1 · 0.0 · 31.7 · 32.5 · 21.0 · 21.0 · 12.6 |
+| SceneSituations | 25.0 · 33.3 · 22.2 · 6.6 · 19.3 · 27.2 · 11.6 · 25.9 |
 
 ## LearnedSituations: shared situations
 
@@ -59,3 +62,18 @@ Sense facts each seed split on, in order.
 | 173 | near right, near ahead |
 | 211 | near behind, looking up, near ahead |
 | 251 | near left, near behind, near right |
+
+## SceneSituations: the push's own situations over learned scenes
+
+Sense facts each seed split on, in order.
+
+| seed | facts |
+|---:|---|
+| 7 | scene 3, scene 5 |
+| 19 | scene 3, scene 5 |
+| 43 | scene 6, scene 5 |
+| 91 | scene 3, scene 4, scene 7, scene 1 |
+| 131 | scene 4, scene 3, scene 1, scene 0 |
+| 173 | scene 2 |
+| 211 | scene 5, scene 7, scene 1 |
+| 251 | scene 0, scene 5, scene 7 |
