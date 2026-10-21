@@ -44,14 +44,26 @@ const OUTCOME_SCALE: i32 = 256;
 const ACTION_HORIZON: u16 = 8;
 /// The overall average adapts more slowly than any one action's.
 const OVERALL_HORIZON: i32 = 16;
+/// Smallest overall spread an outcome is judged against, so a nearly constant receptor cannot
+/// turn receptor noise into huge contingency.
+const SPREAD_FLOOR: i32 = 16 * OUTCOME_SCALE;
+/// Contingency points for an outcome that differs from normal by one overall spread.
+const SPREAD_POINTS: i64 = 64;
+/// Unused experiment memories drift toward the overall outcome by this fraction per decision,
+/// so a consequence that stops can fade without being re-tested.
+const FORGETTING_HORIZON: i32 = 32;
+/// Contingency points one outcome feature can contribute at most.
+const FEATURE_POINTS_CAP: i64 = 8 * SPREAD_POINTS;
 /// Curiosity gained per decision since an experiment was last tried, up to the cap.
 const RECENCY_RATE: u64 = 4;
 const RECENCY_CAP: u64 = 1_024;
 
 /// Checkpointed bounded statistics for intrinsic action discovery.
 ///
-/// The learner measures contingency: how far the outcome that follows an experiment differs
-/// from the outcome overall. An effect that follows regardless of action, or that stops
+/// The learner measures contingency: how far the outcomes that follow an experiment differ from
+/// the outcomes overall, in both their average and their spread. Each outcome is judged in
+/// units of its own overall spread, so a small visual change can matter as much as a large
+/// change of body posture. An effect that follows regardless of action, or that stops
 /// following, carries no contingency, so neither keeps attracting experiments.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AffordanceLearner {
@@ -61,6 +73,12 @@ pub struct AffordanceLearner {
     pub after: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
     /// Recent average outcome over all decisions, scaled by 256.
     pub overall: [i32; OUTCOME_FEATURES],
+    /// Recent mean absolute deviation of the outcome following each experiment, scaled by 256.
+    #[serde(default)]
+    pub after_spread: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+    /// Recent mean absolute deviation of the outcome over all decisions, scaled by 256.
+    #[serde(default)]
+    pub overall_spread: [i32; OUTCOME_FEATURES],
     /// Decision tick at which each experiment was last selected.
     pub last_tried: [u64; AFFORDANCE_ACTIONS],
     /// Last selected experiment, whose outcome the next observation reports.
@@ -76,6 +94,8 @@ impl Default for AffordanceLearner {
             visits: [0; AFFORDANCE_ACTIONS],
             after: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
             overall: [0; OUTCOME_FEATURES],
+            after_spread: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+            overall_spread: [0; OUTCOME_FEATURES],
             last_tried: [0; AFFORDANCE_ACTIONS],
             previous_action: AFFORDANCE_ACTIONS,
             previous_view: [[0; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
@@ -139,8 +159,27 @@ impl AffordanceLearner {
         self.visits[action] = count;
         let horizon = i32::from(count.min(ACTION_HORIZON));
         for (feature, value) in now.into_iter().enumerate() {
+            // Spreads are measured against the averages before this outcome joins them; an
+            // experiment's first outcome sets its average and has no spread yet.
+            if count > 1 {
+                let deviation = (value - self.after[action][feature]).abs();
+                self.after_spread[action][feature] +=
+                    (deviation - self.after_spread[action][feature]) / horizon;
+            }
+            let deviation = (value - self.overall[feature]).abs();
+            self.overall_spread[feature] +=
+                (deviation - self.overall_spread[feature]) / OVERALL_HORIZON;
             self.after[action][feature] += (value - self.after[action][feature]) / horizon;
             self.overall[feature] += (value - self.overall[feature]) / OVERALL_HORIZON;
+        }
+        for other in (0..AFFORDANCE_ACTIONS).filter(|other| *other != action) {
+            for feature in 0..OUTCOME_FEATURES {
+                self.after[other][feature] +=
+                    (self.overall[feature] - self.after[other][feature]) / FORGETTING_HORIZON;
+                self.after_spread[other][feature] += (self.overall_spread[feature]
+                    - self.after_spread[other][feature])
+                    / FORGETTING_HORIZON;
+            }
         }
     }
 
@@ -152,17 +191,25 @@ impl AffordanceLearner {
         (self.visits[action] > 0).then(|| self.after[action].map(|value| value / OUTCOME_SCALE))
     }
 
-    /// How strongly an experiment's outcome differs from the overall outcome.
+    /// How strongly an experiment's outcomes differ from the overall outcomes, in average and
+    /// in spread, with each feature judged in units of its overall spread.
     fn contingency(&self, action: usize) -> u32 {
         if self.visits[action] == 0 {
             return 0;
         }
-        let distance: u32 = self.after[action]
-            .iter()
-            .zip(self.overall)
-            .map(|(after, overall)| (after - overall).unsigned_abs())
+        let points: i64 = (0..OUTCOME_FEATURES)
+            .map(|feature| {
+                let difference =
+                    i64::from((self.after[action][feature] - self.overall[feature]).abs())
+                        + i64::from(
+                            (self.after_spread[action][feature] - self.overall_spread[feature])
+                                .abs(),
+                        );
+                let spread = i64::from(self.overall_spread[feature].max(SPREAD_FLOOR));
+                (difference * SPREAD_POINTS / spread).min(FEATURE_POINTS_CAP)
+            })
             .sum();
-        distance / OUTCOME_SCALE.cast_unsigned()
+        u32::try_from(points).unwrap_or(u32::MAX)
     }
 
     fn select(&mut self, seed: u64, tick: u64) -> (PrimitiveAction, u32) {
@@ -467,6 +514,14 @@ impl AgentRuntime {
 #[must_use]
 pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
     let mut fingerprint = derive(0, learner.previous_action as u64, 0, 0x4146_4650);
+    for (feature, value) in learner.overall_spread.iter().enumerate() {
+        fingerprint = derive(
+            fingerprint,
+            i64::from(*value).cast_unsigned(),
+            feature as u64,
+            0x4F53_5052,
+        );
+    }
     for (feature, value) in learner.overall.iter().enumerate() {
         fingerprint = derive(
             fingerprint,
@@ -493,6 +548,14 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
             action as u64,
             0x4C41_5354,
         );
+        for (feature, value) in learner.after_spread[action].iter().enumerate() {
+            fingerprint = derive(
+                fingerprint,
+                i64::from(*value).cast_unsigned(),
+                feature as u64,
+                0x4153_5052,
+            );
+        }
         for (feature, value) in learner.after[action].iter().enumerate() {
             fingerprint = derive(
                 fingerprint,

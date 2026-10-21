@@ -419,7 +419,7 @@ mod tests {
     #[test]
     fn affordance_discovery_shows_contingency() {
         let report = run();
-        for paradigm in [Paradigm::Standard, Paradigm::Inverted] {
+        for paradigm in PARADIGMS {
             let cell = report.cell(paradigm, Controller::AffordanceDiscovery);
             assert!(cell.shows_contingency, "{paradigm:?}: {cell:?}");
             assert!(
