@@ -90,6 +90,10 @@ pub struct BodyProprioception {
     pub vertical_motion: i16,
     /// Whether the most recent generic hand pulse contacted a physical test object.
     pub hand_contact: u16,
+    /// How much the founder swallowed since the previous observation, after opening its jaw on
+    /// something edible within reach (body contract version 5). Never names what was eaten.
+    #[serde(default)]
+    pub swallowed: u16,
 }
 
 /// Current transport health, separate from sensory data.

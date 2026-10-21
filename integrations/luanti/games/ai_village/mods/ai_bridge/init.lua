@@ -1,6 +1,10 @@
 -- One physical founder and an intentionally narrow, loopback-only bridge protocol.
 -- No coordinates, node names, recipes, rewards, or world facts cross into Rust.
 local palette = dofile(minetest.get_modpath("ai_bridge") .. "/palette_generated.lua").colours
+local texture_colours = dofile(minetest.get_modpath("ai_bridge") .. "/texture_colours_generated.lua")
+-- "room" is the small experimental arena; "open" lives in whatever world the server generates
+-- (for example Minetest Game's endless terrain), with no arena built.
+local open_world = minetest.settings:get("ai_bridge_world") == "open"
 local protocol, agent_id = 3, 1
 -- Seconds per decision. Experiments use 0.1; a slower clock makes behaviour easier to watch.
 local step_seconds = math.max(0.05, math.min(2,
@@ -40,6 +44,8 @@ local founder_animations = {
 -- Luanti nodes occupy y +/-0.5 around their integer coordinate.  These positions put
 -- collisionbox bottoms directly on the floor node's upper face (y=0.5).
 local founder_spawn = {x = 0, y = 0.5, z = 0}
+-- In an open world the founder respawns this far below its spawn (a deep cave or the void).
+local open_world_fall_limit = 40
 local generic_spawn = {x = 1.2, y = 0.7, z = 0}
 -- In learning runs and while observing, the cube hangs at the founder's eye height, like a
 -- mobile in view: the eye rays start 1 node above the founder's feet (y = 1.5), and the cube
@@ -99,7 +105,8 @@ local state = { sequence = 0, server_step = 0, pending = false, pending_at = 0, 
   held = { thrust = 0, turn = 0, strafe = 0, look_pitch = 0, jump = 0, jaw = 0, hand_pulse = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} },
   applied_step = 0, applied_steps = 0, elapsed = 0, previous_velocity = {x = 0, z = 0}, touch = 0, grounded = 0, hand_contact = 0, eye_pitch = 0, status = "healthy",
   smoke = mode == "smoke", learn_decisions = 0, learn_phase = nil, learn_cube = nil,
-  decisions = 0, pushes = 0, hits = 0, pushed_at = nil, diagnostics = nil, latency_ms = 0, founder = nil, body_parts = {},
+  decisions = 0, pushes = 0, hits = 0, pushed_at = nil, swallowed = 0, meals = 0,
+  forceloaded = {}, diagnostics = nil, latency_ms = 0, founder = nil, body_parts = {},
   observer_resets = 0, safety_resets = 0, last_safety_reset = "none" }
 
 local function smoke_log(event)
@@ -187,7 +194,7 @@ local function update_observer_hud()
     {(state.pushed_at and state.decisions - state.pushed_at < 3) and ">>> HIT! the push moved the cube <<<"
       or ((state.held or {}).hand_pulse or 0) > 0 and ">>> PUSHING <<<" or " ",
       (state.pushed_at and state.decisions - state.pushed_at < 3) and 0x7CFC8C or 0xFFC857},
-    {"Pushes:  " .. tostring(state.pushes) .. "  |  hits: " .. tostring(state.hits)
+    {"Meals:  " .. tostring(state.meals) .. "  |  pushes: " .. tostring(state.pushes) .. "  |  hits: " .. tostring(state.hits)
       .. (state.pushes > 0 and ("  (" .. tostring(math.floor(100 * state.hits / state.pushes + 0.5)) .. "%)") or ""),
       0xFFFFFF},
     {"Link:  " .. string.lower(transport_name[state.status]) .. "  |  " .. tostring(state.latency_ms)
@@ -205,6 +212,86 @@ local function trunc_toward_zero(value)
   return value < 0 and math.ceil(value) or math.floor(value)
 end
 
+-- Colour of a block as an eye sees it: the mod's palette, else the average colour of its top
+-- texture, compositing overlays by how much of them is opaque. Cached per block name.
+local node_colours = {}
+local function texture_colour(texture)
+  local colour
+  for part in string.gmatch(texture, "[^%^]+") do
+    local file = part:gsub("^%(", ""):gsub("%)$", "")
+    local summary = texture_colours[file]
+    if summary then
+      if not colour then
+        colour = {summary[1], summary[2], summary[3]}
+      else
+        local cover = summary[4] / 255
+        for channel = 1, 3 do
+          colour[channel] = colour[channel] * (1 - cover) + summary[channel] * cover
+        end
+      end
+    end
+  end
+  return colour
+end
+local function node_colour(name)
+  local cached = node_colours[name]
+  if cached then return cached end
+  local colour = palette[name]
+  if not colour then
+    local def = minetest.registered_nodes[name]
+    local tile = def and def.tiles and def.tiles[1]
+    if type(tile) == "table" then tile = tile.name or tile.image end
+    colour = type(tile) == "string" and texture_colour(tile) or nil
+    colour = colour and {math.floor(colour[1] + 0.5), math.floor(colour[2] + 0.5), math.floor(colour[3] + 0.5)}
+      or {128, 128, 128}
+  end
+  node_colours[name] = colour
+  return colour
+end
+
+-- Whether opening the jaw on a block feeds the founder: the block, or what it yields, is edible
+-- in the world's own terms (a "food_*" group). This stays inside the body: Rust only feels how
+-- much was swallowed, never what.
+local function edible(name)
+  local function food(item)
+    local def = item and minetest.registered_items[item]
+    for group in pairs(def and def.groups or {}) do
+      if group:sub(1, 5) == "food_" then return true end
+    end
+    return false
+  end
+  local def = minetest.registered_nodes[name]
+  return food(name) or (def and type(def.drop) == "string" and food(def.drop))
+end
+
+-- Eats the first edible block the mouth reaches: rays from the eyes slanting forward and down,
+-- about one and a half nodes long. The block is consumed as if picked, so it regrows as the
+-- world's own rules say (an apple tree regrows its apple, a bush its berries).
+local function eat_in_front(self)
+  local pos = self.object:get_pos()
+  local angle = self.object:get_yaw() + math.pi / 2
+  local eye = vector.add(pos, {x = 0, y = 1, z = 0})
+  for _, slant in ipairs({0, math.rad(25), math.rad(50)}) do
+    local direction = {x = math.cos(angle) * math.cos(slant), y = -math.sin(slant), z = math.sin(angle) * math.cos(slant)}
+    for pointed in minetest.raycast(eye, vector.add(eye, vector.multiply(direction, 1.6)), false, false) do
+      if pointed.type == "node" then
+        local node = minetest.get_node(pointed.under)
+        if edible(node.name) then
+          local def = minetest.registered_nodes[node.name]
+          local meta = minetest.get_meta(pointed.under):to_table()
+          minetest.remove_node(pointed.under)
+          if def and def.after_dig_node then def.after_dig_node(pointed.under, node, meta, nil) end
+          state.swallowed, state.meals = 255, state.meals + 1
+          minetest.log("action", "AI_BRIDGE_MEAL " .. tostring(state.meals))
+          return true
+        end
+        break
+      end
+    end
+  end
+  return false
+end
+
 -- Ray-visible physical entities and their average texture colour. Only these entities stop eye
 -- rays; players (observers) and the founder's own body never do. Nothing names the entity to
 -- Rust: a ray reports only colour, light, distance, and apparent motion.
@@ -217,9 +304,9 @@ local entity_colours = {
 -- vertical motion in that speed (the forward retina); the legacy rays use horizontal motion only.
 local function cast_eye_ray(self, eye, direction, velocity, sample, vertical)
   local hit, rgb, light, hit_velocity
-  for pointed in minetest.raycast(eye, vector.add(eye, vector.multiply(direction, 6)), true, false) do
+  for pointed in minetest.raycast(eye, vector.add(eye, vector.multiply(direction, 6)), true, open_world) do
     if pointed.type == "node" then
-      hit, rgb = pointed, palette[minetest.get_node(pointed.under).name] or {120, 170, 255}
+      hit, rgb = pointed, node_colour(minetest.get_node(pointed.under).name)
       light = minetest.get_node_light(pointed.above, 0.5) or 0
       break
     end
@@ -355,9 +442,10 @@ local function send_transition(self, dt)
   -- Sense first: it also fills the forward retina sent beside the legacy rays.
   local senses = sense(self, dt)
   local observation = { sequence = state.sequence, senses = senses,
-    body = { eye_pitch = byte(state.eye_pitch + 128), grounded = state.grounded, vertical_motion = signed(velocity.y * 64), hand_contact = state.hand_contact },
+    body = { eye_pitch = byte(state.eye_pitch + 128), grounded = state.grounded, vertical_motion = signed(velocity.y * 64), hand_contact = state.hand_contact,
+      swallowed = state.swallowed },
     retina = state.retina,
-    capabilities = { body_contract_version = 4, checkpoint_resume = false, dead = { chemicals = {true,true,true,true}, vibration = true,
+    capabilities = { body_contract_version = 5, checkpoint_resume = false, dead = { chemicals = {true,true,true,true}, vibration = true,
       touch = false, joint_position = false, muscle_tension = false, acceleration = false, orientation = false } },
     transport = transport_name[state.status] or "Disconnected" }
   local body = minetest.write_json({ protocol = protocol, agent_id = agent_id, observation = observation,
@@ -366,6 +454,7 @@ local function send_transition(self, dt)
   -- Hand contact is a bounded event latch: preserve it until the one subsequent observation,
   -- then clear it.  It never carries target identity or any other world fact.
   state.hand_contact = 0
+  state.swallowed = 0
   state.last_retinal = observation.senses.retinal
   local ray = observation.senses.retinal[1]
   smoke_log({event = "observation", sequence = state.sequence, transport = observation.transport, touch = observation.senses.touch,
@@ -452,6 +541,21 @@ local function update_humanoid_pose(object, action)
     strafe = action.strafe or 0, hand_pulse = action.hand_pulse or 0})
 end
 
+-- An open world unloads blocks far from players, which would remove the unsaved founder. Keep
+-- the founder's block and its horizontal neighbours loaded wherever it goes.
+local function keep_loaded_around(position)
+  local block = vector.floor(vector.divide(position, 16))
+  local key = minetest.pos_to_string(block)
+  if state.forceloaded_key == key then return end
+  for _, old in ipairs(state.forceloaded) do minetest.forceload_free_block(old, true) end
+  state.forceloaded, state.forceloaded_key = {}, key
+  for dx = -1, 1 do for dz = -1, 1 do
+    local node = vector.multiply(vector.add(block, {x = dx, y = 0, z = dz}), 16)
+    minetest.forceload_block(node, true)
+    state.forceloaded[#state.forceloaded + 1] = node
+  end end
+end
+
 minetest.register_entity("ai_bridge:founder", {
   initial_properties = {physical = true, collide_with_objects = false, collisionbox = {-0.3,0,-0.3,0.3,1.7,0.3},
     visual = "mesh", mesh = "minetest_game_character.b3d",
@@ -491,8 +595,12 @@ minetest.register_entity("ai_bridge:founder", {
       update_observer_hud()
     end
     local position = self.object:get_pos()
-    if math.abs(position.x) > arena_safety_limit.horizontal or math.abs(position.z) > arena_safety_limit.horizontal
-        or position.y < arena_safety_limit.low_y or position.y > arena_safety_limit.high_y then
+    if open_world then keep_loaded_around(position) end
+    local escaped = open_world and position.y < founder_spawn.y - open_world_fall_limit
+      or not open_world and (math.abs(position.x) > arena_safety_limit.horizontal
+        or math.abs(position.z) > arena_safety_limit.horizontal
+        or position.y < arena_safety_limit.low_y or position.y > arena_safety_limit.high_y)
+    if escaped then
       -- This recovery is intentionally outside the actuator/learning path.  It records a
       -- physics containment failure but preserves held action, sequence, and Rust state.
       local reason = string.format("out_of_bounds x=%.3f y=%.3f z=%.3f", position.x, position.y, position.z)
@@ -525,6 +633,7 @@ minetest.register_entity("ai_bridge:founder", {
       self.object:set_yaw(yaw + turn * (2 * math.pi / 256))
       state.eye_pitch = clamp(state.eye_pitch + trunc_toward_zero((action.look_pitch or 0) / 32), -128, 127)
       if (action.jump or 0) > 0 and state.grounded > 0 then self.object:set_velocity({x = velocity.x, y = 5, z = velocity.z}) end
+      if (action.jaw or 0) > 0 then eat_in_front(self) end
       if (action.hand_pulse or 0) > 0 then
         local origin = vector.add(self.object:get_pos(), {x = forward.x * 0.8, y = 0.8, z = forward.z * 0.8})
         -- Deliberately bounded reach around the visible forward hand; this is contact feedback,
@@ -551,8 +660,36 @@ minetest.register_entity("ai_bridge:test_object", {
     textures = cube_textures("ai_bridge_generic_cc0.png"), static_save = false},
 })
 
+-- Open world: find land near the origin from the map generator's own spawn rule, generate the
+-- surroundings, and set the founder on the surface there. No arena and no test cube.
+local function settle_in_open_world()
+  minetest.set_timeofday(0.5)
+  local x, z, level = 0, 0, minetest.get_spawn_level(0, 0)
+  for radius = 16, 256, 16 do
+    if level then break end
+    for _, offset in ipairs({{radius, 0}, {-radius, 0}, {0, radius}, {0, -radius}}) do
+      level = minetest.get_spawn_level(offset[1], offset[2])
+      if level then x, z = offset[1], offset[2] break end
+    end
+  end
+  -- The spawn level is the first air node above ground; the founder's feet rest on its floor.
+  founder_spawn = {x = x, y = (level or 20) - 0.5, z = z}
+  minetest.log("action", "AI_BRIDGE_OPEN_WORLD spawn " .. minetest.pos_to_string(founder_spawn))
+  keep_loaded_around(founder_spawn)
+  local corner = vector.new(32, 32, 32)
+  minetest.emerge_area(vector.subtract(founder_spawn, corner), vector.add(founder_spawn, corner),
+    function(_, _, remaining)
+      if remaining ~= 0 then return end
+      minetest.add_entity(founder_spawn, "ai_bridge:founder")
+    end)
+end
+
 minetest.register_on_mods_loaded(function()
   minetest.after(0, function()
+    if open_world then
+      settle_in_open_world()
+      return
+    end
     minetest.emerge_area({x=-7,y=0,z=-7}, {x=7,y=4,z=7}, function(_, _, remaining)
       if remaining ~= 0 then return end
       minetest.set_timeofday(0.5)
@@ -781,7 +918,8 @@ minetest.register_on_joinplayer(function(player)
   -- nearby neutral fixture without making either fill the first frame.
   minetest.set_player_privs(observer_name, {})
   player:set_physics_override({speed = 1, jump = 1, gravity = 1})
-  player:set_pos({x = 0, y = 2.1, z = -3})
+  player:set_pos(open_world and vector.add(founder_spawn, {x = 0, y = 1.6, z = -4})
+    or {x = 0, y = 2.1, z = -3})
   player:set_look_horizontal(0)
   player:set_look_vertical(-0.28)
   -- A returning observer must not arrive after the live brain has walked the founder away.
