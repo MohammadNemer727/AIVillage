@@ -4186,6 +4186,7 @@ dependencies = [
  "serde_json",
  "sim-core",
  "sim-format",
+ "sim-kernels",
  "tiny_http",
 ]
 

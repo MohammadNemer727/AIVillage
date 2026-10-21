@@ -7,6 +7,8 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 repo=$(CDPATH= cd -- "$root/../.." && pwd)
 python3 "$root/tools/generate_palette.py" --check
+bridge_port=${SIM_LUANTI_PORT:-8481}
+server_port=${LUANTI_SMOKE_PORT:-30000}
 world=${1:-"$root/.smoke-world"}
 rm -rf "$world"
 mkdir -p "$world"
@@ -19,9 +21,9 @@ EOF
 config="$world/minetest.conf"
 cat "$root/ci/minetest.conf" >"$config"
 cat >>"$config" <<'EOF'
-ai_bridge_smoke_shutdown = true
-ai_bridge_smoke = true
+ai_bridge_mode = smoke
 EOF
+printf 'ai_bridge_endpoint = http://127.0.0.1:%s/v1/transition\nport = %s\n' "$bridge_port" "$server_port" >>"$config"
 
 trace="$world/bridge.ndjson"
 bridge_log="$world/bridge.log"
@@ -45,6 +47,9 @@ for _ in $(seq 1 120); do
   sleep 0.25
 done
 [ "$ready" -eq 1 ] || { cat "$bridge_log"; exit 1; }
+# Terminate the bridge while the server continues. Lua must replace the held command with zero
+# within its request timeout; this is distinct from the bridge's injected delayed reply.
+( sleep 6; kill "$bridge_pid" 2>/dev/null || true ) &
 if [ -n "${LUANTI_SERVER_IMAGE:-}" ]; then
   runtime=${LUANTI_CONTAINER_RUNTIME:-docker}
   # Host networking reaches the loopback-only bridge; the world is mounted at the same path and
@@ -82,6 +87,11 @@ assert any(
     sample["occlusion"] > 0 and (sample["red"], sample["green"], sample["blue"]) != (120, 170, 255)
     for record in records for sample in record["request"]["observation"]["senses"]["retinal"]
 ), "no ray hit a visible wall"
+room = next(event for event in events if event["event"] == "room")
+assert room["floor"] == "ai_bridge:floor" and room["wall"] == "ai_bridge:wall_x", \
+    f"unexpected generated room nodes: {room}"
+assert room["floor_light"] >= 10 and room["wall_light"] >= 10, \
+    f"room surfaces were not lit after fix_light: {room}"
 ray0 = [event["ray0"] for event in events if event["event"] == "observation"]
 assert ray0[0]["occlusion"] > 0 and tuple(ray0[0][key] for key in ("red", "green", "blue")) == (190, 82, 58)
 assert any(tuple(ray[key] for key in ("red", "green", "blue")) == (56, 150, 104) for ray in ray0), \
@@ -98,7 +108,24 @@ gravity = next(event for event in events if event["event"] == "gravity")
 assert (spawn["x"], spawn["y"], spawn["z"]) == (0, 1, 0), f"unexpected spawn: {spawn}"
 assert math.isclose(spawn["yaw"], -math.pi / 2, abs_tol=0.01), f"unexpected spawn yaw: {spawn}"
 assert gravity["vy"] < 0, f"gravity was not applied: {gravity}"
-print(f"smoke accepted {len(records)} bounded transitions with rays, collision, timeout recovery, spawn, and gravity")
+def heading(pose):
+    return pose["yaw_milliradian"] / 1000 + math.pi / 2
+traces = [record["request"]["trace"] for record in records]
+turns = [(a, b) for a, b in zip(traces, traces[1:])
+         if a["applied_action"]["turn"] > 0 and b["applied_action"]["turn"] > 0]
+assert turns and any(heading(b["pose"]) > heading(a["pose"]) for a, b in turns), \
+    "positive applied turn did not increase recorded V2 heading"
+drives = [(a, b) for a, b in zip(traces, traces[1:])
+          if a["applied_action"]["thrust"] > 0 and b["applied_action"]["thrust"] > 0]
+assert drives and any(
+    math.hypot(b["pose"]["x_millinode"] - a["pose"]["x_millinode"],
+               b["pose"]["z_millinode"] - a["pose"]["z_millinode"]) > 0
+    or record["request"]["observation"]["senses"]["touch"] > 0
+    for (a, b), record in zip(drives, records[1:])
+), "positive applied thrust neither moved the recorded body nor reported touch"
+assert any(event == {"event": "safe_zero", "status": "disconnected", "thrust": 0, "turn": 0} for event in events), \
+    "bridge stop did not install the explicit zero action"
+print(f"smoke accepted {len(records)} bounded transitions with pose evidence and bridge-stop safety")
 PY
 # The live trace must reproduce every decision and brain fingerprint in the Rust runtime.
 cargo run --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml" -- replay "$trace"

@@ -16,13 +16,14 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sim_core::{
     environment::{EnvironmentObservation, EnvironmentTransition, PrimitiveAction},
-    runtime::{AgentRuntime, RuntimeError},
+    runtime::{AgentRuntime, FrozenPhysiology, RuntimeError},
 };
 use sim_format::FounderSpec;
+use sim_kernels::brain::{MODULATORS, NEURONS};
 use tiny_http::{Header, Method, Response, Server, StatusCode};
 
 /// Wire protocol accepted by this crate.
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 /// Requests larger than this cannot be receptor frames from the one-agent protocol.
 pub const MAX_PAYLOAD_BYTES: usize = 64 * 1024;
 
@@ -35,6 +36,38 @@ pub struct ApplicationTrace {
     pub applied_steps: u32,
     /// Accumulated Luanti delta time for that interval, in microseconds.
     pub accumulated_dtime_us: u64,
+    /// Motor command actually applied by Luanti, after any mode-specific fixture override.
+    pub applied_action: PrimitiveAction,
+    /// Founder pose at the end of the recorded interval, in millinodes/milliradians.
+    pub pose: AppliedPose,
+}
+
+/// Quantised Luanti pose evidence, deliberately excluded from environment observations.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AppliedPose {
+    /// X position in millinodes.
+    pub x_millinode: i32,
+    /// Y position in millinodes.
+    pub y_millinode: i32,
+    /// Z position in millinodes.
+    pub z_millinode: i32,
+    /// Luanti yaw in milliradians.
+    pub yaw_milliradian: i32,
+}
+
+/// Observer-only state, never accepted as a runtime input.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Diagnostics {
+    /// Runtime decision counter after this response.
+    pub decision_tick: u64,
+    /// Fingerprint of the post-decision brain.
+    pub brain_fingerprint: u64,
+    /// Whether any lifetime brain parameter has departed from its blank initial state.
+    pub learned: bool,
+    /// Mean absolute activity of the modulatory population.
+    pub mean_modulator_activity: u16,
+    /// Stores fixed by the runtime rather than supplied by Luanti.
+    pub frozen_physiology: FrozenPhysiology,
 }
 
 /// A request from the one permitted Lua bridge endpoint.
@@ -63,8 +96,8 @@ pub struct BridgeResponse {
     pub expected_sequence: u64,
     /// The primitive action Lua may hold until its next completed observation interval.
     pub action: PrimitiveAction,
-    /// Fingerprint of the founder brain immediately after this decision.
-    pub brain_fingerprint: u64,
+    /// Data intended exclusively for observer diagnostics, never an action or observation.
+    pub diagnostics: Diagnostics,
 }
 
 /// One replayable post-action bridge exchange, suitable for NDJSON output.
@@ -153,7 +186,7 @@ impl Bridge {
             .runtime
             .step(request.observation)
             .map_err(BridgeError::Sequence)?;
-        let response = response_for(request.agent_id, &transition);
+        let response = response_for(request.agent_id, &transition, &self.runtime);
         self.trace.push(TraceRecord {
             request,
             response: response.clone(),
@@ -168,15 +201,40 @@ impl Bridge {
     }
 }
 
-fn response_for(agent_id: u64, transition: &EnvironmentTransition) -> BridgeResponse {
+fn response_for(
+    agent_id: u64,
+    transition: &EnvironmentTransition,
+    runtime: &AgentRuntime,
+) -> BridgeResponse {
     BridgeResponse {
         protocol: PROTOCOL_VERSION,
         agent_id,
         generated_sequence: transition.observation.sequence,
         expected_sequence: transition.observation.sequence + 1,
         action: transition.action,
-        brain_fingerprint: transition.brain_fingerprint,
+        diagnostics: Diagnostics {
+            decision_tick: transition.decision_tick,
+            brain_fingerprint: transition.brain_fingerprint,
+            learned: runtime
+                .state()
+                .brain
+                .learned_bias
+                .iter()
+                .any(|value| *value != 0),
+            mean_modulator_activity: mean_modulator_activity(runtime),
+            frozen_physiology: runtime.state().physiology,
+        },
     }
+}
+
+fn mean_modulator_activity(runtime: &AgentRuntime) -> u16 {
+    let activity = &runtime.state().brain.activity;
+    let total: i32 = activity[NEURONS - MODULATORS..]
+        .iter()
+        .map(|value| i32::from(value.abs()))
+        .sum();
+    u16::try_from(total / i32::try_from(MODULATORS).expect("small constant"))
+        .expect("activity fits")
 }
 
 /// Replays accepted bridge records through the Milestone A standalone runtime.
@@ -190,7 +248,7 @@ pub fn replay_trace(seed: u64, agent_id: u64, records: &[TraceRecord]) -> Result
         let transition = runtime
             .step(record.request.observation)
             .map_err(BridgeError::Sequence)?;
-        if response_for(record.request.agent_id, &transition) != record.response {
+        if response_for(record.request.agent_id, &transition, &runtime) != record.response {
             return Err(BridgeError::Replay);
         }
     }
@@ -363,6 +421,13 @@ mod tests {
                 applied_server_step: 10,
                 applied_steps: 1,
                 accumulated_dtime_us: 100_000,
+                applied_action: PrimitiveAction::default(),
+                pose: AppliedPose {
+                    x_millinode: 0,
+                    y_millinode: 1_000,
+                    z_millinode: 0,
+                    yaw_milliradian: -1_571,
+                },
             },
         }
     }
@@ -371,7 +436,7 @@ mod tests {
     fn rejects_protocol_agent_and_sequence_without_advancing() {
         let mut bridge = Bridge::new(4, 9);
         let mut wrong_protocol = request(0);
-        wrong_protocol.protocol = 2;
+        wrong_protocol.protocol = 3;
         assert!(matches!(
             bridge.handle(wrong_protocol),
             Err(BridgeError::Protocol { .. })
@@ -418,7 +483,7 @@ mod tests {
         let mut bridge = Bridge::new(4, 9);
         bridge.handle(request(0)).expect("first");
         let mut records = bridge.drain_trace();
-        records[0].response.brain_fingerprint ^= 1;
+        records[0].response.diagnostics.brain_fingerprint ^= 1;
         assert_eq!(replay_trace(4, 9, &records), Err(BridgeError::Replay));
     }
 

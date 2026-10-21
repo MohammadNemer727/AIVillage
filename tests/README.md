@@ -62,3 +62,56 @@ Acceleration is intentionally a bounded signed receptor: horizontal finite diffe
 at 4 m/s² per full-scale unit and clamped to `[-255, 255]`. This can saturate during collisions or
 gravity-adjacent motion; changing the fixed receptor mapping requires a versioned V2 contract
 decision rather than a bridge-local adjustment.
+
+## Luanti graphical observer
+
+Run the three local processes against one isolated world with:
+
+```sh
+sh integrations/luanti/observe.sh
+```
+
+The script starts `sim-luanti`, `luantiserver` (falling back to `minetestserver` on Fedora),
+and the `luanti` graphical client as the `observer` player at `127.0.0.1:30000`. It uses
+`LUANTI_GAME_PATH`, starts in `observe` mode, and writes logs under
+`integrations/luanti/.observe-world`. The observer begins inside the room, aimed at the founder, and
+has normal movement, jumping, gravity, and mouse look for exploration; it remains non-privileged, so
+it cannot interact with the world. Server-side ceiling fixtures illuminate the room even on a fresh
+singlenode world. The glowing, amber-faced green founder
+is labelled `FOUNDER — Rust bridge controlled`; its applied motor
+values and Rust decision tick appear in the observer HUD. Stop the graphical client to cleanly
+stop the local server and bridge.
+
+For a rendering and actuator check when the live founder happens to be still, change
+`ai_bridge_mode = observe` to `ai_bridge_mode = demo-motion` in the generated world config, then
+restart the script. This mode deliberately replaces the Rust action with a deterministic Lua
+actuator fixture after each successful Rust bridge response; it demonstrates rendering and physics,
+not learned Rust motor output. `smoke` is reserved for the automated harness; only that mode
+enables the injected stall and timed server shutdown.
+
+The observer-only HUD labels the decision tick, server step, held command, request latency and
+transport status; it also separates receptors used by the current V2 compression (green and
+brightness means plus interoception), live-but-unused channels (red, blue, direction), and dead
+channels (chemicals, vibration). Rust returns these values only in a top-level `diagnostics`
+response object: Lua never includes them in a later observation, and detailed failures remain in
+the Rust/server logs.
+
+Manual graphical checklist:
+
+1. In `observe`, confirm the labelled glowing founder is visible from the initial framing and that
+   the HUD decision tick and `Rust action applied` fields update.
+2. Move and jump: the observer explores normally, while the founder remains a separately visible
+   Rust-bridge-controlled entity.
+3. In `demo-motion`, confirm the founder turns/moves with its amber face leading. This is the
+   documented actuator fixture, not a learned-action claim.
+4. Stop `sim-luanti` and confirm the founder halts within 0.5 seconds.
+
+If the untrained founder holds a forward action into a wall, the configured `observer` may enter
+`/founder_reset`. This is explicitly an observer-only scene reset: it returns the body to the
+arena centre and restores its initial heading, while preserving the held Rust action, runtime,
+sequence, observations, and learning state. The HUD counts these resets and labels them as not
+steering or retraining; the founder can therefore drive back into a wall immediately afterward.
+
+The headless smoke test additionally asserts applied-action/pose consistency and this
+bridge-stop safe-zero behavior. Creature artwork provenance and license are in
+[`../integrations/luanti/games/ai_village/mods/ai_bridge/ASSETS.md`](../integrations/luanti/games/ai_village/mods/ai_bridge/ASSETS.md).
