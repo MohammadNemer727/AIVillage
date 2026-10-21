@@ -9,3 +9,5 @@ integrations/luanti/.smoke-world.home/
 integrations/luanti/.observe-world/
 integrations/luanti/.observe-launch.log
 /papers/
+integrations/luanti/.observe-launcher.log
+integrations/luanti/.observe-trace.ndjson

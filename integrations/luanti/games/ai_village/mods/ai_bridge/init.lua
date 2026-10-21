@@ -110,74 +110,76 @@ local transport_name = {
   healthy = "Healthy", timeout = "Timeout", rejected = "Rejected", disconnected = "Disconnected",
 }
 
-local function hud_lines()
-  local diagnostics = state.diagnostics or {}
-  local physiology = diagnostics.frozen_physiology or {}
-  local intrinsic = diagnostics.experiment_mode == "AffordanceDiscovery"
-  local baseline = diagnostics.baseline_action or {}
-  local selected = diagnostics.intrinsic_action or {}
-  local applied = state.held or {}
-  local actuator = scripted and "fixture action applied" or "Rust action applied"
-  local generated = intrinsic and selected or baseline
-  local generated_label = intrinsic and "GENERATED INTRINSIC" or "BASELINE BRAIN"
-  return {
-    "AI VILLAGE  |  OBSERVER DIAGNOSTICS",
-    "Move/look freely; founder motors accept Rust bridge responses only.",
-    "MODE  " .. tostring(diagnostics.experiment_mode or "waiting"),
-    "GENERATED  " .. generated_label .. "  thrust " .. tostring(generated.thrust or 0)
-      .. "  strafe " .. tostring(generated.strafe or 0) .. "  turn " .. tostring(generated.turn or 0),
-    "           jump " .. tostring(generated.jump or 0) .. "  hand " .. tostring(generated.hand_pulse or 0)
-      .. "  score " .. tostring(diagnostics.intrinsic_score or "—"),
-    "APPLIED  " .. actuator .. "  thrust " .. tostring(applied.thrust or 0)
-      .. "  strafe " .. tostring(applied.strafe or 0) .. "  turn " .. tostring(applied.turn or 0),
-    "         pitch " .. tostring(applied.look_pitch or 0) .. "  jump " .. tostring(applied.jump or 0)
-      .. "  hand " .. tostring(applied.hand_pulse or 0),
-    "BODY  " .. (state.grounded > 0 and "GROUNDED" or "AIRBORNE") .. "  |  hand contact: "
-      .. (state.hand_contact > 0 and "YES (generic impulse)" or "none"),
-    "TRANSPORT  " .. transport_name[state.status] .. "  |  latency " .. tostring(state.latency_ms) .. " ms",
-    "TICKS  decision " .. tostring(diagnostics.decision_tick or "waiting")
-      .. "  |  server " .. tostring(state.server_step),
-    "SAFETY  observer resets " .. tostring(state.observer_resets)
-      .. "  |  containment resets " .. tostring(state.safety_resets)
-      .. " (" .. state.last_safety_reset .. ")",
-    "FROZEN PHYSIOLOGY  energy " .. tostring(physiology.energy or 120)
-      .. "  gut " .. tostring(physiology.gut or 120) .. "  hydration " .. tostring(physiology.hydration or 120),
-    "                    fatigue " .. tostring(physiology.fatigue or 0)
-      .. "  toxin " .. tostring(physiology.toxin or 0) .. "  damage " .. tostring(physiology.damage or 0),
-    "SECONDARY  brain " .. (diagnostics.learned and "learning" or "blank")
-      .. "  mod " .. tostring(diagnostics.mean_modulator_activity or "—")
-      .. "  receptors: green/brightness/interoception",
-  }
+-- Observer HUD elements of the current connection, by key. A reconnecting client starts with no
+-- HUD, so the table is cleared on join.
+local hud = {}
+
+local function hud_set(player, key, definition, field, value)
+  if not hud[key] then
+    hud[key] = player:hud_add(definition)
+  elseif value ~= nil then
+    player:hud_change(hud[key], field, value)
+  end
+end
+
+local function hud_text(player, key, corner, row, text, colour)
+  local right = corner == "right"
+  hud_set(player, key, {
+    type = "text", position = {x = right and 1 or 0, y = 0},
+    offset = {x = right and -32 or 32, y = 92 + row * 30},
+    alignment = {x = right and -1 or 1, y = 1}, text = text,
+    number = colour or 0xFFFFFF, size = {x = 1, y = 0}, z_index = 1,
+  }, "text", text)
+end
+
+local function hud_panel(player, key, corner, rows)
+  local right = corner == "right"
+  hud_set(player, key, {
+    type = "image", position = {x = right and 1 or 0, y = 0},
+    offset = {x = right and -16 or 16, y = 80}, alignment = {x = right and -1 or 1, y = 1},
+    text = "ai_bridge_base.png^[colorize:#101418:255^[opacity:185",
+    scale = {x = right and -21 or -27, y = -(1.2 + rows * 2.8)}, z_index = 0,
+  })
+end
+
+local function describe(action)
+  local parts = {}
+  local function add(condition, words) if condition then parts[#parts + 1] = words end end
+  add((action.thrust or 0) > 0, "walking forward")
+  add((action.thrust or 0) < 0, "walking back")
+  add((action.turn or 0) > 0, "turning left")
+  add((action.turn or 0) < 0, "turning right")
+  add((action.strafe or 0) ~= 0, "stepping sideways")
+  add((action.look_pitch or 0) > 0, "looking up")
+  add((action.look_pitch or 0) < 0, "looking down")
+  add((action.jump or 0) > 0, "jumping")
+  add((action.hand_pulse or 0) > 0, "pushing with hand")
+  add((action.jaw or 0) > 0, "opening jaw")
+  add((action.acoustic or 0) > 0, "making a sound")
+  return #parts > 0 and table.concat(parts, ", ") or "still"
 end
 
 local function update_observer_hud()
   local player = minetest.get_player_by_name(observer_name)
-  if player then
-    -- Replace the pre-panel single multiline element once, so reconnecting observers
-    -- cannot see the old tiny, overlapping diagnostic block beneath this panel.
-    if player:get_meta():get_int("ai_bridge_hud_panel_v2") == 0 then
-      local legacy_id = player:get_meta():get_int("ai_bridge_hud")
-      if legacy_id ~= 0 then player:hud_remove(legacy_id) end
-      player:get_meta():set_int("ai_bridge_hud_panel_v2", 1)
-    end
-    local lines = hud_lines()
-    for index, text in ipairs(lines) do
-      local key = "ai_bridge_hud_" .. index
-      local id = player:get_meta():get_int(key)
-      if id == 0 then
-        id = player:hud_add({
-          type = "text",
-          position = {x = 0.025, y = 0.018 + (index - 1) * 0.034},
-          offset = {x = 0, y = 0},
-          text = "",
-          alignment = {x = 1, y = 1},
-          scale = {x = 1.25, y = 1.25},
-          number = index == 1 and 0xFFF3B0 or 0xFFFFFF,
-        })
-        player:get_meta():set_int(key, id)
-      end
-      player:hud_change(id, "text", text)
-    end
+  if not player then return end
+  local diagnostics = state.diagnostics or {}
+  local curious = diagnostics.experiment_mode == "AffordanceDiscovery"
+  local lines = {
+    {"AI VILLAGE  |  OBSERVER", 0xFFE08A},
+    {"Founder 1  |  " .. (curious and "curious explorer" or "baseline brain")
+      .. (scripted and "  |  test fixture driving" or ""), 0xD8E2EA},
+    {"Doing:  " .. describe(state.held or {})
+      .. (curious and ("   (interest " .. tostring(diagnostics.intrinsic_score or 0) .. ")") or ""), 0xFFFFFF},
+    {"Body:  " .. (state.grounded > 0 and "on the ground" or "in the air")
+      .. "  |  hand contact: " .. (state.hand_contact > 0 and "YES" or "no"), 0xFFFFFF},
+    {"Link:  " .. string.lower(transport_name[state.status]) .. "  |  " .. tostring(state.latency_ms)
+      .. " ms  |  decision " .. tostring(diagnostics.decision_tick or "—"), 0xB8C4CE},
+    {"Resets:  observer " .. tostring(state.observer_resets) .. "  |  containment "
+      .. tostring(state.safety_resets), 0xB8C4CE},
+  }
+  hud_panel(player, "left_panel", "left", #lines)
+  for row, line in ipairs(lines) do
+    hud_text(player, "left_" .. row, "left", row - 1, line[1], line[2])
   end
 end
 
@@ -302,6 +304,7 @@ local function send_transition(self, dt)
   -- Hand contact is a bounded event latch: preserve it until the one subsequent observation,
   -- then clear it.  It never carries target identity or any other world fact.
   state.hand_contact = 0
+  state.last_retinal = observation.senses.retinal
   local ray = observation.senses.retinal[1]
   smoke_log({event = "observation", sequence = state.sequence, transport = observation.transport, touch = observation.senses.touch,
     ray0 = {red = ray.red, green = ray.green, blue = ray.blue, occlusion = ray.occlusion}})
@@ -389,6 +392,7 @@ minetest.register_entity("ai_bridge:founder", {
   on_activate = function(self)
     -- V2 heading zero is +X while Luanti yaw -pi/2 faces +X.
     self.object:set_yaw(-math.pi / 2)
+    self.label = "Founder " .. tostring(agent_id)
     state.founder = self.object
     state.founder_animation = nil
     update_humanoid_pose(self.object, state.held)
@@ -545,8 +549,160 @@ minetest.register_on_mods_loaded(function()
   end)
 end)
 
+-- Observer point of view. Everything here moves only the observer's camera and HUD: it never
+-- changes a founder's held action, senses, sequence, or learning.
+local pov = {target = nil, rows = 0}
+local POV_FORM = "ai_bridge:founders"
+
+local function founders()
+  local list = {}
+  for _, entity in pairs(minetest.luaentities) do
+    if entity.name == "ai_bridge:founder" and entity.object:get_pos() then
+      list[#list + 1] = {object = entity.object, label = entity.label or "Founder"}
+    end
+  end
+  table.sort(list, function(a, b) return a.label < b.label end)
+  return list
+end
+
+local function founder_picker()
+  local list = founders()
+  local height = 2.4 + #list * 0.9
+  local parts = {
+    "formspec_version[4]", "size[5.6," .. height .. "]",
+    "position[0.985,0.5]", "anchor[1,0.5]",
+    "label[0.4,0.5;Founders in this world]",
+  }
+  for index, founder in ipairs(list) do
+    local watching = pov.target == founder.object and "  (watching)" or ""
+    parts[#parts + 1] = "button[0.4," .. (0.4 + index * 0.9) .. ";4.8,0.8;pov_" .. index .. ";"
+      .. minetest.formspec_escape(founder.label .. watching) .. "]"
+  end
+  parts[#parts + 1] = "button[0.4," .. (height - 1.1) .. ";4.8,0.8;free_camera;Free camera]"
+  return table.concat(parts)
+end
+
+local function clear_eye_strip(player)
+  for key, id in pairs(hud) do
+    if key:sub(1, 4) == "eye_" then
+      player:hud_remove(id)
+      hud[key] = nil
+    end
+  end
+end
+
+local function leave_pov(player)
+  pov.target = nil
+  if player then
+    local position = player:get_pos()
+    player:set_detach()
+    if position then player:set_pos(vector.add(position, {x = 0, y = 0.5, z = 0})) end
+    clear_eye_strip(player)
+  end
+end
+
+local function enter_pov(player, founder)
+  leave_pov(player)
+  pov.target = founder
+  -- Attachment offsets are in tenths of a node, in the founder's frame (+z is where it faces).
+  -- A player's camera sits 1.625 nodes above its position; lowering it 0.6 puts it at the
+  -- founder's sensing eye, 1 node above its feet, where its eye rays start. Moving it 0.4 forward
+  -- keeps the founder's own body behind the camera. An attached player must keep observing the
+  -- founder, so the body is not hidden.
+  player:set_attach(founder, "", {x = 0, y = -6, z = 4}, {x = 0, y = 0, z = 0})
+end
+
+-- 16 rays cover 360 degrees; increasing ray index turns left. Shown left to right with the ray
+-- straight ahead in the middle and the ray straight behind at the far left.
+local EYE_STRIP_ORDER = {8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9}
+
+local function update_eye_strip(player)
+  local retinal = state.last_retinal
+  if not retinal then return end
+  hud_set(player, "eye_panel", {type = "image", position = {x = 0.5, y = 1},
+    offset = {x = 0, y = -24}, alignment = {x = 0, y = -1},
+    text = "ai_bridge_base.png^[colorize:#101418:255^[opacity:185",
+    scale = {x = 46, y = 7}, z_index = 0})
+  hud_set(player, "eye_label", {type = "text", position = {x = 0.5, y = 1},
+    offset = {x = 0, y = -96}, alignment = {x = 0, y = 1}, number = 0xFFE08A, z_index = 1,
+    text = "WHAT THE FOUNDER SENSES  |  16 eye rays all around, ahead in the middle"})
+  for slot, ray in ipairs(EYE_STRIP_ORDER) do
+    local sample = retinal[ray + 1]
+    local colour = string.format("%02x%02x%02x", sample.red, sample.green, sample.blue)
+    local texture = "ai_bridge_base.png^[colorize:#" .. colour .. ":255"
+    hud_set(player, "eye_ray" .. slot, {type = "image", position = {x = 0.5, y = 1},
+      offset = {x = (slot - 8.5) * 44, y = -36}, scale = {x = 2.5, y = 2.5},
+      alignment = {x = 0, y = -1}, text = texture, z_index = 1}, "text", texture)
+  end
+end
+
+local function update_founder_list(player)
+  local list = founders()
+  local lines = {{"FOUNDERS IN THIS WORLD", 0xFFE08A}}
+  for _, founder in ipairs(list) do
+    local watching = pov.target == founder.object
+    lines[#lines + 1] = {(watching and "> " or "- ") .. founder.label .. (watching and "  (watching)" or ""),
+      watching and 0x9EF0A8 or 0xFFFFFF}
+  end
+  lines[#lines + 1] = {pov.target and "Press I, then Free camera to leave" or "Press I to watch a founder",
+    0xB8C4CE}
+  -- Keep a fixed number of rows so a founder leaving clears its line.
+  local rows = math.max(#lines, pov.rows or 0)
+  pov.rows = rows
+  hud_panel(player, "right_panel", "right", #lines)
+  for row = 1, rows do
+    local line = lines[row] or {"", 0xFFFFFF}
+    hud_text(player, "right_" .. row, "right", row - 1, line[1], line[2])
+  end
+end
+
+local function update_pov(player)
+  update_founder_list(player)
+  local founder = pov.target
+  if not founder then return end
+  if not founder:get_pos() then leave_pov(player) return end
+  -- Look exactly where the founder's eyes point: its yaw, and its eye pitch (positive is up).
+  player:set_look_horizontal(founder:get_yaw())
+  player:set_look_vertical(-state.eye_pitch * math.pi / 512)
+  update_eye_strip(player)
+end
+
+minetest.register_on_player_receive_fields(function(player, formname, fields)
+  if player:get_player_name() ~= observer_name then return end
+  if formname ~= POV_FORM and formname ~= "" then return end
+  if fields.free_camera then
+    leave_pov(player)
+  else
+    for index, founder in ipairs(founders()) do
+      if fields["pov_" .. index] then enter_pov(player, founder.object) end
+    end
+  end
+  player:set_inventory_formspec(founder_picker())
+  if formname == POV_FORM and not fields.quit then
+    minetest.show_formspec(observer_name, POV_FORM, founder_picker())
+  end
+end)
+
+minetest.register_chatcommand("founders", {
+  description = "Observer-only: choose a founder to watch from its point of view.",
+  func = function(name)
+    if name ~= observer_name then return false, "Only the configured observer may watch founders." end
+    minetest.show_formspec(name, POV_FORM, founder_picker())
+    return true
+  end,
+})
+
+minetest.register_on_leaveplayer(function(player)
+  if player:get_player_name() == observer_name then
+    leave_pov(nil)
+    hud, pov.rows = {}, 0
+  end
+end)
+
 minetest.register_on_joinplayer(function(player)
   if player:get_player_name() ~= observer_name then return end
+  hud, pov.rows = {}, 0
+  player:set_inventory_formspec(founder_picker())
   -- The observer is a normal, non-privileged explorer. Its controls affect only the player:
   -- the founder remains a separate entity whose actuators are driven only by Rust bridge replies.
   -- Aim at the founder's chest from far enough away to show the complete humanoid and the one
@@ -588,4 +744,6 @@ minetest.register_chatcommand("founder_reset", {
 
 minetest.register_globalstep(function()
   update_observer_hud()
+  local player = minetest.get_player_by_name(observer_name)
+  if player then update_pov(player) end
 end)
