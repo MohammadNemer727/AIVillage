@@ -7,8 +7,32 @@ use std::{fs::OpenOptions, io::Write, path::PathBuf, time::Duration};
 
 use sim_core::runtime::ExperimentMode;
 use sim_luanti::{
-    Bridge, TraceRecord, benchmark, bind_loopback, replay_trace, serve_once_with_stall,
+    Bridge, TraceRecord, benchmark, bind_loopback, contingency, replay_trace, serve_once_with_stall,
 };
+
+/// Writes an experiment report to `[report.json] [report.md]`, defaulting to
+/// `target/<name>.json` and `docs/<name>.md`.
+fn write_report(
+    mut args: impl Iterator<Item = String>,
+    name: &str,
+    report: &impl serde::Serialize,
+    markdown: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let json = args.next().map_or_else(
+        || PathBuf::from(format!("target/{name}.json")),
+        PathBuf::from,
+    );
+    let markdown_path = args
+        .next()
+        .map_or_else(|| PathBuf::from(format!("docs/{name}.md")), PathBuf::from);
+    if args.next().is_some() {
+        return Err("usage: sim-luanti benchmark|contingency [report.json] [report.md]".into());
+    }
+    std::fs::write(&json, serde_json::to_vec_pretty(report)?)?;
+    std::fs::write(&markdown_path, markdown)?;
+    println!("wrote {} and {}", json.display(), markdown_path.display());
+    Ok(())
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let port = std::env::var("SIM_LUANTI_PORT")
@@ -26,26 +50,18 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut args = std::env::args().skip(1);
     if let Some(command) = args.next() {
         if command == "benchmark" {
-            let json = args.next().map_or_else(
-                || PathBuf::from("target/affordance-benchmark.json"),
-                PathBuf::from,
-            );
-            let markdown = args.next().map_or_else(
-                || PathBuf::from("docs/affordance-benchmark.md"),
-                PathBuf::from,
-            );
-            if args.next().is_some() {
-                return Err("usage: sim-luanti benchmark [report.json] [report.md]".into());
-            }
             let report = benchmark::run();
-            std::fs::write(&json, serde_json::to_vec_pretty(&report)?)?;
-            std::fs::write(&markdown, benchmark::markdown(&report))?;
-            println!("wrote {} and {}", json.display(), markdown.display());
-            return Ok(());
+            let markdown = benchmark::markdown(&report);
+            return write_report(args, "affordance-benchmark", &report, &markdown);
+        }
+        if command == "contingency" {
+            let report = contingency::run();
+            let markdown = contingency::markdown(&report);
+            return write_report(args, "contingency-test", &report, &markdown);
         }
         let (Some(path), None, "replay") = (args.next(), args.next(), command.as_str()) else {
             return Err(
-                "usage: sim-luanti [replay <trace.ndjson>|benchmark [report.json] [report.md]]"
+                "usage: sim-luanti [replay <trace.ndjson>|benchmark|contingency [report.json] [report.md]]"
                     .into(),
             );
         };

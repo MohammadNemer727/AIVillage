@@ -28,17 +28,32 @@ pub enum ExperimentMode {
 
 const AFFORDANCE_ACTIONS: usize = 12;
 const OUTCOME_FEATURES: usize = 6;
+/// Fixed-point scale of the outcome averages.
+const OUTCOME_SCALE: i32 = 256;
+/// Per-action averages settle at this many visits, so they keep tracking a changed world.
+const ACTION_HORIZON: u16 = 8;
+/// The overall average adapts more slowly than any one action's.
+const OVERALL_HORIZON: i32 = 16;
+/// Curiosity gained per decision since an experiment was last tried, up to the cap.
+const RECENCY_RATE: u64 = 4;
+const RECENCY_CAP: u64 = 1_024;
 
 /// Checkpointed bounded statistics for intrinsic action discovery.
+///
+/// The learner measures contingency: how far the outcome that follows an experiment differs
+/// from the outcome overall. An effect that follows regardless of action, or that stops
+/// following, carries no contingency, so neither keeps attracting experiments.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AffordanceLearner {
-    /// Number of observed outcomes per experiment.
+    /// Number of observed outcomes per experiment, saturating.
     pub visits: [u16; AFFORDANCE_ACTIONS],
-    /// Running absolute outcome changes per experiment.
-    pub change: [[u16; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
-    /// Previous bounded body outcome.
-    pub previous_outcome: [i16; OUTCOME_FEATURES],
-    /// Last selected experiment, used only to discourage immediate repetition.
+    /// Recent average outcome following each experiment, scaled by 256.
+    pub after: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+    /// Recent average outcome over all decisions, scaled by 256.
+    pub overall: [i32; OUTCOME_FEATURES],
+    /// Decision tick at which each experiment was last selected.
+    pub last_tried: [u64; AFFORDANCE_ACTIONS],
+    /// Last selected experiment, whose outcome the next observation reports.
     pub previous_action: usize,
 }
 
@@ -46,67 +61,82 @@ impl Default for AffordanceLearner {
     fn default() -> Self {
         Self {
             visits: [0; AFFORDANCE_ACTIONS],
-            change: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
-            previous_outcome: [0; OUTCOME_FEATURES],
+            after: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+            overall: [0; OUTCOME_FEATURES],
+            last_tried: [0; AFFORDANCE_ACTIONS],
             previous_action: AFFORDANCE_ACTIONS,
         }
     }
 }
 
 impl AffordanceLearner {
-    fn outcome(observation: &EnvironmentObservation) -> [i16; OUTCOME_FEATURES] {
+    fn outcome(observation: &EnvironmentObservation) -> [i32; OUTCOME_FEATURES] {
         let body = observation.body;
         [
-            i16::try_from(observation.senses.touch).unwrap_or_default(),
-            observation.senses.acceleration,
-            i16::try_from(body.eye_pitch).unwrap_or_default() - 128,
-            i16::try_from(body.grounded).unwrap_or_default(),
-            body.vertical_motion,
-            i16::try_from(body.hand_contact).unwrap_or_default(),
+            i32::from(observation.senses.touch),
+            i32::from(observation.senses.acceleration),
+            i32::from(body.eye_pitch) - 128,
+            i32::from(body.grounded),
+            i32::from(body.vertical_motion),
+            i32::from(body.hand_contact),
         ]
+        .map(|value| value * OUTCOME_SCALE)
     }
 
     fn observe(&mut self, observation: &EnvironmentObservation) {
+        let now = Self::outcome(observation);
         if self.previous_action >= AFFORDANCE_ACTIONS {
-            self.previous_outcome = Self::outcome(observation);
+            self.overall = now;
             return;
         }
-        let now = Self::outcome(observation);
-        let count = self.visits[self.previous_action].saturating_add(1);
-        self.visits[self.previous_action] = count;
+        let action = self.previous_action;
+        let count = self.visits[action].saturating_add(1);
+        self.visits[action] = count;
+        let horizon = i32::from(count.min(ACTION_HORIZON));
         for (feature, value) in now.into_iter().enumerate() {
-            let delta = value
-                .saturating_sub(self.previous_outcome[feature])
-                .unsigned_abs();
-            let old = self.change[self.previous_action][feature];
-            self.change[self.previous_action][feature] =
-                old.saturating_add((delta.saturating_sub(old)) / count);
+            self.after[action][feature] += (value - self.after[action][feature]) / horizon;
+            self.overall[feature] += (value - self.overall[feature]) / OVERALL_HORIZON;
         }
-        self.previous_outcome = now;
+    }
+
+    /// How strongly an experiment's outcome differs from the overall outcome.
+    fn contingency(&self, action: usize) -> u32 {
+        if self.visits[action] == 0 {
+            return 0;
+        }
+        let distance: u32 = self.after[action]
+            .iter()
+            .zip(self.overall)
+            .map(|(after, overall)| (after - overall).unsigned_abs())
+            .sum();
+        distance / OUTCOME_SCALE.cast_unsigned()
     }
 
     fn select(&mut self, seed: u64, tick: u64) -> (PrimitiveAction, u32) {
         let mut best = 0;
         let mut best_score = 0_u32;
         for candidate in 0..AFFORDANCE_ACTIONS {
-            let novelty = 65_535_u32 / (u32::from(self.visits[candidate]) + 1);
-            let progress: u32 = self.change[candidate]
-                .iter()
-                .map(|value| u32::from(*value))
-                .sum();
-            let repeat_cost = u32::from(candidate == self.previous_action) * 32_768;
+            // Curiosity regrows while an experiment goes untried, so exploration never stops
+            // and a world that changed is noticed again.
+            let since = if self.visits[candidate] == 0 {
+                RECENCY_CAP
+            } else {
+                (tick - self.last_tried[candidate]).saturating_mul(RECENCY_RATE)
+            };
+            let curiosity = u32::try_from(since.min(RECENCY_CAP)).unwrap_or_default();
             // Seed-keyed tie breaking is endogenous deterministic initialization, not a schedule.
             let tie = (derive(seed, tick, candidate as u64, 0x4146_464F) & 0xff) as u32;
-            let score = novelty
-                .saturating_add(progress)
-                .saturating_add(tie)
-                .saturating_sub(repeat_cost);
+            let score = self
+                .contingency(candidate)
+                .saturating_add(curiosity)
+                .saturating_add(tie);
             if score > best_score {
                 best = candidate;
                 best_score = score;
             }
         }
         self.previous_action = best;
+        self.last_tried[best] = tick;
         (affordance_action(best), best_score)
     }
 }
@@ -384,10 +414,29 @@ impl AgentRuntime {
 #[must_use]
 pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
     let mut fingerprint = derive(0, learner.previous_action as u64, 0, 0x4146_4650);
+    for (feature, value) in learner.overall.iter().enumerate() {
+        fingerprint = derive(
+            fingerprint,
+            i64::from(*value).cast_unsigned(),
+            feature as u64,
+            0x4F56_4552,
+        );
+    }
     for (action, count) in learner.visits.iter().enumerate() {
         fingerprint = derive(fingerprint, u64::from(*count), action as u64, 0x5649_5349);
-        for (feature, value) in learner.change[action].iter().enumerate() {
-            fingerprint = derive(fingerprint, u64::from(*value), feature as u64, 0x4348_4745);
+        fingerprint = derive(
+            fingerprint,
+            learner.last_tried[action],
+            action as u64,
+            0x4C41_5354,
+        );
+        for (feature, value) in learner.after[action].iter().enumerate() {
+            fingerprint = derive(
+                fingerprint,
+                i64::from(*value).cast_unsigned(),
+                feature as u64,
+                0x4146_5452,
+            );
         }
     }
     fingerprint

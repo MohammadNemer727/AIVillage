@@ -64,7 +64,7 @@ pub struct BenchmarkReport {
     pub metrics: Vec<Metrics>,
 }
 
-fn config() -> BrainConfig {
+pub(crate) fn config() -> BrainConfig {
     BrainConfig {
         connection_stride: 1,
         plasticity_scale: 1,
@@ -74,7 +74,11 @@ fn config() -> BrainConfig {
         prediction_enabled: true,
     }
 }
-fn observation(sequence: u64, body: BodyProprioception, touch: u16) -> EnvironmentObservation {
+pub(crate) fn observation(
+    sequence: u64,
+    body: BodyProprioception,
+    touch: u16,
+) -> EnvironmentObservation {
     let mut senses = sim_core::RawSensoryFrame::EMPTY;
     senses.touch = touch;
     EnvironmentObservation {
@@ -89,7 +93,7 @@ fn observation(sequence: u64, body: BodyProprioception, touch: u16) -> Environme
         transport: TransportStatus::Healthy,
     }
 }
-fn random_action(seed: u64, tick: u64) -> PrimitiveAction {
+pub(crate) fn random_action(seed: u64, tick: u64) -> PrimitiveAction {
     let mut a = PrimitiveAction::default();
     match derive(seed, tick, 0, 0x5241_4E44) % 12 {
         0 => a.thrust = 256,

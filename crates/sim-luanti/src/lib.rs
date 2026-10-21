@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 pub mod benchmark;
+pub mod contingency;
 
 use std::{
     io::Read,
