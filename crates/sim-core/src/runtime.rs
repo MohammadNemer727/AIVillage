@@ -81,6 +81,19 @@ pub enum Perception {
     /// Up to [`MAX_SCENES`] scenes the founder learns from its raw senses; fact `k` holds while
     /// the founder is in scene `k`.
     Scenes,
+    /// Learned scenes seen through a fovea: eye rays near straight ahead weigh more than the
+    /// periphery, so scenes are shaped mostly by what is in front of the founder rather than by
+    /// how the whole surroundings are turned. An anatomical prior, not world knowledge (after
+    /// `MIMo` v2's foveated vision).
+    FoveatedScenes,
+}
+
+impl Perception {
+    /// Whether situations are split on learned scenes.
+    #[must_use]
+    pub const fn uses_scenes(self) -> bool {
+        matches!(self, Self::Scenes | Self::FoveatedScenes)
+    }
 }
 
 /// A readable name for `fact` under `perception`, for reports.
@@ -88,7 +101,7 @@ pub enum Perception {
 pub fn fact_name(perception: Perception, fact: usize) -> String {
     match perception {
         Perception::Designed => sense_fact_name(fact),
-        Perception::Scenes => format!("scene {fact}"),
+        Perception::Scenes | Perception::FoveatedScenes => format!("scene {fact}"),
     }
 }
 
@@ -185,7 +198,7 @@ impl AffordanceConfig {
                 "eligibility span must be between 1 and {MAX_ELIGIBILITY_SPAN}"
             ));
         }
-        if self.planning && self.perception != Perception::Scenes {
+        if self.planning && !self.perception.uses_scenes() {
             return Err("planning needs learned scenes".to_owned());
         }
         if self.recency_cap > u64::from(u32::MAX / 4) {
@@ -868,9 +881,12 @@ impl AffordanceLearner {
         ) {
             self.current_facts = match self.config.perception {
                 Perception::Designed => sense_facts(observation),
-                Perception::Scenes => self
+                Perception::Scenes | Perception::FoveatedScenes => self
                     .scenes
-                    .observe(observation)
+                    .observe(
+                        observation,
+                        self.config.perception == Perception::FoveatedScenes,
+                    )
                     .map_or(0, |scene| 1 << scene),
             };
         }
@@ -1228,7 +1244,7 @@ impl AffordanceLearner {
 
     /// The founder's current learned scene, if scenes have formed.
     fn current_scene(&self) -> Option<usize> {
-        (self.config.perception == Perception::Scenes && self.current_facts != 0)
+        (self.config.perception.uses_scenes() && self.current_facts != 0)
             .then(|| self.current_facts.trailing_zeros() as usize)
     }
 
@@ -1731,7 +1747,11 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
         },
         u64::from(config.context_prior),
         u64::from(config.outcome_model == OutcomeModel::Expectiles),
-        u64::from(config.perception == Perception::Scenes),
+        match config.perception {
+            Perception::Designed => 0,
+            Perception::Scenes => 1,
+            Perception::FoveatedScenes => 2,
+        },
         u64::from(config.planning),
         learner.decision_scene.map_or(u64::MAX, u64::from),
         u64::from(learner.bout_remaining),
@@ -1867,7 +1887,7 @@ fn scenes_fingerprint(scenes: &ScenePerception, mut fingerprint: u64) -> u64 {
 }
 
 fn learned_situations_fingerprint(learner: &AffordanceLearner, mut fingerprint: u64) -> u64 {
-    if learner.config.perception == Perception::Scenes {
+    if learner.config.perception.uses_scenes() {
         fingerprint = scenes_fingerprint(&learner.scenes, fingerprint);
     }
     if learner.config.planning {

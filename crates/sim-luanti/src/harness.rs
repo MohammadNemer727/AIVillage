@@ -68,16 +68,18 @@ pub enum Controller {
     SceneSituations,
     /// Learned scenes plus planning over where experiments lead.
     ScenePlanner,
+    /// Foveated learned scenes plus planning.
+    FovealPlanner,
 }
 
 impl Controller {
     /// Settings of the affordance learner this controller runs, if it runs one.
     #[must_use]
     pub fn learner(self) -> Option<AffordanceConfig> {
-        let perception = if matches!(self, Self::SceneSituations | Self::ScenePlanner) {
-            Perception::Scenes
-        } else {
-            Perception::Designed
+        let perception = match self {
+            Self::SceneSituations | Self::ScenePlanner => Perception::Scenes,
+            Self::FovealPlanner => Perception::FoveatedScenes,
+            _ => Perception::Designed,
         };
         let (rule, context, outcome_model) = match self {
             Self::PredictiveBaseline | Self::Random => return None,
@@ -106,7 +108,10 @@ impl Controller {
                 ContextMode::Learned,
                 OutcomeModel::Moments,
             ),
-            Self::PerActionSituations | Self::SceneSituations | Self::ScenePlanner => (
+            Self::PerActionSituations
+            | Self::SceneSituations
+            | Self::ScenePlanner
+            | Self::FovealPlanner => (
                 ScoringRule::Contingency,
                 ContextMode::PerAction,
                 OutcomeModel::Moments,
@@ -117,13 +122,13 @@ impl Controller {
             context,
             outcome_model,
             perception,
-            planning: self == Self::ScenePlanner,
+            planning: matches!(self, Self::ScenePlanner | Self::FovealPlanner),
             ..AffordanceConfig::default()
         })
     }
 }
 
-pub const CONTROLLERS: [Controller; 10] = [
+pub const CONTROLLERS: [Controller; 11] = [
     Controller::PredictiveBaseline,
     Controller::Random,
     Controller::AffordanceDiscovery,
@@ -134,6 +139,7 @@ pub const CONTROLLERS: [Controller; 10] = [
     Controller::PerActionSituations,
     Controller::SceneSituations,
     Controller::ScenePlanner,
+    Controller::FovealPlanner,
 ];
 
 /// How the founder senses the coupled object.

@@ -22,6 +22,8 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | SceneSituations | late | 9.6 | 15.2 | 26.8 | 26.8 |
 | ScenePlanner | early | 9.5 | 22.0 | 35.5 | 35.5 |
 | ScenePlanner | late | 11.3 | 31.3 | 48.5 | 48.5 |
+| FovealPlanner | early | 8.2 | 17.1 | 25.0 | 25.0 |
+| FovealPlanner | late | 10.8 | 28.8 | 43.8 | 43.8 |
 
 ## Late-phase hit rate per seed (%)
 
@@ -35,6 +37,7 @@ The body turns between 8 directions and a reachable object stands at eye height 
 | PerActionSituations | 29.3 · 36.8 · 15.6 · 34.6 · 10.4 · 5.2 · 16.6 · 3.7 |
 | SceneSituations | 41.3 · 42.6 · 16.1 · 25.6 · 18.5 · 22.6 · 24.2 · 32.3 |
 | ScenePlanner | 51.3 · 53.1 · 35.9 · 57.1 · 56.4 · 69.2 · 30.6 · 31.7 |
+| FovealPlanner | 49.4 · 53.3 · 30.2 · 41.9 · 36.0 · 50.4 · 54.5 · 40.2 |
 
 ## LearnedSituations: shared situations
 

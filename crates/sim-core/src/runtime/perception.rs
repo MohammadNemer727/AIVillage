@@ -29,6 +29,22 @@ const SPREAD_FLOOR: i32 = 8;
 const STATS_HORIZON: i32 = 64;
 /// Prototypes settle at this many members, so they keep tracking slowly.
 const PROTOTYPE_HORIZON: u32 = 32;
+/// Weight of a sense dimension under foveated vision: eye rays count more the nearer they look
+/// to straight ahead (four times at the centre, three, two, then once in the periphery), as a
+/// fovea sees the centre of the visual field most sharply; body senses count twice.
+fn foveal_weight(dimension: usize) -> i32 {
+    if dimension >= RETINAL_RAY_COUNT * RAY_CHANNELS {
+        return 2;
+    }
+    let ray = dimension / RAY_CHANNELS;
+    match ray.min(RETINAL_RAY_COUNT - ray) {
+        0 => 4,
+        1 => 3,
+        2 => 2,
+        _ => 1,
+    }
+}
+
 /// A sense vector founds a new scene when it lies this many quarters of the typical distance
 /// from every prototype.
 const NOVEL_QUARTERS: i64 = 6;
@@ -92,7 +108,11 @@ impl ScenePerception {
     }
 
     /// Learns from an observation and returns its scene, or `None` while warming up.
-    pub(super) fn observe(&mut self, observation: &EnvironmentObservation) -> Option<usize> {
+    pub(super) fn observe(
+        &mut self,
+        observation: &EnvironmentObservation,
+        foveated: bool,
+    ) -> Option<usize> {
         let raw = sense_vector(observation);
         if self.mean.is_empty() {
             self.mean = raw.iter().map(|value| value * 16).collect();
@@ -111,9 +131,15 @@ impl ScenePerception {
             .iter()
             .zip(&self.mean)
             .zip(&self.spread)
-            .map(|((value, mean), spread)| {
+            .enumerate()
+            .map(|(dimension, ((value, mean), spread))| {
                 let units = (value * 16 - mean) * SPREAD_UNIT / (*spread).max(SPREAD_FLOOR * 16);
-                i16::try_from(units.clamp(-1_024, 1_024)).unwrap_or_default()
+                let weight = if foveated {
+                    foveal_weight(dimension)
+                } else {
+                    1
+                };
+                i16::try_from(units.clamp(-1_024, 1_024) * weight).unwrap_or_default()
             })
             .collect();
         let nearest = self

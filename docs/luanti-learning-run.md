@@ -35,6 +35,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | free / default / turned | baseline | 800 | 7.5 | 0.0 | 0.0 | 0.0 | 25.1 |
 | free / default / turned | connected | 4000 | 11.8 | 29.5 | 15.1 | 21.1 | 25.3 |
 | free / default / turned | extinction | 800 | 7.0 | 0.0 | 0.1 | 0.0 | 14.9 |
+| free / foveal-planner / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 21.4 |
+| free / foveal-planner / turned | connected | 4000 | 10.6 | 24.6 | 15.2 | 15.4 | 23.5 |
+| free / foveal-planner / turned | extinction | 800 | 9.2 | 0.0 | 0.2 | 0.0 | 37.8 |
 | free / learned / turned | baseline | 800 | 6.4 | 0.0 | 0.0 | 0.0 | 17.8 |
 | free / learned / turned | connected | 4000 | 9.7 | 25.1 | 13.9 | 15.2 | 25.4 |
 | free / learned / turned | extinction | 800 | 6.8 | 0.0 | 0.1 | 0.0 | 22.4 |
@@ -59,6 +62,9 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | inert / default / turned | baseline | 800 | 6.8 | 0.0 | 0.0 | 0.0 | 24.2 |
 | inert / default / turned | connected | 4000 | 7.7 | 0.0 | 16.0 | 14.7 | 22.3 |
 | inert / default / turned | extinction | 800 | 8.1 | 0.0 | 0.1 | 0.0 | 25.1 |
+| inert / foveal-planner / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 20.6 |
+| inert / foveal-planner / turned | connected | 4000 | 7.5 | 0.0 | 16.0 | 12.3 | 25.8 |
+| inert / foveal-planner / turned | extinction | 800 | 7.5 | 0.0 | 0.0 | 0.0 | 18.0 |
 | inert / learned / turned | baseline | 800 | 7.1 | 0.0 | 0.0 | 0.0 | 17.6 |
 | inert / learned / turned | connected | 4000 | 7.8 | 0.0 | 14.4 | 13.8 | 25.3 |
 | inert / learned / turned | extinction | 800 | 8.6 | 0.0 | 0.1 | 0.0 | 33.8 |
@@ -140,3 +146,11 @@ is the share of pulses made then. Aiming shows as pulses while ahead above cube 
 | p32-inert-seed2 | inert / planner-32 / turned | 2 | 7.5 | 7.9 | 4.5 |
 | p32-inert-seed3 | inert / planner-32 / turned | 3 | 7.5 | 8.3 | 9.5 |
 | p32-inert-seed4 | inert / planner-32 / turned | 4 | 6.0 | 8.4 | 7.5 |
+| fp-free-seed1 | free / foveal-planner / turned | 1 | 6.0 | 10.5 | 10.0 |
+| fp-free-seed2 | free / foveal-planner / turned | 2 | 7.5 | 10.9 | 7.5 |
+| fp-free-seed3 | free / foveal-planner / turned | 3 | 6.0 | 10.9 | 7.5 |
+| fp-free-seed4 | free / foveal-planner / turned | 4 | 7.5 | 10.0 | 12.0 |
+| fp-inert-seed1 | inert / foveal-planner / turned | 1 | 7.5 | 6.2 | 7.5 |
+| fp-inert-seed2 | inert / foveal-planner / turned | 2 | 6.0 | 8.3 | 8.0 |
+| fp-inert-seed3 | inert / foveal-planner / turned | 3 | 7.5 | 7.8 | 9.5 |
+| fp-inert-seed4 | inert / foveal-planner / turned | 4 | 7.5 | 7.7 | 5.0 |
