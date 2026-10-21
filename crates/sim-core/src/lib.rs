@@ -24,6 +24,8 @@ use sim_kernels::{
 
 mod backend;
 mod checkpoint;
+pub mod environment;
+pub mod runtime;
 
 pub use backend::{
     BACKEND_ENV, Backend, BackendPreference, BackendRunner, BackendStatus, BoxedBrainBackend,
@@ -34,6 +36,127 @@ pub use sim_kernels::{
     brain::{BrainConfig, BrainStep, EpisodicTrace, NEURONS as V2_BRAIN_NEURONS, PredictiveBrain},
     senses::{CHEMICAL_RECEPTOR_COUNT, RETINAL_RAY_COUNT, RawSensoryFrame, RetinalSample},
 };
+
+/// Decodes predictive-brain motor outputs into transport-neutral primitive actions.
+#[must_use]
+pub fn decode_motor_outputs(outputs: &[i16; OUTPUTS]) -> environment::PrimitiveAction {
+    environment::PrimitiveAction {
+        thrust: (outputs[1] - outputs[2]).clamp(-256, 256),
+        turn: (outputs[3] - outputs[0]).clamp(-256, 256),
+        jaw: outputs[4].clamp(0, 256).cast_unsigned(),
+        acoustic: outputs[5].max(0).cast_unsigned(),
+        chemical: outputs[6].max(0).cast_unsigned(),
+        visual: outputs[7].max(0).cast_unsigned(),
+        signals: core::array::from_fn(|symbol| outputs[8 + symbol]),
+    }
+}
+
+/// Scales a bounded V2 yaw motor amplitude to the fixed orientation step.
+#[must_use]
+pub fn scale_v2_orientation_turn(turn: i16) -> i8 {
+    i8::try_from((i32::from(turn) / 32).clamp(-8, 8)).unwrap_or_default()
+}
+
+/// Scales a bounded V2 thrust motor amplitude to fixed-point acceleration.
+#[must_use]
+pub fn scale_v2_thrust(thrust: i16) -> i32 {
+    i32::from(thrust) * 10 / 256
+}
+
+/// Applies V2 drag and forward-axis thrust to a fixed-point velocity.
+#[must_use]
+pub fn scale_v2_velocity(
+    velocity: Velocity,
+    orientation: Angle,
+    thrust: i16,
+    terrain_traction: i32,
+) -> Velocity {
+    let (forward_x, forward_y) = heading(orientation.turns());
+    let thrust = scale_v2_thrust(thrust);
+    Velocity {
+        x: Fixed::from_raw(
+            (velocity.x.raw() * 7 / 8).saturating_add(forward_x * thrust * terrain_traction / 4),
+        ),
+        y: Fixed::from_raw(
+            (velocity.y.raw() * 7 / 8).saturating_add(forward_y * thrust * terrain_traction / 4),
+        ),
+    }
+}
+
+/// Scales the V2 jaw motor amplitude to a fixed aperture.
+#[must_use]
+pub fn scale_v2_jaw(jaw: i16) -> Fixed {
+    Fixed::from_raw(i32::from(jaw) * FIXED_SCALE / 256)
+}
+
+/// Applies the bounded, leaky adaptation shared by chemical receptors.
+#[must_use]
+pub fn adapt_chemical_receptors(
+    concentrations: [u16; CHEMICAL_RECEPTOR_COUNT],
+    previous: [u16; CHEMICAL_RECEPTOR_COUNT],
+) -> (
+    [u16; CHEMICAL_RECEPTOR_COUNT],
+    [u16; CHEMICAL_RECEPTOR_COUNT],
+) {
+    let mut chemicals = [0; CHEMICAL_RECEPTOR_COUNT];
+    let mut adaptation = previous;
+    for receptor in 0..CHEMICAL_RECEPTOR_COUNT {
+        chemicals[receptor] = concentrations[receptor]
+            .saturating_sub(adaptation[receptor] / 2)
+            .min(V2_SENSOR_MAX_VALUE);
+        adaptation[receptor] = (adaptation[receptor].saturating_mul(3) / 4)
+            .saturating_add(concentrations[receptor] / 4)
+            .min(V2_SENSOR_MAX_VALUE);
+    }
+    (chemicals, adaptation)
+}
+
+/// Adds deterministically keyed noise to frozen or simulated internal stores.
+#[must_use]
+pub fn assemble_interoception(
+    stores: [u16; 6],
+    seed: u64,
+    tick: u64,
+    receptor_key: u64,
+) -> [u16; 6] {
+    const TAGS: [u64; 6] = [
+        0x454E_4552,
+        0x4755_5421,
+        0x544F_584E,
+        0x4859_4452,
+        0x4641_5447,
+        0x4441_4D47,
+    ];
+    core::array::from_fn(|index| {
+        noisy_receptor(stores[index], seed, tick, receptor_key, TAGS[index])
+    })
+}
+
+/// Combines externally observed receptors with deterministically noised internal stores.
+#[must_use]
+pub fn compose_raw_sensory_frame(
+    mut external: RawSensoryFrame,
+    stores: [u16; 6],
+    seed: u64,
+    tick: u64,
+    receptor_key: u64,
+) -> RawSensoryFrame {
+    let [
+        energy,
+        gut_pressure,
+        toxin_stress,
+        hydration,
+        fatigue,
+        damage,
+    ] = assemble_interoception(stores, seed, tick, receptor_key);
+    external.energy = energy;
+    external.gut_pressure = gut_pressure;
+    external.toxin_stress = toxin_stress;
+    external.hydration = hydration;
+    external.fatigue = fatigue;
+    external.damage = damage;
+    external
+}
 
 /// Time-domain exports for callers that prefer subsystem imports.
 pub mod time {
@@ -900,6 +1023,31 @@ pub struct DevelopmentalGenome {
 }
 
 impl DevelopmentalGenome {
+    /// Derives the program a seeded V2 world gives its founder with this ordinal.
+    #[must_use]
+    pub fn founder(seed: u64, ordinal: u64) -> Self {
+        let loci = core::array::from_fn(|index| {
+            // `% 65` keeps every locus in u8 range, so the fallback is unreachable.
+            u8::try_from(derive(seed, 0, ordinal, 0x4445_5600 + index as u64) % 65)
+                .unwrap_or_default()
+        });
+        Self {
+            loci,
+            mutation_rate_ppm: 12_000,
+        }
+    }
+
+    /// Returns the brain parameters this program develops with every experiment switch at its
+    /// default.
+    #[must_use]
+    pub fn default_brain_config(&self) -> BrainConfig {
+        brain_config(
+            self,
+            BrainAblations::default(),
+            CulturalTransmissionControls::default(),
+        )
+    }
+
     /// Returns the bounded inherited mutation probability in parts per million.
     #[must_use]
     pub const fn mutation_rate_ppm(&self) -> u16 {
@@ -2104,16 +2252,15 @@ impl World {
             3 => (0, 1),
             _ => (0, -1),
         };
-        let thrust = (outputs[1] - outputs[2]).clamp(-256, 256);
-        let turn = (outputs[3] - outputs[0]).clamp(-256, 256);
+        let motors = decode_motor_outputs(outputs);
         let legacy_actions = self.model_version == ModelVersion::V1Grid;
         Intent {
             id,
             dx,
             dy,
-            thrust,
-            turn,
-            jaw: outputs[4].clamp(0, 256),
+            thrust: motors.thrust,
+            turn: motors.turn,
+            jaw: i16::try_from(motors.jaw).expect("bounded jaw fits i16"),
             eat: legacy_actions && food_here > 0 && energy < MAX_ENERGY,
             eat_at: position,
             // The ecological gates prevent a global fitness rule; the inherited controller
@@ -2149,21 +2296,9 @@ impl World {
                 .flatten(),
             // V2 motor neurons drive ordinary sound-producing motion, gland output, and
             // body display intensity. No ordinal, receiver, sender ID, or symbol is used.
-            acoustic: if legacy_actions {
-                0
-            } else {
-                outputs[5].max(0).cast_unsigned()
-            },
-            chemical: if legacy_actions {
-                0
-            } else {
-                outputs[6].max(0).cast_unsigned()
-            },
-            visual: if legacy_actions {
-                0
-            } else {
-                outputs[7].max(0).cast_unsigned()
-            },
+            acoustic: if legacy_actions { 0 } else { motors.acoustic },
+            chemical: if legacy_actions { 0 } else { motors.chemical },
+            visual: if legacy_actions { 0 } else { motors.visual },
         }
     }
 
@@ -2180,34 +2315,26 @@ impl World {
 
     /// Integrates V2 motors, then resolves torso-circle contacts in canonical ID order.
     fn resolve_physics(&mut self, intents: &[Intent]) {
-        const THRUST_SCALE: i32 = 10;
-        const DRAG_NUMERATOR: i32 = 7;
-        const DRAG_DENOMINATOR: i32 = 8;
         for intent in intents {
             let index = usize::try_from(intent.id.slot).expect("AgentId slot fits usize");
             if !self.slots[index].alive || self.slots[index].generation != intent.id.generation {
                 continue;
             }
-            let turn = i32::from(intent.turn) / 32;
-            self.orientations[index].0 = self.orientations[index].0.wrapping_add_signed(
-                i8::try_from(turn.clamp(-8, 8)).expect("clamped turn fits i8"),
-            );
-            let (forward_x, forward_y) = heading(self.orientations[index].turns());
-            let thrust = i32::from(intent.thrust) * THRUST_SCALE / 256;
+            self.orientations[index].0 = self.orientations[index]
+                .0
+                .wrapping_add_signed(scale_v2_orientation_turn(intent.turn));
             let terrain_traction = if self.blocks[self.cell_index(self.positions[index])] > 0 {
                 3
             } else {
                 4
             };
-            self.velocities[index].x = Fixed::from_raw(
-                (self.velocities[index].x.raw() * DRAG_NUMERATOR / DRAG_DENOMINATOR)
-                    .saturating_add(forward_x * thrust * terrain_traction / 4),
+            self.velocities[index] = scale_v2_velocity(
+                self.velocities[index],
+                self.orientations[index],
+                intent.thrust,
+                terrain_traction,
             );
-            self.velocities[index].y = Fixed::from_raw(
-                (self.velocities[index].y.raw() * DRAG_NUMERATOR / DRAG_DENOMINATOR)
-                    .saturating_add(forward_y * thrust * terrain_traction / 4),
-            );
-            self.mouth_open[index] = Fixed::from_raw(i32::from(intent.jaw) * FIXED_SCALE / 256);
+            self.mouth_open[index] = scale_v2_jaw(intent.jaw);
             self.physics_positions[index].x = Fixed::from_raw(Self::wrap_fixed(
                 self.physics_positions[index].x.raw() + self.velocities[index].x.raw(),
                 self.settings.width,
@@ -3302,14 +3429,7 @@ impl World {
     }
 
     fn seeded_developmental_genome(&self, ordinal: u64) -> DevelopmentalGenome {
-        let loci = core::array::from_fn(|index| {
-            u8::try_from(derive(self.seed.get(), 0, ordinal, 0x4445_5600 + index as u64) % 65)
-                .expect("bounded developmental locus fits")
-        });
-        DevelopmentalGenome {
-            loci,
-            mutation_rate_ppm: 12_000,
-        }
+        DevelopmentalGenome::founder(self.seed.get(), ordinal)
     }
 
     fn mutate_developmental_genome(
@@ -3437,9 +3557,8 @@ impl World {
                 .expect("motion is bounded");
             sample.occlusion = occlusion;
         }
-        let mut chemicals = [0; CHEMICAL_RECEPTOR_COUNT];
-        let mut chemical_adaptation = self.chemical_adaptation[index];
-        for (receptor, chemical) in chemicals.iter_mut().enumerate() {
+        let mut concentrations = [0; CHEMICAL_RECEPTOR_COUNT];
+        for (receptor, stored_concentration) in concentrations.iter_mut().enumerate() {
             let mut concentration = 0_u16;
             for dy in -1..=1 {
                 for dx in -1..=1 {
@@ -3456,22 +3575,14 @@ impl World {
                     concentration = concentration.saturating_add(source / 3);
                 }
             }
-            let adaptation = chemical_adaptation[receptor];
-            *chemical = concentration
-                .saturating_sub(adaptation / 2)
-                .min(V2_SENSOR_MAX_VALUE);
-            chemical_adaptation[receptor] = (adaptation.saturating_mul(3) / 4)
-                .saturating_add(concentration / 4)
-                .min(V2_SENSOR_MAX_VALUE);
+            *stored_concentration = concentration;
         }
+        let (chemicals, chemical_adaptation) =
+            adapt_chemical_receptors(concentrations, self.chemical_adaptation[index]);
         let speed = self.velocities[index].x.raw().unsigned_abs()
             + self.velocities[index].y.raw().unsigned_abs();
         let vibration = self.vibration_at(index);
-        let receptor_cell = self.cell_index(self.positions[index]) as u64;
-        let interoception = |value, tag| {
-            noisy_receptor(value, self.seed.get(), self.tick.get(), receptor_cell, tag)
-        };
-        let frame = RawSensoryFrame {
+        let external = RawSensoryFrame {
             retinal,
             chemicals,
             vibration,
@@ -3488,18 +3599,24 @@ impl World {
                 .try_into()
                 .expect("acceleration is bounded"),
             orientation: u16::from(orientation.0),
-            energy: interoception(self.energies[index], 0x454E_4552),
-            gut_pressure: interoception(self.guts[index], 0x4755_5421),
-            toxin_stress: interoception(
+            ..RawSensoryFrame::EMPTY
+        };
+        let frame = compose_raw_sensory_frame(
+            external,
+            [
+                self.energies[index],
+                self.guts[index],
                 self.toxins[index]
                     .saturating_add(self.secondary_toxins[index])
                     .saturating_add(self.infections[index] / 2),
-                0x544F_584E,
-            ),
-            hydration: interoception(self.hydrations[index], 0x4859_4452),
-            fatigue: interoception(self.fatigues[index], 0x4641_5447),
-            damage: interoception(self.v2_pain(index), 0x4441_4D47),
-        };
+                self.hydrations[index],
+                self.fatigues[index],
+                self.v2_pain(index),
+            ],
+            self.seed.get(),
+            self.tick.get(),
+            self.cell_index(self.positions[index]) as u64,
+        );
         BodyPerception {
             frame,
             chemical_adaptation,

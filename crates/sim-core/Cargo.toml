@@ -12,11 +12,13 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+bytemuck.workspace = true
 rayon.workspace = true
 serde.workspace = true
-sim-kernels = { path = "../sim-kernels" }
+sim-kernels = { path = "../sim-kernels", features = ["bytemuck"] }
 
 [dev-dependencies]
 serde = { workspace = true }
+serde_json = { workspace = true }
 toml = { workspace = true }
 

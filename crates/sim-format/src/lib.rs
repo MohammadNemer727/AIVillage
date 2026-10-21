@@ -13,7 +13,10 @@
 use std::{error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
-use sim_core::{CheckpointError, World, WorldCheckpoint};
+use sim_core::{
+    CheckpointError, DevelopmentalGenome, World, WorldCheckpoint,
+    runtime::{AgentRuntime, AgentRuntimeState},
+};
 
 /// Frozen V1 configuration / interchange schema version.
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
@@ -23,12 +26,111 @@ pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 
 /// Version for durable exact-world checkpoint envelopes.
 pub const CHECKPOINT_SCHEMA_VERSION: u32 = 1;
+/// Version for standalone one-agent runtime checkpoints.
+pub const AGENT_CHECKPOINT_SCHEMA_VERSION: u32 = 1;
 
 /// Version for append-only replay event logs.
 pub const EVENT_LOG_SCHEMA_VERSION: u32 = 1;
 
 /// Human-readable marker for the frozen V1 simulator baseline.
 pub const V1_FREEZE_LABEL: &str = "v1";
+
+/// Deterministic inherited specification for one standalone founder.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FounderSpec {
+    /// Run seed; keys the founder's genome and its receptor noise.
+    pub seed: u64,
+    /// Stable agent ID; the founder ordinal for the genome and a receptor-noise key.
+    pub agent_id: u64,
+    /// The program a seeded V2 world would give the founder with this ordinal.
+    pub genome: DevelopmentalGenome,
+}
+
+impl FounderSpec {
+    /// Derives the founder program for `agent_id` in a run seeded with `seed`.
+    #[must_use]
+    pub fn new(seed: u64, agent_id: u64) -> Self {
+        Self {
+            seed,
+            agent_id,
+            genome: DevelopmentalGenome::founder(seed, agent_id),
+        }
+    }
+
+    /// Constructs a fresh standalone runtime with a blank lifetime brain.
+    #[must_use]
+    pub fn runtime(&self) -> AgentRuntime {
+        AgentRuntime::new(self.seed, self.agent_id, self.genome.default_brain_config())
+    }
+}
+
+/// Versioned checkpoint for one standalone runtime, deliberately separate from V1 worlds.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AgentCheckpoint {
+    /// Envelope schema version.
+    pub schema_version: u32,
+    /// Run seed that keys receptor noise.
+    pub seed: u64,
+    /// Stable agent ID that keys receptor noise.
+    pub agent_id: u64,
+    /// Every mutable runtime field needed to resume exact action selection.
+    pub runtime: AgentRuntimeState,
+}
+
+impl AgentCheckpoint {
+    /// Captures an exact standalone runtime checkpoint.
+    #[must_use]
+    pub fn v1(runtime: &AgentRuntime) -> Self {
+        Self {
+            schema_version: AGENT_CHECKPOINT_SCHEMA_VERSION,
+            seed: runtime.seed(),
+            agent_id: runtime.agent_id(),
+            runtime: runtime.state().clone(),
+        }
+    }
+
+    /// Restores a standalone runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the agent checkpoint schema is unsupported.
+    pub fn restore(self) -> Result<AgentRuntime, PersistenceError> {
+        if self.schema_version != AGENT_CHECKPOINT_SCHEMA_VERSION {
+            return Err(PersistenceError::UnsupportedAgentCheckpointVersion(
+                self.schema_version,
+            ));
+        }
+        Ok(AgentRuntime::from_state(
+            self.seed,
+            self.agent_id,
+            self.runtime,
+        ))
+    }
+
+    /// Encodes this checkpoint as TOML.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the value cannot be represented as TOML.
+    pub fn to_toml(&self) -> Result<String, PersistenceError> {
+        toml::to_string(self).map_err(PersistenceError::Encode)
+    }
+
+    /// Decodes a checkpoint from TOML, rejecting malformed brain state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid TOML, out-of-range state, or unsupported format versions.
+    pub fn from_toml(text: &str) -> Result<Self, PersistenceError> {
+        let checkpoint: Self = toml::from_str(text).map_err(PersistenceError::Decode)?;
+        if checkpoint.schema_version != AGENT_CHECKPOINT_SCHEMA_VERSION {
+            return Err(PersistenceError::UnsupportedAgentCheckpointVersion(
+                checkpoint.schema_version,
+            ));
+        }
+        Ok(checkpoint)
+    }
+}
 
 /// Reproducible channel-removal controls for a transmission experiment.
 ///
@@ -265,6 +367,8 @@ impl EventLog {
 pub enum PersistenceError {
     /// The checkpoint envelope version is not supported.
     UnsupportedCheckpointVersion(u32),
+    /// The standalone agent checkpoint envelope version is not supported.
+    UnsupportedAgentCheckpointVersion(u32),
     /// The snapshot-header version is not supported.
     UnsupportedSnapshotVersion(u32),
     /// The event-log version is not supported.
@@ -287,6 +391,12 @@ impl fmt::Display for PersistenceError {
             Self::UnsupportedCheckpointVersion(version) => {
                 write!(formatter, "unsupported checkpoint schema version {version}")
             }
+            Self::UnsupportedAgentCheckpointVersion(version) => {
+                write!(
+                    formatter,
+                    "unsupported agent checkpoint schema version {version}"
+                )
+            }
             Self::UnsupportedSnapshotVersion(version) => {
                 write!(formatter, "unsupported snapshot schema version {version}")
             }
@@ -308,7 +418,7 @@ impl Error for PersistenceError {}
 mod tests {
     use sim_core::{World, WorldSeed, WorldSettings};
 
-    use super::{CheckpointFile, EventLog};
+    use super::{AgentCheckpoint, CheckpointFile, EventLog, FounderSpec, PersistenceError};
 
     #[test]
     fn checkpoint_round_trip_resumes_identical_history() {
@@ -342,5 +452,32 @@ mod tests {
         let _ = world.step();
         assert!(log.record(&world).is_ok());
         assert!(log.matches(&world));
+    }
+
+    #[test]
+    fn founder_spec_matches_seeded_world_founders() {
+        let world = World::new_v2(WorldSeed::new(32));
+        let snapshot = world.snapshot();
+        assert_ne!(snapshot.agents(), []);
+        for agent in snapshot.agents() {
+            let founder = FounderSpec::new(32, u64::from(agent.id.slot()));
+            assert_eq!(
+                Some(&founder.genome),
+                world.developmental_genome_of(agent.id)
+            );
+        }
+    }
+
+    #[test]
+    fn agent_checkpoint_rejects_unsupported_versions() {
+        let runtime = FounderSpec::new(32, 0).runtime();
+        let mut checkpoint = AgentCheckpoint::v1(&runtime);
+        checkpoint.schema_version += 1;
+        let encoded = checkpoint.to_toml().unwrap();
+        assert!(matches!(
+            AgentCheckpoint::from_toml(&encoded),
+            Err(PersistenceError::UnsupportedAgentCheckpointVersion(_))
+        ));
+        assert!(checkpoint.restore().is_err());
     }
 }
