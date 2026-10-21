@@ -562,7 +562,7 @@ fn save_checkpoint(arguments: &[String]) -> Result<(), String> {
     for _ in 0..ticks {
         let _ = world.step();
     }
-    let checkpoint = CheckpointFile::v1(&world);
+    let checkpoint = CheckpointFile::v1(&world).map_err(|error| error.to_string())?;
     fs::write(
         path,
         checkpoint.to_toml().map_err(|error| error.to_string())?,

@@ -29,6 +29,10 @@ pub enum GpuError {
     NoSuitableAdapter(Vec<String>),
     /// The adapter refused to create a device.
     RequestDevice(wgpu::RequestDeviceError),
+    /// The device reported a validation, out-of-memory, or internal error.
+    Device(wgpu::Error),
+    /// The batch exceeds this device's buffer or dispatch limits.
+    BatchTooLarge(usize),
     /// Input slices had different lengths.
     LengthMismatch,
     /// Reading results back from the GPU failed.
@@ -49,6 +53,13 @@ impl fmt::Display for GpuError {
                 )
             }
             Self::RequestDevice(error) => write!(formatter, "GPU device request failed: {error}"),
+            Self::Device(error) => write!(formatter, "GPU device error: {error}"),
+            Self::BatchTooLarge(agents) => {
+                write!(
+                    formatter,
+                    "{agents} brains exceed the GPU's buffer or dispatch limits"
+                )
+            }
             Self::LengthMismatch => formatter.write_str("brain, frame, and config counts differ"),
             Self::Readback(error) => write!(formatter, "GPU readback failed: {error}"),
         }
@@ -59,7 +70,11 @@ impl Error for GpuError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::RequestDevice(error) => Some(error),
-            Self::NoSuitableAdapter(_) | Self::LengthMismatch | Self::Readback(_) => None,
+            Self::Device(error) => Some(error),
+            Self::NoSuitableAdapter(_)
+            | Self::BatchTooLarge(_)
+            | Self::LengthMismatch
+            | Self::Readback(_) => None,
         }
     }
 }
@@ -106,7 +121,20 @@ impl GpuBrainStepper {
             .await
             .map_err(GpuError::RequestDevice)?;
 
-        let module = load_shader_module(&device);
+        let (bind_group_layout, pipeline) =
+            capture_errors(&device, || Self::build_pipeline(&device))?;
+        Ok(Self {
+            device,
+            queue,
+            pipeline,
+            bind_group_layout,
+            adapter_info: adapter.get_info(),
+        })
+    }
+
+    /// Creates the bind group layout and pipeline for `sim_shaders::brain_step`.
+    fn build_pipeline(device: &wgpu::Device) -> (wgpu::BindGroupLayout, wgpu::ComputePipeline) {
+        let module = load_shader_module(device);
         let storage = |binding, read_only| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::COMPUTE,
@@ -140,13 +168,7 @@ impl GpuBrainStepper {
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
-        Ok(Self {
-            device,
-            queue,
-            pipeline,
-            bind_group_layout,
-            adapter_info: adapter.get_info(),
-        })
+        (bind_group_layout, pipeline)
     }
 
     /// Describes the adapter in use, for logs.
@@ -158,8 +180,9 @@ impl GpuBrainStepper {
     ///
     /// # Errors
     ///
-    /// Returns [`GpuError::LengthMismatch`] for inconsistent inputs, or
-    /// [`GpuError::Readback`] if results cannot be read back.
+    /// Returns [`GpuError::LengthMismatch`] for inconsistent inputs,
+    /// [`GpuError::BatchTooLarge`] beyond the device's limits, [`GpuError::Device`] if the device
+    /// rejects the work, or [`GpuError::Readback`] if results cannot be read back.
     pub fn step(
         &self,
         brains: &mut [GpuBrain],
@@ -172,6 +195,39 @@ impl GpuBrainStepper {
         if brains.is_empty() {
             return Ok(Vec::new());
         }
+        self.check_limits(brains.len())?;
+        let (readback, brain_size) =
+            capture_errors(&self.device, || self.submit(brains, frames, configs))?;
+        self.read_back(&readback, brain_size, brains)
+    }
+
+    /// Rejects batches the device cannot hold, which wgpu would otherwise report only as a
+    /// validation error during the dispatch.
+    fn check_limits(&self, agents: usize) -> Result<(), GpuError> {
+        let limits = self.device.limits();
+        let brain_size = byte_size::<GpuBrain>(agents);
+        let step_size = byte_size::<GpuBrainStep>(agents);
+        let largest_binding = brain_size
+            .max(step_size)
+            .max(byte_size::<GpuFrame>(agents))
+            .max(byte_size::<GpuBrainConfig>(agents));
+        if largest_binding > limits.max_storage_buffer_binding_size
+            || brain_size + step_size > limits.max_buffer_size
+            || workgroups(agents) > limits.max_compute_workgroups_per_dimension
+        {
+            return Err(GpuError::BatchTooLarge(agents));
+        }
+        Ok(())
+    }
+
+    /// Uploads one batch and submits its dispatch, returning the readback buffer and the byte
+    /// offset at which its step results begin.
+    fn submit(
+        &self,
+        brains: &[GpuBrain],
+        frames: &[GpuFrame],
+        configs: &[GpuBrainConfig],
+    ) -> (wgpu::Buffer, u64) {
         let storage = |label, contents: &[u8], usage| {
             self.device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -249,7 +305,7 @@ impl GpuBrainStepper {
         encoder.copy_buffer_to_buffer(&brain_buffer, 0, &readback, 0, brain_size);
         encoder.copy_buffer_to_buffer(&step_buffer, 0, &readback, brain_size, step_size);
         self.queue.submit([encoder.finish()]);
-        self.read_back(&readback, brain_size, brains)
+        (readback, brain_size)
     }
 
     /// Waits for the submitted dispatch, then copies brains and step results out of `readback`.
@@ -324,6 +380,25 @@ impl sim_core::BrainBackend for GpuBrainStepper {
     }
 }
 
+/// Runs `work` with every wgpu error captured, so it is returned rather than reaching wgpu's
+/// default handler, which panics and would bypass the caller's fallback.
+fn capture_errors<T>(device: &wgpu::Device, work: impl FnOnce() -> T) -> Result<T, GpuError> {
+    let scopes = [
+        wgpu::ErrorFilter::Internal,
+        wgpu::ErrorFilter::OutOfMemory,
+        wgpu::ErrorFilter::Validation,
+    ]
+    .map(|filter| device.push_error_scope(filter));
+    let value = work();
+    // Scopes must be popped innermost first; report the innermost error.
+    let mut first_error = None;
+    for scope in scopes.into_iter().rev() {
+        let error = pollster::block_on(scope.pop());
+        first_error = first_error.or(error);
+    }
+    first_error.map_or(Ok(value), |error| Err(GpuError::Device(error)))
+}
+
 /// Picks the most capable hardware adapter that supports [`REQUIRED_FEATURES`].
 fn select_adapter(adapters: Vec<wgpu::Adapter>) -> Result<wgpu::Adapter, GpuError> {
     let mut rejected = Vec::new();
@@ -374,10 +449,30 @@ fn load_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
     }
 }
 
+/// Bytes needed for `count` values of `T`, saturating so oversized batches fail the limit check
+/// instead of overflowing.
 fn byte_size<T>(count: usize) -> u64 {
-    (core::mem::size_of::<T>() * count) as u64
+    let count = u64::try_from(count).unwrap_or(u64::MAX);
+    u64::try_from(core::mem::size_of::<T>()).map_or(u64::MAX, |size| size.saturating_mul(count))
 }
 
 fn workgroups(invocations: usize) -> u32 {
     u32::try_from(invocations.div_ceil(WORKGROUP_SIZE as usize)).unwrap_or(u32::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oversized_batches_are_rejected_before_any_gpu_work() {
+        let Ok(stepper) = GpuBrainStepper::new() else {
+            return;
+        };
+        assert!(stepper.check_limits(1_024).is_ok());
+        assert!(matches!(
+            stepper.check_limits(usize::MAX),
+            Err(GpuError::BatchTooLarge(usize::MAX))
+        ));
+    }
 }

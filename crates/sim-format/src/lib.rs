@@ -125,15 +125,19 @@ pub struct CheckpointFile {
 
 impl CheckpointFile {
     /// Captures a resumable version-one checkpoint from a world.
-    #[must_use]
-    pub fn v1(world: &World) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PersistenceError::Checkpoint`] for worlds the format cannot represent, such as
+    /// V2 worlds.
+    pub fn v1(world: &World) -> Result<Self, PersistenceError> {
         let snapshot = world.snapshot();
-        Self {
+        Ok(Self {
             schema_version: CHECKPOINT_SCHEMA_VERSION,
             header: SnapshotHeader::v1(snapshot.tick().get()),
             state_hash: snapshot.state_hash(),
-            world: world.checkpoint(),
-        }
+            world: world.checkpoint().map_err(PersistenceError::Checkpoint)?,
+        })
     }
 
     /// Validates and restores an exact world history.
@@ -313,7 +317,10 @@ mod tests {
         for _ in 0..500 {
             let _ = uninterrupted.step();
         }
-        let encoded = CheckpointFile::v1(&uninterrupted).to_toml().unwrap();
+        let encoded = CheckpointFile::v1(&uninterrupted)
+            .unwrap()
+            .to_toml()
+            .unwrap();
         let mut resumed = CheckpointFile::from_toml(&encoded)
             .unwrap()
             .restore()

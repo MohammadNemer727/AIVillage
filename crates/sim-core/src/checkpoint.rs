@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AgentId, AgentSlot, BLANK_SIGNAL_COUNT, BlankSignal, CulturalTransmissionControls,
-    GENOME_WEIGHTS, Genome, GridPosition, HIDDEN, OUTPUTS, SignalIntervention, Tick, World,
-    WorldSeed, WorldSettings,
+    GENOME_WEIGHTS, Genome, GridPosition, HIDDEN, ModelVersion, OUTPUTS, SignalIntervention, Tick,
+    World, WorldSeed, WorldSettings,
 };
 
 /// Exact V1 world-state payload used by versioned format envelopes.
@@ -92,17 +92,20 @@ pub enum CheckpointError {
     InconsistentController,
     /// A persisted position lies outside the saved geometry.
     PositionOutOfBounds,
-    /// A free-list entry does not refer to a dead slot.
+    /// A free-list entry does not refer to a dead slot, or repeats one, which would let two
+    /// births claim the same slot.
     InvalidFreeSlot,
     /// A parent reference cannot identify a slot in this history.
     InvalidParent,
     /// A saved signal is outside the blank alphabet.
     InvalidSignal,
+    /// The world uses a model this checkpoint format cannot represent.
+    UnsupportedModel(ModelVersion),
 }
 
 impl core::fmt::Display for CheckpointError {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        formatter.write_str(match self {
+        let message = match self {
             Self::InvalidSettings => "checkpoint has invalid world settings",
             Self::InconsistentSlots => "checkpoint slot-indexed fields have inconsistent lengths",
             Self::InconsistentGrid => "checkpoint grid fields have inconsistent lengths",
@@ -110,10 +113,19 @@ impl core::fmt::Display for CheckpointError {
                 "checkpoint controller fields have inconsistent lengths"
             }
             Self::PositionOutOfBounds => "checkpoint contains an out-of-bounds position",
-            Self::InvalidFreeSlot => "checkpoint free list contains a live or unknown slot",
+            Self::InvalidFreeSlot => {
+                "checkpoint free list contains a live, unknown, or repeated slot"
+            }
             Self::InvalidParent => "checkpoint contains an unknown parent slot",
             Self::InvalidSignal => "checkpoint contains an invalid blank signal",
-        })
+            Self::UnsupportedModel(model) => {
+                return write!(
+                    formatter,
+                    "checkpoints cannot represent {model:?} worlds yet"
+                );
+            }
+        };
+        formatter.write_str(message)
     }
 }
 
@@ -121,9 +133,16 @@ impl std::error::Error for CheckpointError {}
 
 impl World {
     /// Captures every future-relevant field of this authoritative world.
-    #[must_use]
-    pub fn checkpoint(&self) -> WorldCheckpoint {
-        WorldCheckpoint {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CheckpointError::UnsupportedModel`] for V2 worlds: the format holds V1 state
+    /// only, and restoring it would silently drop bodies, physiology, ecology, and brains.
+    pub fn checkpoint(&self) -> Result<WorldCheckpoint, CheckpointError> {
+        if self.model_version != ModelVersion::V1Grid {
+            return Err(CheckpointError::UnsupportedModel(self.model_version));
+        }
+        Ok(WorldCheckpoint {
             seed: self.seed.get(),
             tick: self.tick.get(),
             settings: SettingsCheckpoint {
@@ -206,7 +225,7 @@ impl World {
             symbol_observations: self.symbol_observations,
             genetic_births: self.genetic_births,
             learning_updates: self.learning_updates,
-        }
+        })
     }
 
     /// Restores an exact authoritative world from a validated checkpoint.
@@ -251,13 +270,20 @@ impl World {
         {
             return Err(CheckpointError::InconsistentGrid);
         }
-        if checkpoint.free_slots.iter().any(|slot| {
-            usize::try_from(*slot)
+        let mut freed = vec![false; slot_count];
+        for slot in &checkpoint.free_slots {
+            let index = usize::try_from(*slot)
                 .ok()
-                .and_then(|index| checkpoint.slots.get(index))
-                .is_none_or(|entry| entry.alive)
-        }) {
-            return Err(CheckpointError::InvalidFreeSlot);
+                .filter(|index| {
+                    checkpoint
+                        .slots
+                        .get(*index)
+                        .is_some_and(|entry| !entry.alive)
+                })
+                .ok_or(CheckpointError::InvalidFreeSlot)?;
+            if core::mem::replace(&mut freed[index], true) {
+                return Err(CheckpointError::InvalidFreeSlot);
+            }
         }
         let mut world = Self::with_settings_unchecked(WorldSeed::new(checkpoint.seed), settings);
         world.tick = Tick::new(checkpoint.tick);

@@ -496,14 +496,17 @@ fn interpolate_agents(
         .iter()
         .map(|agent| (agent.id, agent.position))
         .collect();
+    // Each agent has four rendered parts, so index the snapshot once instead of searching it
+    // per part.
+    let current: HashMap<_, _> = bridge
+        .current
+        .agents()
+        .iter()
+        .map(|agent| (agent.id, agent))
+        .collect();
     let alpha = fixed_time.overstep_fraction();
     for (agent, part, mut transform, mut sprite) in &mut agents {
-        let Some(current) = bridge
-            .current
-            .agents()
-            .iter()
-            .find(|item| item.id == agent.id)
-        else {
+        let Some(&current) = current.get(&agent.id) else {
             continue;
         };
         let from = previous.get(&agent.id).copied().unwrap_or(current.position);
