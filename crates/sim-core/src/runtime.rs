@@ -468,7 +468,7 @@ const PLAN_MIN_TRIES: u32 = 4;
 /// Steps of lookahead when valuing scenes.
 const PLAN_DEPTH: usize = 3;
 /// Weight of an expected scene improvement against immediate interest.
-const PLAN_WEIGHT: u32 = 4;
+const PLAN_WEIGHT: u32 = 32;
 /// Quarters of a reachable scene's value a scene inherits per step of lookahead.
 const PLAN_DISCOUNT: u32 = 3;
 
@@ -1363,6 +1363,7 @@ impl AffordanceLearner {
         let values = config.planning.then(|| self.scene_values());
         let mut best = 0;
         let mut best_score = 0_u32;
+        let mut best_planned = 0_u32;
         for candidate in 0..AFFORDANCE_ACTIONS {
             // Curiosity regrows while an experiment goes untried, so exploration never stops
             // and a world that changed is noticed again. Telling situations apart, curiosity is
@@ -1401,10 +1402,17 @@ impl AffordanceLearner {
             if score > best_score {
                 best = candidate;
                 best_score = score;
+                best_planned = planned;
             }
         }
         self.previous_action = best;
-        self.bout_remaining = config.bout_length - 1;
+        // Babbling comes in bouts; a step taken for the plan is taken once, and the plan is
+        // revised from where it leads.
+        self.bout_remaining = if best_planned > 0 {
+            0
+        } else {
+            config.bout_length - 1
+        };
         self.remember_choice(best, tick);
         (affordance_action(best), best_score)
     }

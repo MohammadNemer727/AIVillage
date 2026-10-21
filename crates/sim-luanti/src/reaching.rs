@@ -263,4 +263,20 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn planning_seeks_out_the_object() {
+        let report = run();
+        let late = |controller| report.row(controller).phases[1].clone();
+        let (planner, scenes) = (
+            late(Controller::ScenePlanner),
+            late(Controller::SceneSituations),
+        );
+        let facing = |summary: &PhaseSummary| summary.facing_decisions * 1_000 / summary.decisions;
+        assert!(
+            facing(&planner) > facing(&scenes) * 3 / 2,
+            "{planner:?} {scenes:?}"
+        );
+        assert!(hit_rate(&planner) > hit_rate(&scenes));
+    }
 }
