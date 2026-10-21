@@ -6,11 +6,23 @@ local step_seconds, request_timeout = 0.1, 0.5
 local endpoint = minetest.settings:get("ai_bridge_endpoint") or "http://127.0.0.1:8481/v1/transition"
 local http = minetest.request_http_api()
 local mode = minetest.settings:get("ai_bridge_mode") or "observe"
-if mode ~= "observe" and mode ~= "smoke" and mode ~= "demo-motion" then
+if mode ~= "observe" and mode ~= "smoke" and mode ~= "demo-motion" and mode ~= "learn" then
   minetest.log("error", "ai_bridge: invalid ai_bridge_mode; using observe")
   mode = "observe"
 end
 local scripted = mode == "smoke" or mode == "demo-motion"
+-- Learning runs follow the infant mobile paradigm: baseline without the object, a connected
+-- phase with it in front of the founder, then extinction without it. In the "inert" control the
+-- object is present and solid but a hand pulse neither moves it nor reports contact. Every trial
+-- the experimenter returns the founder and object to their places, as one repositions an infant;
+-- this changes only the scene, never the held Rust action, sequence, or learning state.
+local learn = mode == "learn"
+local learn_phases = {}
+for count in string.gmatch(minetest.settings:get("ai_bridge_learn_phases") or "200,400,200", "%d+") do
+  learn_phases[#learn_phases + 1] = tonumber(count)
+end
+local learn_trial = tonumber(minetest.settings:get("ai_bridge_learn_trial") or "") or 40
+local learn_inert = minetest.settings:get("ai_bridge_learn_object") == "inert"
 local observer_name = minetest.settings:get("ai_bridge_observer") or "observer"
 -- This is Minetest Game's native player mesh, whose player_api definition uses unit scale.
 local founder_visual_scale = 1
@@ -75,7 +87,7 @@ minetest.register_node("ai_bridge:observer_light", {
 local state = { sequence = 0, server_step = 0, pending = false, pending_at = 0, request_token = 0,
   held = { thrust = 0, turn = 0, strafe = 0, look_pitch = 0, jump = 0, jaw = 0, hand_pulse = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} },
   applied_step = 0, applied_steps = 0, elapsed = 0, previous_velocity = {x = 0, z = 0}, touch = 0, grounded = 0, hand_contact = 0, eye_pitch = 0, status = "healthy",
-  smoke = mode == "smoke", diagnostics = nil, latency_ms = 0, founder = nil, body_parts = {},
+  smoke = mode == "smoke", learn_decisions = 0, learn_phase = nil, learn_cube = nil, diagnostics = nil, latency_ms = 0, founder = nil, body_parts = {},
   observer_resets = 0, safety_resets = 0, last_safety_reset = "none" }
 
 local function smoke_log(event)
@@ -227,6 +239,55 @@ local function sense(self, dt)
   return senses
 end
 
+local function learn_log(event)
+  minetest.log("action", "AI_BRIDGE_LEARN " .. minetest.write_json(event))
+end
+
+local function learn_phase_name(decision)
+  local names, start = {"baseline", "connected", "extinction"}, 0
+  for index, count in ipairs(learn_phases) do
+    if decision <= start + count then return names[index] or "done" end
+    start = start + count
+  end
+  return "done"
+end
+
+-- Called once per accepted Rust reply, before the reply's action is applied.
+local function learn_step()
+  state.learn_decisions = state.learn_decisions + 1
+  local decision, founder = state.learn_decisions, state.founder
+  local phase = learn_phase_name(decision)
+  if phase ~= state.learn_phase then
+    state.learn_phase = phase
+    learn_log({event = "phase", phase = phase, decision = decision, sequence = state.sequence,
+      object = learn_inert and "inert" or "free"})
+    if phase == "done" then
+      minetest.request_shutdown("ai_bridge learning run completed", false)
+      return
+    end
+  end
+  local cube = state.learn_cube
+  if cube and not cube:get_pos() then cube, state.learn_cube = nil, nil end
+  local want_cube = phase == "connected"
+  if want_cube and not cube then
+    state.learn_cube = minetest.add_entity(generic_spawn, "ai_bridge:test_object")
+  elseif not want_cube and cube then
+    cube:remove()
+    state.learn_cube = nil
+  end
+  if (decision - 1) % learn_trial == 0 and founder and founder:get_pos() then
+    founder:move_to(founder_spawn, false)
+    founder:set_velocity({x = 0, y = 0, z = 0})
+    founder:set_yaw(-math.pi / 2)
+    state.eye_pitch, state.previous_velocity, state.touch = 0, {x = 0, z = 0}, 0
+    if state.learn_cube then
+      state.learn_cube:move_to(generic_spawn, false)
+      state.learn_cube:set_velocity({x = 0, y = 0, z = 0})
+    end
+    learn_log({event = "trial", decision = decision, sequence = state.sequence})
+  end
+end
+
 local function send_transition(self, dt)
   if not http then zero_action("disconnected") return end
   local velocity = self.object:get_velocity()
@@ -282,6 +343,7 @@ local function send_transition(self, dt)
         strafe = state.held.strafe, jump = state.held.jump, turn = state.held.turn,
         hand_pulse = state.held.hand_pulse})
     end
+    if learn then learn_step() end
     state.sequence = state.sequence + 1
     state.applied_step, state.applied_steps, state.elapsed = state.server_step, 0, 0
     update_observer_hud()
@@ -396,7 +458,7 @@ minetest.register_entity("ai_bridge:founder", {
         -- not a proximity sensor or a way to identify arbitrary world objects.
         for _, object in ipairs(minetest.get_objects_inside_radius(origin, 1.2)) do
           local entity = object:get_luaentity()
-          if entity and entity.name == "ai_bridge:test_object" then
+          if entity and entity.name == "ai_bridge:test_object" and not learn_inert then
             object:add_velocity({x = forward.x * 3, y = 1, z = forward.z * 3}); state.hand_contact = 255
             smoke_log({event = "hand_contact", impulse = 3}); break
           end
@@ -464,7 +526,16 @@ minetest.register_on_mods_loaded(function()
       minetest.add_entity(founder_spawn, "ai_bridge:founder")
       -- The 0.4-node cube's collision centre is exactly 0.2 nodes above the floor.  It is
       -- therefore grounded at creation rather than falling or receiving any startup impulse.
-      minetest.add_entity(generic_spawn, "ai_bridge:test_object")
+      if learn then
+        -- A headless learning run has no player to keep the arena active, and Luanti unloads
+        -- idle map blocks after about 29 s, removing the unsaved founder. Keep the arena's
+        -- blocks loaded for this session only.
+        for _, x in ipairs({-5, 5}) do for _, y in ipairs({-1, 5}) do for _, z in ipairs({-5, 5}) do
+          minetest.forceload_block({x = x, y = y, z = z}, true)
+        end end end
+      else
+        minetest.add_entity(generic_spawn, "ai_bridge:test_object")
+      end
       smoke_log({event = "generic_spawn", x = generic_spawn.x, y = generic_spawn.y, z = generic_spawn.z,
         visual_size = generic_visual_scale, collision_height = 0.4})
       if mode == "smoke" then

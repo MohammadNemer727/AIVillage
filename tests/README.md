@@ -122,3 +122,19 @@ steering or retraining; the founder can therefore drive back into a wall immedia
 The headless smoke test additionally asserts applied-action/pose consistency and this
 bridge-stop safe-zero behavior. Creature artwork provenance and license are in
 [`../integrations/luanti/games/ai_village/mods/ai_bridge/ASSETS.md`](../integrations/luanti/games/ai_village/mods/ai_bridge/ASSETS.md).
+
+## Luanti learning run
+
+The infant mobile paradigm in the real game, with the affordance founder: baseline without the
+test cube, a connected phase with it in front of the founder, then extinction without it. In the
+`inert` control the cube is present but a hand pulse neither moves it nor reports contact. Each
+run replays its trace through the runtime; Luanti physics itself is not bit-exact.
+
+```sh
+SIM_LUANTI_SEED=1 LEARN_OBJECT=free sh integrations/luanti/ci/learning-run.sh /tmp/learn/free-seed1
+SIM_LUANTI_SEED=1 LEARN_OBJECT=inert sh integrations/luanti/ci/learning-run.sh /tmp/learn/inert-seed1
+python3 integrations/luanti/tools/analyze_learning.py docs/luanti-learning-run.md /tmp/learn/*
+```
+
+Set distinct `SIM_LUANTI_PORT` and `LUANTI_SMOKE_PORT` values to run several at once. Current
+results are in [`../docs/luanti-learning-run.md`](../docs/luanti-learning-run.md).

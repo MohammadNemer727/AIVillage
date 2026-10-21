@@ -239,7 +239,10 @@ peer-reviewed venue was listed when checked.
 ### What AI Village has adopted
 
 As of 2026-10-21, the founder and its test harness implement these lessons. Results are on
-deterministic synthetic fixtures; a real Luanti learning run has not yet been made.
+deterministic synthetic fixtures, and the core contingency result is confirmed in real Luanti: with
+a pushable cube the founder's hand pulses rise from 7.9 to 16.0 per 100 decisions and return to
+8.0 in extinction, while an inert cube leaves them flat (see
+[`luanti-learning-run.md`](luanti-learning-run.md)).
 
 | Lesson | Source | Implementation | Result |
 | --- | --- | --- | --- |
@@ -254,7 +257,8 @@ deterministic synthetic fixtures; a real Luanti learning run has not yet been ma
 | Report curves, strategies and anticipation, not one rate | Fujihira et al. 2025; Rosales et al. 2025; Spisak et al. 2026 | Protocol harness | Per-seed curves, strategy mix and anticipation in every report |
 | Do not judge the extinction burst as failure | Xu & Triesch 2026; Diprossimo et al. 2026 | Verdict uses late extinction only | Burst is reported, not penalized |
 
-Not yet adopted: learning-progress curiosity (Hou et al.; MAGELLAN), full outcome distributions
+Learning-progress curiosity (Hou et al.; MAGELLAN) is available as an alternative scoring rule
+and compared in every report; contingency remains the default. Not yet adopted: full outcome distributions
 (CAIS), flexible-control and anticipation-timing tests (Bednarski et al.; Rosales et al.), and
 the planned habituation, object-permanence and means-end protocols.
 
