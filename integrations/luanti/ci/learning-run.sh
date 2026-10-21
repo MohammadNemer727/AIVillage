@@ -8,9 +8,12 @@
 #   SIM_LUANTI_SEED          founder seed (default 1)
 #   LEARN_OBJECT             free (pulses push it and report contact) or inert (default free)
 #   LEARN_PHASES             baseline,connected,extinction decisions (default 200,400,200)
+#   LEARN_FACING             toward (each trial starts facing the cube) or turned (each trial
+#                            starts facing one of eight directions in turn; default toward)
 #   SIM_LUANTI_PORT          bridge port (default 8481)
 #   LUANTI_SMOKE_PORT        server port (default 30000)
 #   SIM_LUANTI_AFFORDANCE    optional learner settings JSON
+#   LEARN_LABEL              name for those settings in the analysis (default "default")
 #
 # The run writes bridge.ndjson (every transition) and server.log (phase and trial events) into
 # WORLD_DIR, then replays the trace through the runtime to confirm the Rust side exactly.
@@ -23,6 +26,7 @@ bridge_port=${SIM_LUANTI_PORT:-8481}
 server_port=${LUANTI_SMOKE_PORT:-30000}
 object=${LEARN_OBJECT:-free}
 phases=${LEARN_PHASES:-200,400,200}
+facing=${LEARN_FACING:-toward}
 case "$object" in free|inert) ;; *) echo "LEARN_OBJECT must be free or inert" >&2; exit 2 ;; esac
 
 rm -rf "$world"
@@ -35,12 +39,13 @@ time_speed = 0
 EOF
 config="$world/minetest.conf"
 cat "$root/ci/minetest.conf" >"$config"
-printf 'ai_bridge_mode = learn\nai_bridge_learn_object = %s\nai_bridge_learn_phases = %s\n' \
-  "$object" "$phases" >>"$config"
+printf 'ai_bridge_mode = learn\nai_bridge_learn_object = %s\nai_bridge_learn_phases = %s\nai_bridge_learn_facing = %s\n' \
+  "$object" "$phases" "$facing" >>"$config"
 printf 'ai_bridge_endpoint = http://127.0.0.1:%s/v1/transition\nport = %s\n' "$bridge_port" "$server_port" >>"$config"
 
-printf '{"seed": %s, "object": "%s", "phases": "%s"}\n' "${SIM_LUANTI_SEED:-1}" "$object" "$phases" \
-  >"$world/run.json"
+learner=${LEARN_LABEL:-default}
+printf '{"seed": %s, "object": "%s", "phases": "%s", "learner": "%s", "facing": "%s"}\n' \
+  "${SIM_LUANTI_SEED:-1}" "$object" "$phases" "$learner" "$facing" >"$world/run.json"
 trace="$world/bridge.ndjson"
 bridge_log="$world/bridge.log"
 server_log="$world/server.log"

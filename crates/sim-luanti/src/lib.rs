@@ -10,6 +10,7 @@
 pub mod benchmark;
 pub mod contingency;
 pub mod harness;
+pub mod reaching;
 
 use std::{
     io::Read,

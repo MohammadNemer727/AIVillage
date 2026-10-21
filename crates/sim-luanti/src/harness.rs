@@ -18,12 +18,15 @@ use std::ops::Range;
 
 use serde::Serialize;
 use sim_core::{
+    RETINAL_RAY_COUNT, RetinalSample,
     environment::{BodyProprioception, PrimitiveAction},
     runtime::{
-        AFFORDANCE_ACTIONS, AffordanceConfig, AgentRuntime, ExperimentMode, HAND_CONTACT_FEATURE,
-        ScoringRule, VISUAL_CHANGE_FEATURE,
+        AFFORDANCE_ACTIONS, AffordanceConfig, AgentRuntime, ContextMode, ExperimentMode,
+        HAND_CONTACT_FEATURE, ScoringRule, VISUAL_CHANGE_FEATURE,
     },
 };
+
+use sim_kernels::derive;
 
 use crate::benchmark::{config, observation, random_action};
 
@@ -37,6 +40,12 @@ pub const HAND_PULSE: usize = 9;
 const SEEN_RAYS: usize = 3;
 /// Broad-band colour of a seen object, as the Luanti test cube's average texture colour.
 const SEEN_COLOUR: u16 = 176;
+/// Directions a body that turns can face; the object of a facing protocol stands in direction 0.
+pub const HEADINGS: usize = 8;
+/// Decisions per facing trial; each trial starts facing a seed-chosen direction.
+pub const FACING_TRIAL: u64 = 40;
+/// Occlusion of an object standing within reach at eye height.
+const REACHABLE_OCCLUSION: u16 = 200;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -47,29 +56,34 @@ pub enum Controller {
     AffordanceDiscovery,
     /// The affordance learner scoring experiments by learning progress instead.
     LearningProgress,
+    /// The affordance learner judging contingency within the situation its senses report.
+    ContextDiscovery,
 }
 
 impl Controller {
     /// Settings of the affordance learner this controller runs, if it runs one.
     #[must_use]
     pub fn learner(self) -> Option<AffordanceConfig> {
-        let rule = match self {
+        let (rule, context) = match self {
             Self::PredictiveBaseline | Self::Random => return None,
-            Self::AffordanceDiscovery => ScoringRule::Contingency,
-            Self::LearningProgress => ScoringRule::LearningProgress,
+            Self::AffordanceDiscovery => (ScoringRule::Contingency, ContextMode::None),
+            Self::LearningProgress => (ScoringRule::LearningProgress, ContextMode::None),
+            Self::ContextDiscovery => (ScoringRule::Contingency, ContextMode::SenseBits),
         };
         Some(AffordanceConfig {
             rule,
+            context,
             ..AffordanceConfig::default()
         })
     }
 }
 
-pub const CONTROLLERS: [Controller; 4] = [
+pub const CONTROLLERS: [Controller; 5] = [
     Controller::PredictiveBaseline,
     Controller::Random,
     Controller::AffordanceDiscovery,
     Controller::LearningProgress,
+    Controller::ContextDiscovery,
 ];
 
 /// How the founder senses the coupled object.
@@ -115,6 +129,10 @@ pub struct Object {
     /// Extra decisions before a caused level arrives; zero delivers it with the next
     /// observation.
     pub delay: u64,
+    /// The object stands within reach at eye height in one direction, and the body can turn. It
+    /// is seen on the eye rays toward it and responds only while the founder faces it. Without
+    /// this the object is always in front and the body does not turn.
+    pub facing: bool,
 }
 
 impl Object {
@@ -140,6 +158,8 @@ pub struct Trace {
     /// The learner's anticipated change after the target experiment, read before each outcome
     /// arrived, or `None` while untried or for controllers without a learner.
     pub expected: Vec<Option<u16>>,
+    /// Whether the founder faced the object at each decision; always true without facing.
+    pub facing: Vec<bool>,
 }
 
 /// Maps an action to its experiment slot, in the learner's primitive order.
@@ -180,6 +200,41 @@ pub fn phase_ranges(phases: &[Phase]) -> Vec<Range<usize>> {
         .collect()
 }
 
+/// Draws the object on the eye rays: toward it at eye height for a facing object, or straight
+/// ahead for an object that is only seen.
+fn show_object(
+    retinal: &mut [RetinalSample; RETINAL_RAY_COUNT],
+    object: Object,
+    heading: usize,
+    level: u16,
+    previous_level: u16,
+) {
+    if object.facing {
+        // Increasing ray index turns left, and each heading step turned left puts the
+        // object one step further to the right.
+        let rays = RETINAL_RAY_COUNT;
+        let centre = (rays - heading * (rays / HEADINGS)) % rays;
+        for offset in [rays - 1, 0, 1] {
+            let ray = &mut retinal[(centre + offset) % rays];
+            ray.red = SEEN_COLOUR;
+            ray.green = SEEN_COLOUR;
+            ray.blue = SEEN_COLOUR;
+            ray.occlusion = match object.sense {
+                Sense::Contact => REACHABLE_OCCLUSION,
+                Sense::Sight => level,
+            };
+        }
+    } else if object.sense == Sense::Sight {
+        for ray in &mut retinal[..SEEN_RAYS] {
+            ray.red = SEEN_COLOUR;
+            ray.green = SEEN_COLOUR;
+            ray.blue = SEEN_COLOUR;
+            ray.occlusion = level;
+            ray.motion = (i32::from(level) - i32::from(previous_level)) as i16;
+        }
+    }
+}
+
 /// Runs one seed through every phase. Yoked phases replay `partner`'s levels.
 #[must_use]
 pub fn run(
@@ -209,29 +264,34 @@ pub fn run(
         slots: Vec::with_capacity(total as usize),
         levels: Vec::with_capacity(total as usize),
         expected: Vec::with_capacity(total as usize),
+        facing: Vec::with_capacity(total as usize),
     };
     let ranges = phase_ranges(phases);
+    let mut heading = 0;
     for tick in 0..total {
         let index = tick as usize;
         let phase = ranges
             .iter()
             .position(|range| range.contains(&index))
             .expect("tick within protocol");
+        if object.facing && tick % FACING_TRIAL == 0 {
+            heading =
+                (derive(seed, tick / FACING_TRIAL, 0, 0x4845_4144) % HEADINGS as u64) as usize;
+        }
+        let facing = !object.facing || heading == 0;
         match object.sense {
             Sense::Contact => body.hand_contact = level,
             Sense::Sight => body.hand_contact = 0,
         }
         let mut sensed = observation(tick, body, body.hand_contact);
         sensed.senses.acceleration = acceleration;
-        if object.sense == Sense::Sight {
-            for ray in &mut sensed.senses.retinal[..SEEN_RAYS] {
-                ray.red = SEEN_COLOUR;
-                ray.green = SEEN_COLOUR;
-                ray.blue = SEEN_COLOUR;
-                ray.occlusion = level;
-                ray.motion = (i32::from(level) - i32::from(previous_level)) as i16;
-            }
-        }
+        show_object(
+            &mut sensed.senses.retinal,
+            object,
+            heading,
+            level,
+            previous_level,
+        );
         let transition = runtime.step(sensed).expect("fixture sequence");
         let action = match controller {
             Controller::Random => random_action(seed, tick),
@@ -244,7 +304,7 @@ pub fn run(
             .then(|| runtime.state().affordance.expected_after(object.target))
             .flatten()
             .map(|outcome| object.anticipation(outcome));
-        if phases[phase].coupling == Coupling::Contingent && chosen == object.target {
+        if phases[phase].coupling == Coupling::Contingent && chosen == object.target && facing {
             scheduled[index + object.delay as usize] = Some((object.caused)(seed, tick));
         }
         previous_level = level;
@@ -255,6 +315,14 @@ pub fn run(
         trace.slots.push(chosen);
         trace.levels.push(level);
         trace.expected.push(expected);
+        trace.facing.push(facing);
+        if object.facing && action.turn != 0 {
+            heading = if action.turn > 0 {
+                (heading + 1) % HEADINGS
+            } else {
+                (heading + HEADINGS - 1) % HEADINGS
+            };
+        }
         body.eye_pitch =
             (i32::from(body.eye_pitch) + i32::from(action.look_pitch) / 32).clamp(0, 255) as u16;
         body.grounded = if action.jump > 0 { 0 } else { 255 };
@@ -294,6 +362,10 @@ pub struct PhaseSummary {
     /// Mean anticipated change after the target experiment, over decisions where the learner
     /// held an expectation. Zero for controllers without a learner.
     pub anticipation: u32,
+    /// Decisions made while facing the object.
+    pub facing_decisions: u32,
+    /// Target experiments made while facing the object.
+    pub target_while_facing: u32,
 }
 
 impl PhaseSummary {
@@ -317,6 +389,11 @@ pub fn summarize(phases: &[Phase], object: Object, traces: &[Trace]) -> Vec<Phas
                     summary.decisions += 1;
                     summary.slot_counts[trace.slots[index]] += 1;
                     summary.consequences += u32::from(trace.levels[index] != object.resting);
+                    if trace.facing[index] {
+                        summary.facing_decisions += 1;
+                        summary.target_while_facing +=
+                            u32::from(trace.slots[index] == object.target);
+                    }
                     if let Some(expected) = trace.expected[index] {
                         anticipation += u64::from(expected);
                         expectations += 1;
@@ -368,6 +445,7 @@ mod tests {
         resting: 0,
         caused: |_, _| 255,
         delay: 0,
+        facing: false,
     };
 
     #[test]

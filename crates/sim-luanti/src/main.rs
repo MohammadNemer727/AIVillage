@@ -7,7 +7,8 @@ use std::{fs::OpenOptions, io::Write, path::PathBuf, time::Duration};
 
 use sim_core::runtime::{AffordanceConfig, ExperimentMode};
 use sim_luanti::{
-    Bridge, TraceRecord, benchmark, bind_loopback, contingency, replay_trace, serve_once_with_stall,
+    Bridge, TraceRecord, benchmark, bind_loopback, contingency, reaching, replay_trace,
+    serve_once_with_stall,
 };
 
 /// Writes an experiment report to `[report.json] [report.md]`, defaulting to
@@ -26,7 +27,9 @@ fn write_report(
         .next()
         .map_or_else(|| PathBuf::from(format!("docs/{name}.md")), PathBuf::from);
     if args.next().is_some() {
-        return Err("usage: sim-luanti benchmark|contingency [report.json] [report.md]".into());
+        return Err(
+            "usage: sim-luanti benchmark|contingency|reaching [report.json] [report.md]".into(),
+        );
     }
     std::fs::write(&json, serde_json::to_vec_pretty(report)?)?;
     std::fs::write(&markdown_path, markdown)?;
@@ -54,6 +57,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let markdown = benchmark::markdown(&report);
             return write_report(args, "affordance-benchmark", &report, &markdown);
         }
+        if command == "reaching" {
+            let report = reaching::run();
+            let markdown = reaching::markdown(&report);
+            return write_report(args, "reaching-test", &report, &markdown);
+        }
         if command == "contingency" {
             let report = contingency::run();
             let markdown = contingency::markdown(&report);
@@ -61,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         let (Some(path), None, "replay") = (args.next(), args.next(), command.as_str()) else {
             return Err(
-                "usage: sim-luanti [replay <trace.ndjson>|benchmark|contingency [report.json] [report.md]]"
+                "usage: sim-luanti [replay <trace.ndjson>|benchmark|contingency|reaching [report.json] [report.md]]"
                     .into(),
             );
         };

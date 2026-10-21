@@ -254,12 +254,16 @@ a pushable cube the founder's hand pulses rise from 6.8 to 15.4 per 100 decision
 | Vision of objects, not only walls | Infant mobile studies are visual | Luanti eye rays see physical entities; learner tracks largest ray motion and change | Seen-only paradigm passes |
 | Memory that fades | Spisak et al., ICDL 2025 | Unused experiment memories drift to normal over about 32 decisions | Extinction ends instead of dragging on |
 | Delayed consequences | Millar 1972; MIMo v2 sensorimotor delays | Eligibility trace over the last 4 experiments | Learning fades with delay, as in infants |
+| Object in the default view | Every mobile study and model (Xu & Triesch; Spisak et al.; Rosales et al.) | In Luanti learning runs the cube hangs at the founder's eye height and swings back after a push | Real-game hit rate rose from 31% to 56% of pushes |
+| Context-conditioned contingency, with per-situation curiosity and shrinkage to pooled statistics | Seitzer et al. causal action influence (via Mantiuk et al. 2025); IAC count-based curiosity | `ContextMode::SenseBits`: four fixed sense bits, off by default | Synthetic reaching test: late hit rate 26.4% vs 12.6% context-free and 13.5% random. Real game: worse (20.6% vs 29.5%), because "close ahead" fires on walls and floor as often as on the cube and self-motion splits memory |
 | Bouts of repeated movement | Infant kicking in bouts (Rovee-Collier; Fujihira et al. 2025) | Each chosen experiment is held for 3 decisions | Delays of up to 2 decisions are learned on 8/8 seeds; in Luanti 31% of pushes reach the cube, up from 18% |
 | Report curves, strategies and anticipation, not one rate | Fujihira et al. 2025; Rosales et al. 2025; Spisak et al. 2026 | Protocol harness | Per-seed curves, strategy mix and anticipation in every report |
 | Do not judge the extinction burst as failure | Xu & Triesch 2026; Diprossimo et al. 2026 | Verdict uses late extinction only | Burst is reported, not penalized |
 
 Learning-progress curiosity (Hou et al.; MAGELLAN) is available as an alternative scoring rule
-and compared in every report; contingency remains the default. Not yet adopted: full outcome distributions
+and compared in every report; contingency remains the default. Fixed sense bits confound in the real game, as the research warned for hand-picked state
+features; the planned next step is IAC/SGIM-style splitting, where the learner keeps only the
+distinctions that sharpen contingency. Not yet adopted: full outcome distributions
 (CAIS), flexible-control and anticipation-timing tests (Bednarski et al.; Rosales et al.), and
 the planned habituation, object-permanence and means-end protocols.
 

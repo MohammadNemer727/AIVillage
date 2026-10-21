@@ -89,6 +89,11 @@ pub struct AffordanceConfig {
     /// bout of kicking. One chooses afresh every decision. Short bouts also bridge short delays
     /// between an action and its consequence.
     pub bout_length: u16,
+    /// Which situations the learner tells apart.
+    pub context: ContextMode,
+    /// Tries of an experiment within a situation at which the situation's own statistics weigh
+    /// as much as the pooled ones.
+    pub context_prior: u16,
 }
 
 impl Default for AffordanceConfig {
@@ -102,6 +107,8 @@ impl Default for AffordanceConfig {
             recency_rate: 4,
             recency_cap: 1_024,
             bout_length: 3,
+            context: ContextMode::None,
+            context_prior: 8,
         }
     }
 }
@@ -130,8 +137,201 @@ impl AffordanceConfig {
         if !(1..=64).contains(&self.bout_length) {
             return Err("bout length must be between 1 and 64".to_owned());
         }
+        if !(1..=1_024).contains(&self.context_prior) {
+            return Err("context prior must be between 1 and 1024".to_owned());
+        }
         Ok(())
     }
+}
+
+/// Running outcome statistics for every experiment, either over all situations or within one.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Statistics {
+    /// Number of observed direct outcomes per experiment, saturating.
+    pub visits: [u16; AFFORDANCE_ACTIONS],
+    /// Recent average outcome following each experiment, scaled by 256.
+    pub after: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+    /// Recent mean absolute deviation of the outcome following each experiment, scaled by 256.
+    pub after_spread: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+    /// Recent average outcome over all experiments, scaled by 256.
+    pub overall: [i32; OUTCOME_FEATURES],
+    /// Recent mean absolute deviation of the outcome over all experiments, scaled by 256.
+    pub overall_spread: [i32; OUTCOME_FEATURES],
+    /// Whether `overall` has been set from a first outcome.
+    pub primed: bool,
+}
+
+impl Statistics {
+    /// Starts the overall averages from a first outcome.
+    fn prime(&mut self, now: &[i32; OUTCOME_FEATURES]) {
+        self.overall = *now;
+        self.primed = true;
+    }
+
+    /// Credits `now` to `action`, taken `age` decisions ago; credit halves with each decision of
+    /// age. Spreads are measured against the averages before this outcome joins them, and an
+    /// experiment's first outcome sets its average and has no spread yet.
+    fn credit(
+        &mut self,
+        action: usize,
+        age: usize,
+        now: &[i32; OUTCOME_FEATURES],
+        config: &AffordanceConfig,
+    ) {
+        let count = self.visits[action];
+        if count == 0 {
+            return;
+        }
+        let horizon = i32::from(count.min(config.action_horizon)) << age;
+        for (feature, value) in now.iter().copied().enumerate() {
+            if count > 1 {
+                let deviation = (value - self.after[action][feature]).abs();
+                self.after_spread[action][feature] +=
+                    (deviation - self.after_spread[action][feature]) / horizon;
+            }
+            self.after[action][feature] += (value - self.after[action][feature]) / horizon;
+        }
+    }
+
+    /// Moves the overall averages toward `now`, or starts them from it.
+    fn observe_overall(&mut self, now: &[i32; OUTCOME_FEATURES], config: &AffordanceConfig) {
+        if !self.primed {
+            self.prime(now);
+            return;
+        }
+        let horizon = i32::from(config.overall_horizon);
+        for (feature, value) in now.iter().copied().enumerate() {
+            let deviation = (value - self.overall[feature]).abs();
+            self.overall_spread[feature] += (deviation - self.overall_spread[feature]) / horizon;
+            self.overall[feature] += (value - self.overall[feature]) / horizon;
+        }
+    }
+
+    /// Lets every experiment but `kept` drift back toward the overall outcome.
+    fn forget(&mut self, kept: usize, config: &AffordanceConfig) {
+        let forgetting = i32::from(config.forgetting_horizon);
+        for other in (0..AFFORDANCE_ACTIONS).filter(|other| *other != kept) {
+            for feature in 0..OUTCOME_FEATURES {
+                self.after[other][feature] +=
+                    (self.overall[feature] - self.after[other][feature]) / forgetting;
+                self.after_spread[other][feature] +=
+                    (self.overall_spread[feature] - self.after_spread[other][feature]) / forgetting;
+            }
+        }
+    }
+
+    /// Score points for a `difference` on `feature`, in units of that feature's overall spread.
+    fn points(&self, feature: usize, difference: i32) -> i64 {
+        let spread = i64::from(self.overall_spread[feature].max(SPREAD_FLOOR));
+        (i64::from(difference.abs()) * SPREAD_POINTS / spread).min(FEATURE_POINTS_CAP)
+    }
+
+    /// How badly `now` was predicted after `action`, in score points scaled by 256.
+    fn prediction_error(&self, action: usize, now: &[i32; OUTCOME_FEATURES]) -> i32 {
+        let points: i64 = (0..OUTCOME_FEATURES)
+            .map(|feature| self.points(feature, now[feature] - self.after[action][feature]))
+            .sum();
+        i32::try_from(points * i64::from(OUTCOME_SCALE)).unwrap_or(i32::MAX)
+    }
+
+    /// How strongly an experiment's outcomes differ from the overall outcomes, in average and
+    /// in spread, with each feature judged in units of its overall spread.
+    fn contingency(&self, action: usize) -> u32 {
+        if self.visits[action] == 0 {
+            return 0;
+        }
+        let points: i64 = (0..OUTCOME_FEATURES)
+            .map(|feature| {
+                let average = (self.after[action][feature] - self.overall[feature]).abs();
+                let spread =
+                    (self.after_spread[action][feature] - self.overall_spread[feature]).abs();
+                self.points(feature, average.saturating_add(spread))
+            })
+            .sum();
+        u32::try_from(points).unwrap_or(u32::MAX)
+    }
+
+    fn fingerprint(&self, mut fingerprint: u64, tag: u64) -> u64 {
+        let words = self
+            .visits
+            .iter()
+            .map(|value| i64::from(*value))
+            .chain(self.after.iter().flatten().map(|value| i64::from(*value)))
+            .chain(
+                self.after_spread
+                    .iter()
+                    .flatten()
+                    .map(|value| i64::from(*value)),
+            )
+            .chain(self.overall.iter().map(|value| i64::from(*value)))
+            .chain(self.overall_spread.iter().map(|value| i64::from(*value)))
+            .chain([i64::from(self.primed)]);
+        for (index, value) in words.enumerate() {
+            fingerprint = derive(fingerprint, value.cast_unsigned(), index as u64, tag);
+        }
+        fingerprint
+    }
+}
+
+/// Situation bits a context-conditioned learner reads from its senses. They are fixed, bounded
+/// receptor thresholds and never name an object, place, or task.
+pub mod context_bits {
+    /// The eye rays nearest straight ahead are blocked within about two nodes.
+    pub const CLOSE_AHEAD: usize = 1;
+    /// Something moves noticeably on some eye ray.
+    pub const MOTION_IN_VIEW: usize = 2;
+    /// The body felt touch or hand contact.
+    pub const CONTACT: usize = 4;
+    /// The eyes are tilted down.
+    pub const LOOKING_DOWN: usize = 8;
+}
+
+/// Number of situations a context-conditioned learner distinguishes.
+pub const CONTEXTS: usize = 16;
+/// Occlusion from which a ray counts as blocked close ahead (about 2.2 nodes away).
+const CLOSE_OCCLUSION: u16 = 160;
+/// Retinal motion from which something counts as moving in view.
+const NOTICEABLE_MOTION: u16 = 64;
+/// Eye pitch below which the eyes count as tilted down (centred at 128).
+const LOOKING_DOWN_BELOW: u16 = 112;
+
+/// Which situations the affordance learner tells apart.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ContextMode {
+    /// One situation: contingency is pooled over everything (after Xu & Triesch).
+    #[default]
+    None,
+    /// Sixteen situations from four sense bits (see [`context_bits`]): contingency is judged
+    /// within the current situation, borrowing from the pooled statistics while a situation is
+    /// still rarely seen.
+    SenseBits,
+}
+
+/// The situation an observation puts the founder in, as a [`context_bits`] combination.
+#[must_use]
+pub fn sense_context(observation: &EnvironmentObservation) -> usize {
+    let retinal = &observation.senses.retinal;
+    let ahead = [RETINAL_RAY_COUNT - 1, 0, 1];
+    let mut context = 0;
+    if ahead
+        .iter()
+        .any(|ray| retinal[*ray].occlusion >= CLOSE_OCCLUSION)
+    {
+        context |= context_bits::CLOSE_AHEAD;
+    }
+    if retinal
+        .iter()
+        .any(|sample| sample.motion.unsigned_abs() >= NOTICEABLE_MOTION)
+    {
+        context |= context_bits::MOTION_IN_VIEW;
+    }
+    if observation.senses.touch > 0 || observation.body.hand_contact > 0 {
+        context |= context_bits::CONTACT;
+    }
+    if observation.body.eye_pitch < LOOKING_DOWN_BELOW {
+        context |= context_bits::LOOKING_DOWN;
+    }
+    context
 }
 
 /// Checkpointed bounded statistics for intrinsic action discovery.
@@ -141,24 +341,18 @@ impl AffordanceConfig {
 /// spread. Each outcome is judged in units of its own overall spread, so a small visual change
 /// can matter as much as a large change of body posture. An effect that follows regardless of
 /// action, or that stops following, carries no contingency, so neither keeps attracting
-/// experiments.
+/// experiments. With [`ContextMode::SenseBits`] the same is judged within the current
+/// situation as well.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AffordanceLearner {
     /// Settings the statistics below were gathered with.
     #[serde(default)]
     pub config: AffordanceConfig,
-    /// Number of observed outcomes per experiment, saturating.
-    pub visits: [u16; AFFORDANCE_ACTIONS],
-    /// Recent average outcome following each experiment, scaled by 256.
-    pub after: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
-    /// Recent average outcome over all decisions, scaled by 256.
-    pub overall: [i32; OUTCOME_FEATURES],
-    /// Recent mean absolute deviation of the outcome following each experiment, scaled by 256.
+    /// Statistics pooled over every situation.
+    pub pooled: Statistics,
+    /// Statistics within each situation, used with [`ContextMode::SenseBits`].
     #[serde(default)]
-    pub after_spread: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
-    /// Recent mean absolute deviation of the outcome over all decisions, scaled by 256.
-    #[serde(default)]
-    pub overall_spread: [i32; OUTCOME_FEATURES],
+    pub contexts: [Statistics; CONTEXTS],
     /// Recent prediction error of each experiment's direct outcome over a short window, in
     /// score points scaled by 256.
     #[serde(default)]
@@ -169,11 +363,21 @@ pub struct AffordanceLearner {
     pub error_slow: [i32; AFFORDANCE_ACTIONS],
     /// Decision tick at which each experiment was last selected.
     pub last_tried: [u64; AFFORDANCE_ACTIONS],
+    /// Decision tick at which each experiment was last selected in each situation, so curiosity
+    /// is per situation under [`ContextMode::SenseBits`].
+    #[serde(default)]
+    pub last_tried_in: [[u64; AFFORDANCE_ACTIONS]; CONTEXTS],
     /// Last selected experiment, whose outcome the next observation reports.
     pub previous_action: usize,
     /// Recent experiments, most recent first, that share credit for the next outcome.
     #[serde(default = "no_recent_actions")]
     pub recent_actions: [usize; MAX_ELIGIBILITY_SPAN],
+    /// The situation each recent experiment was chosen in.
+    #[serde(default)]
+    pub recent_contexts: [usize; MAX_ELIGIBILITY_SPAN],
+    /// The situation the latest observation puts the founder in.
+    #[serde(default)]
+    pub current_context: usize,
     /// Previous retinal view, so the next outcome can report how much the view changed.
     #[serde(default)]
     pub previous_view: [[u16; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
@@ -195,26 +399,26 @@ impl Default for AffordanceLearner {
 impl AffordanceLearner {
     /// A blank learner with the given settings.
     #[must_use]
-    pub const fn new(config: AffordanceConfig) -> Self {
+    pub fn new(config: AffordanceConfig) -> Self {
         Self {
             config,
-            visits: [0; AFFORDANCE_ACTIONS],
-            after: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
-            overall: [0; OUTCOME_FEATURES],
-            after_spread: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
-            overall_spread: [0; OUTCOME_FEATURES],
+            pooled: Statistics::default(),
+            contexts: [Statistics::default(); CONTEXTS],
             error_fast: [0; AFFORDANCE_ACTIONS],
             error_slow: [0; AFFORDANCE_ACTIONS],
             last_tried: [0; AFFORDANCE_ACTIONS],
+            last_tried_in: [[0; AFFORDANCE_ACTIONS]; CONTEXTS],
             previous_action: AFFORDANCE_ACTIONS,
             recent_actions: no_recent_actions(),
+            recent_contexts: [0; MAX_ELIGIBILITY_SPAN],
+            current_context: 0,
             previous_view: [[0; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
             bout_remaining: 0,
         }
     }
 
-    /// Checks settings and every stored experiment index, so a decoded learner cannot index
-    /// outside its fixed tables.
+    /// Checks settings and every stored experiment and situation index, so a decoded learner
+    /// cannot index outside its fixed tables.
     fn validate(&self) -> Result<(), String> {
         self.config.validate()?;
         if self.bout_remaining >= self.config.bout_length {
@@ -227,6 +431,14 @@ impl AffordanceLearner {
                 .any(|action| *action > AFFORDANCE_ACTIONS)
         {
             return Err("affordance experiment index is out of range".to_owned());
+        }
+        if self.current_context >= CONTEXTS
+            || self
+                .recent_contexts
+                .iter()
+                .any(|context| *context >= CONTEXTS)
+        {
+            return Err("affordance situation index is out of range".to_owned());
         }
         Ok(())
     }
@@ -275,34 +487,25 @@ impl AffordanceLearner {
         .map(|value| value * OUTCOME_SCALE)
     }
 
-    /// Score points for a `difference` on `feature`, in units of that feature's overall spread.
-    fn points(&self, feature: usize, difference: i32) -> i64 {
-        let spread = i64::from(self.overall_spread[feature].max(SPREAD_FLOOR));
-        (i64::from(difference.abs()) * SPREAD_POINTS / spread).min(FEATURE_POINTS_CAP)
-    }
-
-    /// How badly the learner predicted `now` after `action`, in score points scaled by 256.
-    fn prediction_error(&self, action: usize, now: &[i32; OUTCOME_FEATURES]) -> i32 {
-        let points: i64 = (0..OUTCOME_FEATURES)
-            .map(|feature| self.points(feature, now[feature] - self.after[action][feature]))
-            .sum();
-        i32::try_from(points * i64::from(OUTCOME_SCALE)).unwrap_or(i32::MAX)
-    }
-
     fn observe(&mut self, observation: &EnvironmentObservation) {
         let now = self.outcome(observation);
+        let previous_context = self.current_context;
+        self.current_context = match self.config.context {
+            ContextMode::None => 0,
+            ContextMode::SenseBits => sense_context(observation),
+        };
         if self.previous_action >= AFFORDANCE_ACTIONS {
-            self.overall = now;
+            self.pooled.prime(&now);
             return;
         }
         let config = self.config;
         let action = self.previous_action;
-        let visits = self.visits[action].saturating_add(1);
-        self.visits[action] = visits;
+        let visits = self.pooled.visits[action].saturating_add(1);
+        self.pooled.visits[action] = visits;
         if visits > 1 {
             // Learning progress compares the direct outcome's prediction error over a short and
             // a long window, before this outcome updates the prediction.
-            let error = self.prediction_error(action, &now);
+            let error = self.pooled.prediction_error(action, &now);
             if visits == 2 {
                 self.error_fast[action] = error;
                 self.error_slow[action] = error;
@@ -313,43 +516,28 @@ impl AffordanceLearner {
                 self.error_slow[action] += (error - self.error_slow[action]) / slow;
             }
         }
-        for (age, credited) in self
+        let credited = self
             .recent_actions
             .into_iter()
+            .zip(self.recent_contexts)
             .take(config.eligibility_span)
             .enumerate()
-        {
-            if credited >= AFFORDANCE_ACTIONS || self.visits[credited] == 0 {
-                continue;
-            }
-            let count = self.visits[credited];
-            let horizon = i32::from(count.min(config.action_horizon)) << age;
-            for (feature, value) in now.into_iter().enumerate() {
-                // Spreads are measured against the averages before this outcome joins them;
-                // an experiment's first outcome sets its average and has no spread yet.
-                if count > 1 {
-                    let deviation = (value - self.after[credited][feature]).abs();
-                    self.after_spread[credited][feature] +=
-                        (deviation - self.after_spread[credited][feature]) / horizon;
-                }
-                self.after[credited][feature] += (value - self.after[credited][feature]) / horizon;
-            }
+            .filter(|(_, (credited, _))| *credited < AFFORDANCE_ACTIONS);
+        for (age, (credited, _)) in credited.clone() {
+            self.pooled.credit(credited, age, &now, &config);
         }
-        let overall_horizon = i32::from(config.overall_horizon);
-        for (feature, value) in now.into_iter().enumerate() {
-            let deviation = (value - self.overall[feature]).abs();
-            self.overall_spread[feature] +=
-                (deviation - self.overall_spread[feature]) / overall_horizon;
-            self.overall[feature] += (value - self.overall[feature]) / overall_horizon;
-        }
-        let forgetting = i32::from(config.forgetting_horizon);
-        for other in (0..AFFORDANCE_ACTIONS).filter(|other| *other != action) {
-            for feature in 0..OUTCOME_FEATURES {
-                self.after[other][feature] +=
-                    (self.overall[feature] - self.after[other][feature]) / forgetting;
-                self.after_spread[other][feature] +=
-                    (self.overall_spread[feature] - self.after_spread[other][feature]) / forgetting;
+        self.pooled.observe_overall(&now, &config);
+        self.pooled.forget(action, &config);
+        if config.context == ContextMode::SenseBits {
+            // The direct outcome belongs to the situation the last experiment was chosen in.
+            let situation = &mut self.contexts[previous_context];
+            situation.visits[action] = situation.visits[action].saturating_add(1);
+            for (age, (credited, context)) in credited {
+                self.contexts[context].credit(credited, age, &now, &config);
             }
+            let situation = &mut self.contexts[previous_context];
+            situation.observe_overall(&now, &config);
+            situation.forget(action, &config);
         }
     }
 
@@ -358,24 +546,23 @@ impl AffordanceLearner {
     /// outcome arrives.
     #[must_use]
     pub fn expected_after(&self, action: usize) -> Option<[i32; OUTCOME_FEATURES]> {
-        (self.visits[action] > 0).then(|| self.after[action].map(|value| value / OUTCOME_SCALE))
+        (self.pooled.visits[action] > 0)
+            .then(|| self.pooled.after[action].map(|value| value / OUTCOME_SCALE))
     }
 
-    /// How strongly an experiment's outcomes differ from the overall outcomes, in average and
-    /// in spread, with each feature judged in units of its overall spread.
-    fn contingency(&self, action: usize) -> u32 {
-        if self.visits[action] == 0 {
-            return 0;
+    /// Contingency of `action` in the current situation. A situation's own statistics are
+    /// blended with the pooled ones by how often the action has been tried there, so a rarely
+    /// seen situation borrows from general experience instead of starting from nothing.
+    fn contextual_contingency(&self, action: usize) -> u32 {
+        let pooled = u64::from(self.pooled.contingency(action));
+        if self.config.context == ContextMode::None {
+            return u32::try_from(pooled).unwrap_or(u32::MAX);
         }
-        let points: i64 = (0..OUTCOME_FEATURES)
-            .map(|feature| {
-                let average = (self.after[action][feature] - self.overall[feature]).abs();
-                let spread =
-                    (self.after_spread[action][feature] - self.overall_spread[feature]).abs();
-                self.points(feature, average.saturating_add(spread))
-            })
-            .sum();
-        u32::try_from(points).unwrap_or(u32::MAX)
+        let situation = &self.contexts[self.current_context];
+        let tried = u64::from(situation.visits[action]);
+        let prior = u64::from(self.config.context_prior);
+        let local = u64::from(situation.contingency(action));
+        u32::try_from((tried * local + prior * pooled) / (tried + prior)).unwrap_or(u32::MAX)
     }
 
     /// How fast an experiment's prediction error is changing, in either direction: rising
@@ -387,9 +574,18 @@ impl AffordanceLearner {
 
     fn interest(&self, action: usize) -> u32 {
         match self.config.rule {
-            ScoringRule::Contingency => self.contingency(action),
+            ScoringRule::Contingency => self.contextual_contingency(action),
             ScoringRule::LearningProgress => self.learning_progress(action),
         }
+    }
+
+    fn remember_choice(&mut self, action: usize, tick: u64) {
+        self.recent_actions.rotate_right(1);
+        self.recent_actions[0] = action;
+        self.recent_contexts.rotate_right(1);
+        self.recent_contexts[0] = self.current_context;
+        self.last_tried[action] = tick;
+        self.last_tried_in[self.current_context][action] = tick;
     }
 
     fn select(&mut self, seed: u64, tick: u64) -> (PrimitiveAction, u32) {
@@ -398,20 +594,26 @@ impl AffordanceLearner {
             // Continue the current bout: the experiment is held, but its outcomes keep teaching.
             self.bout_remaining -= 1;
             let held = self.previous_action;
-            self.recent_actions.rotate_right(1);
-            self.recent_actions[0] = held;
-            self.last_tried[held] = tick;
+            self.remember_choice(held, tick);
             return (affordance_action(held), self.interest(held));
         }
         let mut best = 0;
         let mut best_score = 0_u32;
         for candidate in 0..AFFORDANCE_ACTIONS {
             // Curiosity regrows while an experiment goes untried, so exploration never stops
-            // and a world that changed is noticed again.
-            let since = if self.visits[candidate] == 0 {
+            // and a world that changed is noticed again. Telling situations apart, curiosity is
+            // per situation: an experiment never tried here is as tempting as one never tried.
+            let (tried, last) = match config.context {
+                ContextMode::None => (self.pooled.visits[candidate], self.last_tried[candidate]),
+                ContextMode::SenseBits => (
+                    self.contexts[self.current_context].visits[candidate],
+                    self.last_tried_in[self.current_context][candidate],
+                ),
+            };
+            let since = if tried == 0 {
                 config.recency_cap
             } else {
-                (tick - self.last_tried[candidate]).saturating_mul(config.recency_rate)
+                (tick - last).saturating_mul(config.recency_rate)
             };
             let curiosity = u32::try_from(since.min(config.recency_cap)).unwrap_or_default();
             // Seed-keyed tie breaking is endogenous deterministic initialization, not a schedule.
@@ -427,9 +629,7 @@ impl AffordanceLearner {
         }
         self.previous_action = best;
         self.bout_remaining = config.bout_length - 1;
-        self.recent_actions.rotate_right(1);
-        self.recent_actions[0] = best;
-        self.last_tried[best] = tick;
+        self.remember_choice(best, tick);
         (affordance_action(best), best_score)
     }
 }
@@ -739,31 +939,24 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
         config.recency_rate,
         config.recency_cap,
         u64::from(config.bout_length),
+        u64::from(config.context == ContextMode::SenseBits),
+        u64::from(config.context_prior),
         u64::from(learner.bout_remaining),
+        learner.current_context as u64,
     ]
     .into_iter()
     .enumerate()
     {
         fingerprint = derive(fingerprint, value, index as u64, 0x4346_4746);
     }
-    for (age, action) in learner.recent_actions.iter().enumerate() {
+    for (age, (action, context)) in learner
+        .recent_actions
+        .iter()
+        .zip(learner.recent_contexts)
+        .enumerate()
+    {
         fingerprint = derive(fingerprint, *action as u64, age as u64, 0x5245_434E);
-    }
-    for (feature, value) in learner.overall_spread.iter().enumerate() {
-        fingerprint = derive(
-            fingerprint,
-            i64::from(*value).cast_unsigned(),
-            feature as u64,
-            0x4F53_5052,
-        );
-    }
-    for (feature, value) in learner.overall.iter().enumerate() {
-        fingerprint = derive(
-            fingerprint,
-            i64::from(*value).cast_unsigned(),
-            feature as u64,
-            0x4F56_4552,
-        );
+        fingerprint = derive(fingerprint, context as u64, age as u64, 0x5243_5458);
     }
     for (ray, view) in learner.previous_view.iter().enumerate() {
         for (channel, value) in view.iter().enumerate() {
@@ -775,41 +968,30 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
             );
         }
     }
-    for (action, count) in learner.visits.iter().enumerate() {
-        fingerprint = derive(fingerprint, u64::from(*count), action as u64, 0x5649_5349);
-        fingerprint = derive(
-            fingerprint,
-            i64::from(learner.error_fast[action]).cast_unsigned(),
-            action as u64,
-            0x4552_4646,
-        );
-        fingerprint = derive(
-            fingerprint,
-            i64::from(learner.error_slow[action]).cast_unsigned(),
-            action as u64,
-            0x4552_5353,
-        );
-        fingerprint = derive(
-            fingerprint,
-            learner.last_tried[action],
-            action as u64,
-            0x4C41_5354,
-        );
-        for (feature, value) in learner.after_spread[action].iter().enumerate() {
-            fingerprint = derive(
-                fingerprint,
-                i64::from(*value).cast_unsigned(),
-                feature as u64,
-                0x4153_5052,
-            );
+    for action in 0..AFFORDANCE_ACTIONS {
+        for (tag, value) in [
+            (0x4552_4646, i64::from(learner.error_fast[action])),
+            (0x4552_5353, i64::from(learner.error_slow[action])),
+            (
+                0x4C41_5354,
+                i64::try_from(learner.last_tried[action]).unwrap_or(i64::MAX),
+            ),
+        ] {
+            fingerprint = derive(fingerprint, value.cast_unsigned(), action as u64, tag);
         }
-        for (feature, value) in learner.after[action].iter().enumerate() {
-            fingerprint = derive(
-                fingerprint,
-                i64::from(*value).cast_unsigned(),
-                feature as u64,
-                0x4146_5452,
-            );
+    }
+    fingerprint = learner.pooled.fingerprint(fingerprint, 0x504F_4F4C);
+    if config.context == ContextMode::SenseBits {
+        for (context, statistics) in learner.contexts.iter().enumerate() {
+            fingerprint = statistics.fingerprint(fingerprint, 0x4354_0000 | context as u64);
+            for (action, tick) in learner.last_tried_in[context].iter().enumerate() {
+                fingerprint = derive(
+                    fingerprint,
+                    *tick,
+                    action as u64,
+                    0x4C54_0000 | context as u64,
+                );
+            }
         }
     }
     fingerprint

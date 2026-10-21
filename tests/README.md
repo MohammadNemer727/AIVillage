@@ -136,5 +136,11 @@ SIM_LUANTI_SEED=1 LEARN_OBJECT=inert sh integrations/luanti/ci/learning-run.sh /
 python3 integrations/luanti/tools/analyze_learning.py docs/luanti-learning-run.md /tmp/learn/*
 ```
 
+In learning runs the cube hangs at the founder's eye height. `LEARN_FACING=turned` starts each
+trial facing one of eight directions instead of the cube (the reaching test), and
+`SIM_LUANTI_AFFORDANCE='{"context":"SenseBits"}' LEARN_LABEL=context` runs the context-conditioned
+learner. The synthetic counterpart is `cargo run -p sim-luanti -- reaching`
+([`../docs/reaching-test.md`](../docs/reaching-test.md)).
+
 Set distinct `SIM_LUANTI_PORT` and `LUANTI_SMOKE_PORT` values to run several at once. Current
 results are in [`../docs/luanti-learning-run.md`](../docs/luanti-learning-run.md).

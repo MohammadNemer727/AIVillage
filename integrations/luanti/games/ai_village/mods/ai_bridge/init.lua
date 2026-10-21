@@ -26,6 +26,9 @@ for count in string.gmatch(minetest.settings:get("ai_bridge_learn_phases") or "2
 end
 local learn_trial = tonumber(minetest.settings:get("ai_bridge_learn_trial") or "") or 40
 local learn_inert = minetest.settings:get("ai_bridge_learn_object") == "inert"
+-- With "turned" facing, each trial starts the founder facing one of eight directions in a fixed
+-- order instead of toward the cube, so pushing works only after facing it (the reaching test).
+local learn_turned = minetest.settings:get("ai_bridge_learn_facing") == "turned"
 local observer_name = minetest.settings:get("ai_bridge_observer") or "observer"
 -- This is Minetest Game's native player mesh, whose player_api definition uses unit scale.
 local founder_visual_scale = 1
@@ -38,6 +41,11 @@ local founder_animations = {
 -- collisionbox bottoms directly on the floor node's upper face (y=0.5).
 local founder_spawn = {x = 0, y = 0.5, z = 0}
 local generic_spawn = {x = 1.2, y = 0.7, z = 0}
+-- In learning runs the cube hangs at the founder's eye height, like a mobile in view: the eye
+-- rays start 1 node above the founder's feet (y = 1.5), and the cube has no gravity. After a
+-- push it swings back to this place a few decisions later.
+local learn_cube_spawn = {x = 1.2, y = 1.5, z = 0}
+local learn_cube_return_decisions = 4
 local generic_visual_scale = 0.4
 -- The physical player mesh occupies x/z +/-0.3 and y 0..1.7 from its position.
 -- The inner room is bounded by the faces at +/-4 and y=0/4; the second shell is
@@ -275,21 +283,29 @@ local function learn_step()
   if cube and not cube:get_pos() then cube, state.learn_cube = nil, nil end
   local want_cube = phase == "connected"
   if want_cube and not cube then
-    state.learn_cube = minetest.add_entity(generic_spawn, "ai_bridge:test_object")
+    state.learn_cube = minetest.add_entity(learn_cube_spawn, "ai_bridge:test_object")
   elseif not want_cube and cube then
     cube:remove()
     state.learn_cube = nil
   end
+  if state.learn_cube and state.learn_pushed_at
+      and decision - state.learn_pushed_at >= learn_cube_return_decisions then
+    state.learn_cube:move_to(learn_cube_spawn, false)
+    state.learn_cube:set_velocity({x = 0, y = 0, z = 0})
+    state.learn_pushed_at = nil
+  end
   if (decision - 1) % learn_trial == 0 and founder and founder:get_pos() then
     founder:move_to(founder_spawn, false)
     founder:set_velocity({x = 0, y = 0, z = 0})
-    founder:set_yaw(-math.pi / 2)
+    local trial = math.floor((decision - 1) / learn_trial)
+    local turn = learn_turned and (trial * 3) % 8 or 0
+    founder:set_yaw(-math.pi / 2 + turn * math.pi / 4)
     state.eye_pitch, state.previous_velocity, state.touch = 0, {x = 0, z = 0}, 0
     if state.learn_cube then
-      state.learn_cube:move_to(generic_spawn, false)
+      state.learn_cube:move_to(learn_cube_spawn, false)
       state.learn_cube:set_velocity({x = 0, y = 0, z = 0})
     end
-    learn_log({event = "trial", decision = decision, sequence = state.sequence})
+    learn_log({event = "trial", decision = decision, sequence = state.sequence, turn = turn})
   end
 end
 
@@ -467,6 +483,7 @@ minetest.register_entity("ai_bridge:founder", {
           local entity = object:get_luaentity()
           if entity and entity.name == "ai_bridge:test_object" and not learn_inert then
             object:add_velocity({x = forward.x * 3, y = 1, z = forward.z * 3}); state.hand_contact = 255
+            state.learn_pushed_at = state.learn_decisions
             smoke_log({event = "hand_contact", impulse = 3}); break
           end
         end

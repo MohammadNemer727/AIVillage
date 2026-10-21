@@ -109,6 +109,7 @@ impl Paradigm {
                 resting: 0,
                 caused: |_, _| CONTACT,
                 delay: 0,
+                facing: false,
             },
             Self::Inverted => Object {
                 target: HAND_PULSE,
@@ -116,6 +117,7 @@ impl Paradigm {
                 resting: CONTACT,
                 caused: |_, _| 0,
                 delay: 0,
+                facing: false,
             },
             Self::Bimodal => Object {
                 target: HAND_PULSE,
@@ -129,6 +131,7 @@ impl Paradigm {
                     }
                 },
                 delay: 0,
+                facing: false,
             },
             Self::Seen => Object {
                 target: HAND_PULSE,
@@ -136,6 +139,7 @@ impl Paradigm {
                 resting: 160,
                 caused: |_, _| 64,
                 delay: 0,
+                facing: false,
             },
         }
     }

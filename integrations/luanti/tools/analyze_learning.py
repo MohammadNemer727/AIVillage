@@ -16,6 +16,7 @@ from pathlib import Path
 
 PHASES = ("baseline", "connected", "extinction")
 CUBE_RGB = (176, 176, 176)
+AHEAD_RAYS = (15, 0, 1)
 LEARN_EVENT = re.compile(r"AI_BRIDGE_LEARN (\{.*\})")
 
 
@@ -32,7 +33,9 @@ def phase_starts(server_log: Path) -> tuple[str, dict[str, int]]:
 
 def summarise(world: Path) -> tuple[str, int, dict[str, dict[str, int]]]:
     condition, starts = phase_starts(world / "server.log")
-    seed = json.loads((world / "run.json").read_text())["seed"]
+    run = json.loads((world / "run.json").read_text())
+    seed = run["seed"]
+    condition = f"{condition} / {run.get('learner', 'default')} / {run.get('facing', 'toward')}"
     bounds = [(name, starts[name]) for name in (*PHASES, "done") if name in starts]
     counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for line in (world / "bridge.ndjson").read_text().splitlines():
@@ -55,6 +58,9 @@ def summarise(world: Path) -> tuple[str, int, dict[str, dict[str, int]]]:
         row["pulses"] += int(action.get("hand_pulse", 0) > 0)
         row["contacts"] += int(body.get("hand_contact", 0) > 0)
         row["cube_seen"] += int(any((r["red"], r["green"], r["blue"]) == CUBE_RGB for r in rays))
+        ahead = any((rays[i]["red"], rays[i]["green"], rays[i]["blue"]) == CUBE_RGB for i in AHEAD_RAYS)
+        row["cube_ahead"] += int(ahead)
+        row["pulses_ahead"] += int(ahead and action.get("hand_pulse", 0) > 0)
         row["looking_down"] += int(body.get("eye_pitch", 128) < 128)
     return condition, seed, counts
 
@@ -87,31 +93,36 @@ def main() -> int:
         "python3 integrations/luanti/tools/analyze_learning.py docs/luanti-learning-run.md /tmp/learn/*",
         "```",
         "",
-        "## Pooled by condition",
+        "*Hit rate* is the share of hand pulses followed by contact. *Cube ahead* is the share",
+        "of decisions with the cube on the eye rays nearest straight ahead; *pulses while ahead*",
+        "is the share of pulses made then. Aiming shows as pulses while ahead above cube ahead.",
         "",
-        "| condition | phase | decisions | hand pulses | contacts | cube in view | looking down |",
-        "|---|---|---:|---:|---:|---:|---:|",
+        "## Pooled by condition and learner",
+        "",
+        "| condition / learner / facing | phase | decisions | hand pulses | hit rate % | cube ahead % | pulses while ahead % | looking down % |",
+        "|---|---|---:|---:|---:|---:|---:|---:|",
     ]
     pooled: dict[str, dict[str, dict[str, int]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     for _, condition, _, counts in runs:
         for phase, row in counts.items():
             for key, value in row.items():
                 pooled[condition][phase][key] += value
-    for condition in ("free", "inert"):
+    for condition in sorted(pooled):
         for phase in PHASES:
             row = pooled[condition][phase]
             if not row:
                 continue
             n = row["decisions"]
             lines.append(
-                f"| {condition} | {phase} | {n} | {rate(row['pulses'], n)} | {rate(row['contacts'], n)} "
-                f"| {rate(row['cube_seen'], n)} | {rate(row['looking_down'], n)} |"
+                f"| {condition} | {phase} | {n} | {rate(row['pulses'], n)} "
+                f"| {rate(row['contacts'], row['pulses'])} | {rate(row['cube_ahead'], n)} "
+                f"| {rate(row['pulses_ahead'], row['pulses'])} | {rate(row['looking_down'], n)} |"
             )
     lines += [
         "",
         "## Per run (hand pulses per 100 decisions)",
         "",
-        "| run | condition | seed | baseline | connected | extinction |",
+        "| run | condition / learner / facing | seed | baseline | connected | extinction |",
         "|---|---|---:|---:|---:|---:|",
     ]
     for world, condition, seed, counts in runs:
