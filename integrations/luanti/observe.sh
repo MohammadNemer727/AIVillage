@@ -17,8 +17,11 @@ world_kind=${OBSERVE_WORLD:-open}
 mtg_games=${MINETEST_GAME_GAMES:-/var/lib/minetest/.minetest/games}
 game_path="$root/games"
 gameid=ai_village
+# In the open world the founder lives on its own energy and must feed itself.
+founder_mode=affordance
 if [ "$world_kind" = open ]; then
   gameid=minetest
+  founder_mode=homeostatic
   [ -d "$mtg_games/minetest_game" ] || {
     echo "Minetest Game not found in $mtg_games; set MINETEST_GAME_GAMES or OBSERVE_WORLD=room" >&2
     exit 1
@@ -63,7 +66,7 @@ printf 'ai_bridge_step_seconds = %s\n' "${OBSERVE_STEP_SECONDS:-0.25}" >>"$world
 bridge_log="$world/bridge.log"
 trace_log="$world/bridge-trace.ndjson"
 server_log="$world/server.log"
-SIM_LUANTI_MODE=affordance SIM_LUANTI_TRACE="$trace_log" \
+SIM_LUANTI_MODE=$founder_mode SIM_LUANTI_TRACE="$trace_log" \
   cargo run --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml" >"$bridge_log" 2>&1 &
 bridge_pid=$!
 server_bin=$(command -v luantiserver || command -v minetestserver)

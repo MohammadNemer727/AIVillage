@@ -5,6 +5,10 @@ local texture_colours = dofile(minetest.get_modpath("ai_bridge") .. "/texture_co
 -- "room" is the small experimental arena; "open" lives in whatever world the server generates
 -- (for example Minetest Game's endless terrain), with no arena built.
 local open_world = minetest.settings:get("ai_bridge_world") == "open"
+-- Play mode shares a game with a person who plays normally (keeping their inventory and
+-- privileges). The founder is born beside them, and /founder switches the person between playing
+-- as themselves and observing through the founder's eyes.
+local play = open_world and minetest.settings:get_bool("ai_bridge_play", false)
 local protocol, agent_id = 3, 1
 -- Seconds per decision. Experiments use 0.1; a slower clock makes behaviour easier to watch.
 local step_seconds = math.max(0.05, math.min(2,
@@ -179,6 +183,8 @@ local function describe(action)
 end
 
 local function update_observer_hud()
+  -- In play mode the founder's HUD belongs to observing, not to playing as oneself.
+  if play and not state.observing then return end
   local player = minetest.get_player_by_name(observer_name)
   if not player then return end
   local diagnostics = state.diagnostics or {}
@@ -202,6 +208,13 @@ local function update_observer_hud()
     {"Resets:  observer " .. tostring(state.observer_resets) .. "  |  containment "
       .. tostring(state.safety_resets), 0xB8C4CE},
   }
+  if play then
+    local founder = state.founder and state.founder:get_pos() and state.founder
+    local hunger = rawget(_G, "mcl_hunger")
+    table.insert(lines, 5, {("Life:  health %d/20  |  hunger %d/20  |  deaths %d"):format(
+      founder and founder:get_hp() or 0, founder and hunger and hunger.get_hunger(founder) or 0,
+      state.deaths or 0), 0xFF9A9A})
+  end
   hud_panel(player, "left_panel", "left", #lines)
   for row, line in ipairs(lines) do
     hud_text(player, "left_" .. row, "left", row - 1, line[1], line[2])
@@ -256,7 +269,7 @@ local function edible(name)
   local function food(item)
     local def = item and minetest.registered_items[item]
     for group in pairs(def and def.groups or {}) do
-      if group:sub(1, 5) == "food_" then return true end
+      if group:sub(1, 5) == "food_" or group == "eatable" then return true end
     end
     return false
   end
@@ -312,6 +325,15 @@ local function cast_eye_ray(self, eye, direction, velocity, sample, vertical)
     end
     local entity = pointed.ref ~= self.object and pointed.ref:get_luaentity()
     local colour = entity and entity_colours[entity.name]
+    -- In a shared game the eyes also meet mobs, dropped items and other players, seen by the
+    -- average colour of their skin (never their name). The founder's own body and an observer's
+    -- hidden one are not seen.
+    if not colour and play and pointed.ref ~= self.player then
+      local properties = pointed.ref:get_properties()
+      local texture = properties.is_visible ~= false and properties.textures and properties.textures[1]
+      local average = type(texture) == "string" and texture ~= "" and texture_colour(texture)
+      colour = average and {math.floor(average[1] + 0.5), math.floor(average[2] + 0.5), math.floor(average[3] + 0.5)}
+    end
     if colour then
       hit, rgb, hit_velocity = pointed, colour, pointed.ref:get_velocity()
       light = minetest.get_node_light(vector.round(pointed.ref:get_pos()), 0.5) or 0
@@ -351,18 +373,51 @@ local function sense_retina(self, eye, v2_angle, pitch, velocity)
   return points
 end
 
+-- The nose (open world only): two nostrils a little ahead of the eyes, 0.3 nodes either side.
+-- Every edible block gives off an odour that falls with the square of distance; each nostril
+-- reports the summed odour on a compressed (logarithmic) scale, as real smell does. The founder
+-- feels only two amplitudes in chemical lobes 0 (left) and 1 (right), never what or where.
+local odour_radius = 12
+local odour_sources
+local function sniff(eye, v2_angle)
+  if not odour_sources then
+    odour_sources = {}
+    for name in pairs(minetest.registered_nodes) do
+      if edible(name) then odour_sources[#odour_sources + 1] = name end
+    end
+  end
+  local corner = vector.new(odour_radius, odour_radius, odour_radius)
+  local sources = minetest.find_nodes_in_area(vector.subtract(eye, corner), vector.add(eye, corner), odour_sources)
+  local amplitudes = {}
+  for index, side in ipairs({1, -1}) do
+    local nostril = {x = eye.x + 0.3 * math.cos(v2_angle) + side * 0.3 * math.cos(v2_angle + math.pi / 2), y = eye.y,
+      z = eye.z + 0.3 * math.sin(v2_angle) + side * 0.3 * math.sin(v2_angle + math.pi / 2)}
+    local odour = 0
+    for _, source in ipairs(sources) do
+      local distance = vector.distance(nostril, source)
+      if distance <= odour_radius then odour = odour + 1 / (1 + distance * distance) end
+    end
+    amplitudes[index] = byte(64 * math.log(1 + 64 * odour) / math.log(2))
+  end
+  return amplitudes
+end
+
 local function sense(self, dt)
   local senses, pos = empty_senses(), self.object:get_pos()
   local velocity, yaw = self.object:get_velocity(), self.object:get_yaw()
   local v2_angle = yaw + math.pi / 2
   local pitch = state.eye_pitch * math.pi / 512
-  local eye = vector.add(pos, {x = 0, y = 1, z = 0})
+  local eye = vector.add(pos, {x = 0, y = self.eye_height or 1, z = 0})
   for index = 0, 15 do
     local angle = v2_angle + index * (2 * math.pi / 16)
     local direction = {x = math.cos(angle) * math.cos(pitch), y = math.sin(pitch), z = math.sin(angle) * math.cos(pitch)}
     cast_eye_ray(self, eye, direction, velocity, senses.retinal[index + 1], false)
   end
   state.retina = sense_retina(self, eye, v2_angle, pitch, velocity)
+  if open_world then
+    local odour = sniff(eye, v2_angle)
+    senses.chemicals[1], senses.chemicals[2] = odour[1], odour[2]
+  end
   senses.touch = byte(state.touch)
   senses.joint_position = byte((((v2_angle % (2 * math.pi)) * 256) / (2 * math.pi)))
   senses.orientation = senses.joint_position
@@ -445,7 +500,7 @@ local function send_transition(self, dt)
     body = { eye_pitch = byte(state.eye_pitch + 128), grounded = state.grounded, vertical_motion = signed(velocity.y * 64), hand_contact = state.hand_contact,
       swallowed = state.swallowed },
     retina = state.retina,
-    capabilities = { body_contract_version = 5, checkpoint_resume = false, dead = { chemicals = {true,true,true,true}, vibration = true,
+    capabilities = { body_contract_version = 5, checkpoint_resume = false, dead = { chemicals = {not open_world, not open_world, true, true}, vibration = true,
       touch = false, joint_position = false, muscle_tension = false, acceleration = false, orientation = false } },
     transport = transport_name[state.status] or "Disconnected" }
   local body = minetest.write_json({ protocol = protocol, agent_id = agent_id, observation = observation,
@@ -556,6 +611,151 @@ local function keep_loaded_around(position)
   end end
 end
 
+-- Play mode: the founder is a real VoxeLibre player, named by ai_bridge_founder and connected
+-- through its own windowless client. The game gives that player everything a player has
+-- (health, hunger, inventory, mobs that hunt it, being saved); the brain drives it from here
+-- through the same senses and primitive actions as the entity body. Its hand punches what it
+-- reaches or digs the block it looks at, taking the time the block needs; its jaw, held, eats
+-- the food in its hand, taking VoxeLibre's eating time.
+local founder_name = minetest.settings:get("ai_bridge_founder") or "founder"
+
+-- The founder player, wrapped so the shared sensing and bridge code can treat it like the
+-- entity body: position, velocity and facing (yaw).
+local function player_body(player)
+  local object = {}
+  function object:get_pos() return player:get_pos() end
+  function object:get_velocity() return player:get_velocity() end
+  function object:get_yaw() return player:get_look_horizontal() end
+  return {object = object, player = player, eye_height = player:get_properties().eye_height or 1.5}
+end
+
+-- What the founder's hand digs and hits with: the held tool, or, as the engine does for any
+-- player holding nothing or a non-tool, the bare hand the game gives players (kept in their
+-- "hand" inventory list).
+local function held(player)
+  local stack = player:get_wielded_item()
+  if stack:is_empty() or not stack:get_definition().tool_capabilities then
+    local hand = player:get_inventory():get_stack("hand", 1)
+    if not hand:is_empty() then return hand end
+  end
+  return stack
+end
+
+local function use_hand(player, body)
+  local eye = vector.offset(player:get_pos(), 0, body.eye_height, 0)
+  local look = player:get_look_dir()
+  for pointed in minetest.raycast(eye, vector.add(eye, vector.multiply(look, 4)), true, false) do
+    -- The founder's own body and what is attached to it (such as the item shown in its hand) are
+    -- not something its hand can reach.
+    local own = pointed.type == "object" and (pointed.ref == player or pointed.ref:get_attach() == player)
+    if pointed.type == "object" and not own and pointed.ref:get_properties().pointable ~= false then
+      local stack = held(player)
+      pointed.ref:punch(player, 1.0, stack:get_tool_capabilities(), look)
+      state.hand_contact, state.dig = 255, nil
+      return
+    elseif pointed.type == "node" then
+      local node = minetest.get_node(pointed.under)
+      local def = minetest.registered_nodes[node.name] or {}
+      if def.pointable ~= false then
+        state.hand_contact = 255
+        local stack = held(player)
+        local dig = minetest.get_dig_params(def.groups or {}, stack:get_tool_capabilities(), stack:get_wear())
+        if not dig.diggable then state.dig = nil return end
+        if state.dig and vector.equals(state.dig.pos, pointed.under) then
+          state.dig.progress = state.dig.progress + step_seconds
+        else
+          state.dig = {pos = pointed.under, progress = step_seconds}
+        end
+        if state.dig.progress >= dig.time then
+          state.dig = nil
+          minetest.node_dig(pointed.under, node, player)
+        end
+        return
+      end
+    end
+  end
+  state.dig = nil
+end
+
+local function chew(player, jaw)
+  local hunger = rawget(_G, "mcl_hunger")
+  local stack = player:get_wielded_item()
+  local points = minetest.get_item_group(stack:get_name(), "eatable")
+  local full = hunger and hunger.get_hunger(player) >= 20
+    and minetest.get_item_group(stack:get_name(), "can_eat_when_full") == 0
+  if jaw <= 0 or points == 0 or not hunger or full then
+    state.chewing = 0
+    return
+  end
+  state.chewing = (state.chewing or 0) + step_seconds
+  if state.chewing < (hunger.EATING_DELAY or 1.61) then return end
+  state.chewing = 0
+  player:set_wielded_item(hunger.eat(points, nil, stack, player, {type = "nothing"}))
+  state.swallowed, state.meals = 255, state.meals + 1
+  minetest.log("action", "AI_BRIDGE_MEAL " .. tostring(state.meals))
+end
+
+local function grounded(player, velocity)
+  local below = minetest.registered_nodes[minetest.get_node(vector.offset(player:get_pos(), 0, -0.1, 0)).name]
+  return below ~= nil and below.walkable and math.abs(velocity.y) < 0.5
+end
+
+-- One server step of driving the founder player with the held action.
+local function drive_founder(player, dtime)
+  local body = state.founder_body
+  state.server_step, state.applied_steps, state.elapsed = state.server_step + 1, state.applied_steps + 1, state.elapsed + dtime
+  if state.pending and (minetest.get_us_time() - state.pending_at) / 1000000 > request_timeout then
+    state.request_token = state.request_token + 1 -- late reply cannot replace the safety action
+    state.pending = false
+    zero_action("timeout")
+  end
+  if player:get_hp() <= 0 then return end
+  local velocity = player:get_velocity()
+  state.grounded = grounded(player, velocity) and 255 or 0
+  local action, yaw = state.held, player:get_look_horizontal()
+  local v2_angle = yaw + math.pi / 2
+  local forward = {x = math.cos(v2_angle), z = math.sin(v2_angle)}
+  local right = {x = -forward.z, z = forward.x}
+  local thrust = clamp((action.thrust or 0) * 4 / 256, -4, 4)
+  local strafe = clamp((action.strafe or 0) * 4 / 256, -4, 4)
+  local moving = thrust ~= 0 or strafe ~= 0
+  -- Touch: pushing to move but held in place by something.
+  state.touch = (moving and math.abs(velocity.x) + math.abs(velocity.z) < 0.3) and 255 or 0
+  if moving then
+    player:add_velocity({x = forward.x * thrust + right.x * strafe - velocity.x, y = 0,
+      z = forward.z * thrust + right.z * strafe - velocity.z})
+  end
+  if state.applied_steps == 1 then
+    local turn = clamp(trunc_toward_zero((action.turn or 0) / 32), -8, 8)
+    player:set_look_horizontal(yaw + turn * (2 * math.pi / 256))
+    state.eye_pitch = clamp(state.eye_pitch + trunc_toward_zero((action.look_pitch or 0) / 32), -128, 127)
+    player:set_look_vertical(-state.eye_pitch * math.pi / 512)
+    if (action.jump or 0) > 0 and state.grounded > 0 then
+      player:add_velocity({x = 0, y = 6.5, z = 0})
+      local hunger = rawget(_G, "mcl_hunger")
+      if hunger and hunger.exhaust then hunger.exhaust(founder_name, hunger.EXHAUST_JUMP or 50) end
+    end
+    if (action.hand_pulse or 0) > 0 then use_hand(player, body) else state.dig = nil end
+    chew(player, action.jaw or 0)
+  end
+  if not state.pending and state.elapsed >= step_seconds then send_transition(body, state.elapsed) end
+end
+
+if play then
+  minetest.register_globalstep(function(dtime)
+    local player = state.founder
+    if player and player:get_pos() and state.founder_body then drive_founder(player, dtime) end
+  end)
+  minetest.register_on_dieplayer(function(player)
+    if player:get_player_name() ~= founder_name then return end
+    state.deaths = (state.deaths or 0) + 1
+    -- Its client has no one to press Respawn: the founder is born again after a moment.
+    minetest.after(3, function()
+      if player:get_pos() and player:get_hp() <= 0 then player:respawn() end
+    end)
+  end)
+end
+
 minetest.register_entity("ai_bridge:founder", {
   initial_properties = {physical = true, collide_with_objects = false, collisionbox = {-0.3,0,-0.3,0.3,1.7,0.3},
     visual = "mesh", mesh = "minetest_game_character.b3d",
@@ -662,30 +862,155 @@ minetest.register_entity("ai_bridge:test_object", {
 
 -- Open world: find land near the origin from the map generator's own spawn rule, generate the
 -- surroundings, and set the founder on the surface there. No arena and no test cube.
-local function settle_in_open_world()
-  minetest.set_timeofday(0.5)
-  local x, z, level = 0, 0, minetest.get_spawn_level(0, 0)
-  for radius = 16, 256, 16 do
-    if level then break end
-    for _, offset in ipairs({{radius, 0}, {-radius, 0}, {0, radius}, {0, -radius}}) do
-      level = minetest.get_spawn_level(offset[1], offset[2])
-      if level then x, z = offset[1], offset[2] break end
+-- Edible blocks that grow on the ground, where the founder's mouth can reach them (fruit high
+-- in a canopy cannot be).
+local function ground_food(minp, maxp)
+  local names = {}
+  for name in pairs(minetest.registered_nodes) do
+    if edible(name) then names[#names + 1] = name end
+  end
+  local reachable = {}
+  for _, position in ipairs(minetest.find_nodes_in_area(minp, maxp, names)) do
+    local below = minetest.registered_nodes[minetest.get_node(vector.offset(position, 0, -1, 0)).name]
+    if below and below.walkable and (below.groups or {}).leaves == nil then
+      reachable[#reachable + 1] = position
     end
   end
-  -- The spawn level is the first air node above ground; the founder's feet rest on its floor.
-  founder_spawn = {x = x, y = (level or 20) - 0.5, z = z}
+  return reachable
+end
+
+-- Where the founder is born: beside the densest patch of ground food in a wide stretch of the
+-- generated world, as an animal is born in its habitat. It must still find, approach and eat the
+-- food itself; nothing about the food is told to it.
+local open_world_search = 96
+
+-- Feet position on the first solid, non-leaf ground below `top` with two free nodes above it,
+-- or nil over water, in a canopy, or with no room to stand.
+local function standing_place(x, top, z, depth)
+  local function def_at(y) return minetest.registered_nodes[minetest.get_node({x = x, y = y, z = z}).name] end
+  for y = top, top - (depth or 24), -1 do
+    local ground = def_at(y)
+    if ground and ground.walkable then
+      local head, above = def_at(y + 1), def_at(y + 2)
+      if (ground.groups or {}).leaves or (ground.groups or {}).tree
+        or not head or head.walkable or not above or above.walkable then
+        return nil
+      end
+      return {x = x, y = y + 0.5, z = z}
+    end
+    if ground and ground.liquidtype ~= "none" then return nil end
+  end
+  return nil
+end
+
+-- Whether the ground two nodes around `feet` is within a node of its height: no cliff edge, ravine
+-- or pond next to a newborn.
+local function level_around(feet)
+  for dx = -2, 2 do
+    for dz = -2, 2 do
+      local ground = standing_place(feet.x + dx, math.floor(feet.y) + 3, feet.z + dz, 5)
+      if not ground or math.abs(ground.y - feet.y) > 1 then return false end
+    end
+  end
+  return true
+end
+
+-- Calls `found` with a place on open, dry ground under the sky within 32 nodes of `centre`
+-- (never in a cave, water or lava), or with nil if there is none.
+local function surface_near(centre, found)
+  local x, z = math.floor(centre.x + 0.5), math.floor(centre.z + 0.5)
+  local top = math.floor(centre.y) + 64
+  local minp = {x = x - 32, y = math.floor(centre.y) - 48, z = z - 32}
+  minetest.emerge_area(minp, {x = x + 32, y = top, z = z + 32}, function(_, _, remaining)
+    if remaining ~= 0 then return end
+    for radius = 3, 32 do
+      for _, offset in ipairs({{radius, 0}, {-radius, 0}, {0, radius}, {0, -radius},
+          {radius, radius}, {-radius, -radius}, {radius, -radius}, {-radius, radius}}) do
+        local feet = standing_place(x + offset[1], top, z + offset[2], top - minp.y)
+        if feet and level_around(feet) then found(feet) return end
+      end
+    end
+    found(nil)
+  end)
+end
+
+local function birthplace(food)
+  local best, best_count = nil, 0
+  for _, candidate in ipairs(food) do
+    local count = 0
+    for _, other in ipairs(food) do
+      if vector.distance(candidate, other) <= 12 then count = count + 1 end
+    end
+    if count > best_count then best, best_count = candidate, count end
+  end
+  if not best then return nil end
+  -- Stand a few nodes from the patch, on the first open ground found around it.
+  for radius = 3, 12 do
+    for _, offset in ipairs({{radius, 0}, {-radius, 0}, {0, radius}, {0, -radius}}) do
+      local feet = standing_place(best.x + offset[1], best.y + 8, best.z + offset[2])
+      if feet then return feet end
+    end
+  end
+  return nil
+end
+
+local function place_founder(spawn)
+  founder_spawn = spawn
   minetest.log("action", "AI_BRIDGE_OPEN_WORLD spawn " .. minetest.pos_to_string(founder_spawn))
   keep_loaded_around(founder_spawn)
   local corner = vector.new(32, 32, 32)
   minetest.emerge_area(vector.subtract(founder_spawn, corner), vector.add(founder_spawn, corner),
     function(_, _, remaining)
       if remaining ~= 0 then return end
+      local near = ground_food(vector.subtract(founder_spawn, corner), vector.add(founder_spawn, corner))
+      local nearest, kinds = math.huge, {}
+      for _, position in ipairs(near) do
+        nearest = math.min(nearest, vector.distance(founder_spawn, position))
+        local name = minetest.get_node(position).name
+        kinds[name] = (kinds[name] or 0) + 1
+      end
+      local listed = {}
+      for name, count in pairs(kinds) do listed[#listed + 1] = name .. "=" .. count end
+      table.sort(listed)
+      -- Operator log only; the founder never receives it.
+      minetest.log("action", ("AI_BRIDGE_FOOD reachable_within_32=%d nearest=%s %s"):format(#near,
+        nearest == math.huge and "none" or ("%.1f"):format(nearest), table.concat(listed, " ")))
       minetest.add_entity(founder_spawn, "ai_bridge:founder")
     end)
 end
 
+local function settle_in_open_world()
+  minetest.set_timeofday(0.5)
+  local minp = {x = -open_world_search, y = -16, z = -open_world_search}
+  local maxp = {x = open_world_search, y = 64, z = open_world_search}
+  minetest.emerge_area(minp, maxp, function(_, _, remaining)
+    if remaining ~= 0 then return end
+    local spawn = birthplace(ground_food(minp, maxp))
+    if not spawn then
+      local level = minetest.get_spawn_level(0, 0) or 20
+      spawn = {x = 0, y = level - 0.5, z = 0}
+    end
+    place_founder(spawn)
+  end)
+end
+
 minetest.register_on_mods_loaded(function()
   minetest.after(0, function()
+    if play then
+      -- VoxeLibre leaves the world spawn unset until something sets it, and Luanti's fallback
+      -- can land a person in a cave or lava. Make the world spawn open, level surface ground.
+      local spawn_api = rawget(_G, "mcl_spawn")
+      local current = spawn_api and spawn_api.get_world_spawn_pos()
+      if current and current.x == 0 and current.y == 8 and current.z == 0 then
+        surface_near({x = 0, y = minetest.get_spawn_level(0, 0) or 20, z = 0}, function(feet)
+          if feet then
+            spawn_api.set_world_spawn_pos(feet, false)
+            minetest.log("action", "AI_BRIDGE_WORLD_SPAWN " .. minetest.pos_to_string(feet))
+          end
+        end)
+      end
+      return
+    end
     if open_world then
       settle_in_open_world()
       return
@@ -765,6 +1090,11 @@ local POV_FORM = "ai_bridge:founders"
 
 local function founders()
   local list = {}
+  if play then
+    -- In a shared game the founder is a player.
+    if state.founder and state.founder:get_pos() then list[1] = {object = state.founder, label = "Founder 1"} end
+    return list
+  end
   for _, entity in pairs(minetest.luaentities) do
     if entity.name == "ai_bridge:founder" and entity.object:get_pos() then
       list[#list + 1] = {object = entity.object, label = entity.label or "Founder"}
@@ -800,8 +1130,24 @@ local function clear_eye_strip(player)
   end
 end
 
+-- An observer of a founder player rides an invisible camera that follows the founder's eyes:
+-- VoxeLibre expects anything a player is attached to to be an entity (like a boat or horse).
+minetest.register_entity("ai_bridge:camera", {
+  initial_properties = {physical = false, pointable = false, is_visible = false,
+    collisionbox = {0, 0, 0, 0, 0, 0}, static_save = false},
+})
+
 local function leave_pov(player)
+  if pov.target and pov.target:get_pos() and pov.target:is_player() then
+    -- The founder's body is seen by everyone again.
+    pov.target:set_observers(nil)
+  end
   pov.target = nil
+  if pov.camera then
+    if player then player:set_detach() end
+    pov.camera:remove()
+    pov.camera = nil
+  end
   if player then
     local position = player:get_pos()
     player:set_detach()
@@ -818,6 +1164,16 @@ local function enter_pov(player, founder)
   -- founder's sensing eye, 1 node above its feet, where its eye rays start. Moving it 0.4 forward
   -- keeps the founder's own body behind the camera. An attached player must keep observing the
   -- founder, so the body is not hidden.
+  if founder:is_player() then
+    -- A founder player's eyes are at a player's eye height already, so the camera sits exactly
+    -- there. Like one's own head, the founder's body is not seen from inside it: hidden from
+    -- everyone but the founder while observed (a player must always observe itself).
+    founder:set_observers({[founder:get_player_name()] = true})
+    pov.camera = minetest.add_entity(founder:get_pos(), "ai_bridge:camera")
+    pov.camera:set_yaw(founder:get_look_horizontal())
+    player:set_attach(pov.camera, "", {x = 0, y = 0, z = 0}, {x = 0, y = 0, z = 0})
+    return
+  end
   player:set_attach(founder, "", {x = 0, y = -6, z = 4}, {x = 0, y = 0, z = 0})
 end
 
@@ -828,20 +1184,20 @@ local EYE_STRIP_ORDER = {8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9}
 local function update_eye_strip(player)
   local retinal = state.last_retinal
   if not retinal then return end
-  hud_set(player, "eye_panel", {type = "image", position = {x = 0.5, y = 1},
-    offset = {x = 0, y = -24}, alignment = {x = 0, y = -1},
+  hud_set(player, "eye_panel", {type = "image", position = {x = 0.5, y = 0},
+    offset = {x = 0, y = 16}, alignment = {x = 0, y = 1},
     text = "ai_bridge_base.png^[colorize:#101418:255^[opacity:185",
     scale = {x = 46, y = 7}, z_index = 0})
-  hud_set(player, "eye_label", {type = "text", position = {x = 0.5, y = 1},
-    offset = {x = 0, y = -96}, alignment = {x = 0, y = 1}, number = 0xFFE08A, z_index = 1,
+  hud_set(player, "eye_label", {type = "text", position = {x = 0.5, y = 0},
+    offset = {x = 0, y = 26}, alignment = {x = 0, y = 1}, number = 0xFFE08A, z_index = 1,
     text = "WHAT THE FOUNDER SENSES  |  16 eye rays all around, ahead in the middle"})
   for slot, ray in ipairs(EYE_STRIP_ORDER) do
     local sample = retinal[ray + 1]
     local colour = string.format("%02x%02x%02x", sample.red, sample.green, sample.blue)
     local texture = "ai_bridge_base.png^[colorize:#" .. colour .. ":255"
-    hud_set(player, "eye_ray" .. slot, {type = "image", position = {x = 0.5, y = 1},
-      offset = {x = (slot - 8.5) * 44, y = -36}, scale = {x = 2.5, y = 2.5},
-      alignment = {x = 0, y = -1}, text = texture, z_index = 1}, "text", texture)
+    hud_set(player, "eye_ray" .. slot, {type = "image", position = {x = 0.5, y = 0},
+      offset = {x = (slot - 8.5) * 44, y = 56}, scale = {x = 2.5, y = 2.5},
+      alignment = {x = 0, y = 1}, text = texture, z_index = 1}, "text", texture)
   end
 end
 
@@ -853,8 +1209,8 @@ local function update_founder_list(player)
     lines[#lines + 1] = {(watching and "> " or "- ") .. founder.label .. (watching and "  (watching)" or ""),
       watching and 0x9EF0A8 or 0xFFFFFF}
   end
-  lines[#lines + 1] = {pov.target and "Press I, then Free camera to leave" or "Press I to watch a founder",
-    0xB8C4CE}
+  lines[#lines + 1] = {play and "Type /founder to return to yourself"
+    or pov.target and "Press I, then Free camera to leave" or "Press I to watch a founder", 0xB8C4CE}
   -- Keep a fixed number of rows so a founder leaving clears its line.
   local rows = math.max(#lines, pov.rows or 0)
   pov.rows = rows
@@ -865,19 +1221,60 @@ local function update_founder_list(player)
   end
 end
 
+-- The founder's own hearts, hunger and air, drawn like a player's with VoxeLibre's icons, above
+-- the eye strip while observing it in play mode.
+-- The founder player's hunger as the game keeps it.
+local function founder_hunger(founder)
+  local hunger = rawget(_G, "mcl_hunger")
+  return hunger and hunger.get_hunger(founder) or 20
+end
+
+local function update_life_bars(player, founder)
+  local bars = {
+    {key = "founder_hp", icon = "hudbars_icon_health.png", bg = "hudbars_bgicon_health.png",
+      value = founder:get_hp(), max = 20, x = -265},
+    {key = "founder_food", icon = "hbhunger_icon.png", bg = "hbhunger_bgicon.png",
+      value = founder_hunger(founder), max = 20, x = 25},
+  }
+  local air, air_max = founder:get_breath(), founder:get_properties().breath_max or 10
+  local breath = air < air_max
+  bars[3] = {key = "founder_air", icon = "hudbars_icon_breath.png", bg = "hudbars_bgicon_breath.png",
+    value = breath and math.floor(air * 20 / air_max) or 0, max = breath and 20 or 0, x = 25, y = -170}
+  for _, bar in ipairs(bars) do
+    hud_set(player, bar.key, {type = "statbar", position = {x = 0.5, y = 1}, text = bar.icon, text2 = bar.bg,
+      number = bar.value, item = bar.max, direction = 0, size = {x = 24, y = 24},
+      offset = {x = bar.x, y = bar.y or -140}, z_index = 1}, "number", bar.value)
+    player:hud_change(hud[bar.key], "item", bar.max)
+  end
+end
+
 local function update_pov(player)
   update_founder_list(player)
   local founder = pov.target
   if not founder then return end
-  if not founder:get_pos() then leave_pov(player) return end
+  if not founder:get_pos() then
+    -- In play mode the observer keeps watching through the death and follows the reborn founder.
+    if play then
+      if state.founder and state.founder:get_pos() then enter_pov(player, state.founder) end
+    else
+      leave_pov(player)
+    end
+    return
+  end
+  if play then update_life_bars(player, founder) end
+  if pov.camera then
+    if not pov.camera:get_pos() then enter_pov(player, founder) return end
+    pov.camera:move_to(founder:get_pos(), true)
+    pov.camera:set_yaw(founder:get_look_horizontal())
+  end
   -- Look exactly where the founder's eyes point: its yaw, and its eye pitch (positive is up).
-  player:set_look_horizontal(founder:get_yaw())
+  player:set_look_horizontal(founder:is_player() and founder:get_look_horizontal() or founder:get_yaw())
   player:set_look_vertical(-state.eye_pitch * math.pi / 512)
   update_eye_strip(player)
 end
 
 minetest.register_on_player_receive_fields(function(player, formname, fields)
-  if player:get_player_name() ~= observer_name then return end
+  if play or player:get_player_name() ~= observer_name then return end
   if formname ~= POV_FORM and formname ~= "" then return end
   if fields.free_camera then
     leave_pov(player)
@@ -901,14 +1298,236 @@ minetest.register_chatcommand("founders", {
   end,
 })
 
+-- Play mode: what the person had before observing, restored when they return to themselves.
+local saved_self
+
+local function clear_hud(player)
+  for _, id in pairs(hud) do player:hud_remove(id) end
+  hud, pov.rows = {}, 0
+end
+
+-- The person's own hotbar and status bars (health, hunger, armour...) belong to their body, not
+-- the founder's, so they are hidden while observing. VoxeLibre draws its bars with vl_hudbars.
+local function own_bars(name)
+  local bars = rawget(_G, "vl_hudbars")
+  return bars, bars and bars.players and bars.players[name] and bars.players[name].hudbar_states or {}
+end
+
+-- VoxeLibre shows a person's bars again whenever it updates them; while they observe, those
+-- requests are held back so their own bars stay hidden (without flickering).
+local function hold_back_own_bars(bars)
+  if not bars or bars.ai_bridge_held_back then return end
+  bars.ai_bridge_held_back = true
+  local show = bars.show
+  bars.show_own = show
+  bars.show = function(player, ...)
+    if saved_self and player and player.get_player_name and player:get_player_name() == observer_name then return end
+    return show(player, ...)
+  end
+end
+
+local function hide_own_hud(player)
+  local name = player:get_player_name()
+  local bars, states = own_bars(name)
+  hold_back_own_bars(bars)
+  local shown = {}
+  for identifier, bar in pairs(states) do
+    local visible = bar.state and not bar.state.hidden
+    for _, part in pairs(bar.parts or {}) do
+      visible = visible or (part.state and not part.state.hidden)
+    end
+    if visible then
+      shown[#shown + 1] = identifier
+      bars.hide(player, identifier)
+    end
+  end
+  local flags = player:hud_get_flags()
+  player:hud_set_flags({hotbar = false, healthbar = false, breathbar = false, wielditem = false})
+  return {bars = shown, flags = flags}
+end
+
+local function show_own_hud(player, saved)
+  player:hud_set_flags(saved.flags)
+  local bars = own_bars(player:get_player_name())
+  for _, identifier in ipairs(saved.bars) do (bars.show_own or bars.show)(player, identifier) end
+end
+
+local function become_observer(player)
+  local name = player:get_player_name()
+  local privs = minetest.get_player_privs(name)
+  saved_self = {pos = player:get_pos(), privs = table.copy(privs), armor = player:get_armor_groups()}
+  saved_self.hud = hide_own_hud(player)
+  state.observing = true
+  -- Kept in the person's own data too, so a crash while observing cannot cost them privileges.
+  player:get_meta():set_string("ai_bridge:privs", minetest.privs_to_string(saved_self.privs))
+  -- An observer only watches: no building or breaking, no damage, and no visible body.
+  privs.interact = nil
+  minetest.set_player_privs(name, privs)
+  player:set_armor_groups({immortal = 1})
+  -- The observer's hidden body rides at the founder's eyes; mobs must not take it for a target
+  -- (VoxeLibre's monsters attack the nearest player they can see, and ignore invisible ones).
+  local mobs = rawget(_G, "mcl_mobs")
+  if mobs and mobs.invis then mobs.invis[name] = true end
+  -- Invisible rather than shrunk: VoxeLibre divides by the body's size (to fit flames to it).
+  player:set_properties({is_visible = false})
+  enter_pov(player, state.founder)
+end
+
+local function become_self(player)
+  if not saved_self then return end
+  local back = saved_self
+  saved_self = nil
+  state.observing = false
+  leave_pov(player)
+  clear_hud(player)
+  minetest.set_player_privs(player:get_player_name(), back.privs)
+  player:get_meta():set_string("ai_bridge:privs", "")
+  player:set_armor_groups(back.armor)
+  player:set_properties({is_visible = true})
+  local mobs = rawget(_G, "mcl_mobs")
+  if mobs and mobs.invis then mobs.invis[player:get_player_name()] = nil end
+  local burning = rawget(_G, "mcl_burning")
+  if burning and burning.extinguish then burning.extinguish(player) end
+  show_own_hud(player, back.hud)
+  player:set_pos(back.pos)
+  -- The detach completes on the next server step; place the body again once it has.
+  minetest.after(0.2, function()
+    if player:get_pos() then player:set_pos(back.pos) end
+  end)
+end
+
+-- An observer's body travels with the founder, through whatever lava, fire or rock he meets;
+-- it takes no harm while observing.
+minetest.register_on_player_hpchange(function(player, change)
+  if saved_self and change < 0 and player:get_player_name() == observer_name then return 0 end
+  return change
+end, true)
+
+minetest.register_chatcommand("founder", {
+  description = "Switch between playing as yourself and observing through the founder's eyes; "
+    .. "'/founder here' brings him to open ground near you.",
+  params = "[here]",
+  func = function(name, param)
+    if not play then return false, "/founder is for play mode; observers use /founders." end
+    if name ~= observer_name then return false, "Only " .. observer_name .. " may observe the founder." end
+    local player = minetest.get_player_by_name(name)
+    if not player then return false end
+    if param == "here" then
+      if saved_self then return false, "Return to yourself first: /founder" end
+      surface_near(player:get_pos(), function(feet)
+        if not feet then
+          minetest.chat_send_player(name, "No open ground near you for the founder.")
+          return
+        end
+        -- His birthplace moves too, so he is born again here if he dies.
+        founder_spawn = feet
+        if not (state.founder and state.founder:get_pos()) then
+          minetest.chat_send_player(name, "The founder is not connected.")
+          return
+        end
+        state.founder:set_pos(feet)
+        minetest.chat_send_player(name, "The founder is beside you, at " .. minetest.pos_to_string(feet) .. ".")
+      end)
+      return true, "Bringing the founder to open ground near you..."
+    end
+    if saved_self then
+      become_self(player)
+      return true, "You are yourself again."
+    end
+    if not state.founder or not state.founder:get_pos() then
+      return false, "The founder is not connected yet."
+    end
+    become_observer(player)
+    return true, "Observing through the founder's eyes. Type /founder to return to yourself."
+  end,
+})
+
 minetest.register_on_leaveplayer(function(player)
+  if play and player:get_player_name() == founder_name then
+    state.founder, state.founder_body = nil, nil
+    zero_action("disconnected")
+    return
+  end
+  if play then
+    -- Leave as oneself, so privileges and position are kept for the next session.
+    if saved_self then become_self(player) end
+    hud, pov.rows = {}, 0
+    return
+  end
   if player:get_player_name() == observer_name then
     leave_pov(nil)
     hud, pov.rows = {}, 0
   end
 end)
 
+-- Whether a person standing here is safe: solid ground below, room to breathe, no lava or fire.
+local function safe_to_stand(position)
+  local function def_at(dy)
+    return minetest.registered_nodes[minetest.get_node(vector.offset(position, 0, dy, 0)).name] or {}
+  end
+  local below, feet, head = def_at(-0.6), def_at(0.2), def_at(1.5)
+  for _, def in ipairs({feet, head}) do
+    if def.walkable or (def.liquidtype or "none") ~= "none" or (def.damage_per_second or 0) > 0 then
+      return false
+    end
+  end
+  return below.walkable == true
+end
+
+-- Moves a person in danger (in lava, water or a wall) to the world spawn's open ground.
+local function rescue(player)
+  local position = player:get_pos()
+  if not position or player:get_hp() <= 0 or safe_to_stand(position) then return end
+  local spawn_api = rawget(_G, "mcl_spawn")
+  local spawn = spawn_api and spawn_api.get_world_spawn_pos() or {x = 0, y = 20, z = 0}
+  surface_near(spawn, function(feet)
+    if feet and player:get_pos() then
+      player:set_pos(feet)
+      minetest.chat_send_player(player:get_player_name(), "You arrived somewhere dangerous; moved to open ground.")
+    end
+  end)
+end
+
+if play then
+  minetest.register_on_respawnplayer(function(player)
+    minetest.after(0.5, function() if player:get_pos() then rescue(player) end end)
+  end)
+end
+
 minetest.register_on_joinplayer(function(player)
+  if play then
+    if player:get_player_name() == founder_name then
+      state.founder, state.founder_body = player, player_body(player)
+      state.eye_pitch = 0
+      minetest.log("action", "AI_BRIDGE_FOUNDER_PLAYER joined")
+      -- The first time ever, the founder is born on open ground near the person playing.
+      local meta = player:get_meta()
+      if meta:get_string("ai_bridge:born") == "" then
+        meta:set_string("ai_bridge:born", "yes")
+        minetest.after(1, function()
+          local person = minetest.get_player_by_name(observer_name)
+          local spawn_api = rawget(_G, "mcl_spawn")
+          local near = person and person:get_pos() or spawn_api and spawn_api.get_world_spawn_pos()
+            or {x = 0, y = 20, z = 0}
+          surface_near(near, function(feet)
+            if feet and player:get_pos() then player:set_pos(feet) end
+          end)
+        end)
+      else
+        minetest.after(0.5, function() if player:get_pos() then rescue(player) end end)
+      end
+      return
+    end
+    hud, pov.rows = {}, 0
+    -- A person who was observing when the server stopped gets their own privileges back.
+    local kept = player:get_meta():get_string("ai_bridge:privs")
+    if kept ~= "" then
+      minetest.set_player_privs(player:get_player_name(), minetest.string_to_privs(kept))
+      player:get_meta():set_string("ai_bridge:privs", "")
+    end
+    minetest.after(0.5, function() if player:get_pos() then rescue(player) end end)
+    return
+  end
   if player:get_player_name() ~= observer_name then return end
   hud, pov.rows = {}, 0
   player:set_inventory_formspec(founder_picker())
@@ -953,6 +1572,15 @@ minetest.register_chatcommand("founder_reset", {
 })
 
 minetest.register_globalstep(function()
+  if play then
+    -- Only the person observing sees the founder's HUD.
+    local watcher = saved_self and pov.target and minetest.get_player_by_name(observer_name)
+    if watcher then
+      update_observer_hud()
+      update_pov(watcher)
+    end
+    return
+  end
   update_observer_hud()
   local player = minetest.get_player_by_name(observer_name)
   if player then update_pov(player) end
