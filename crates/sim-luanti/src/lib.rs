@@ -20,7 +20,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sim_core::{
     environment::{EnvironmentObservation, EnvironmentTransition, PrimitiveAction},
-    runtime::{AgentRuntime, ExperimentMode, FrozenPhysiology, RuntimeError},
+    runtime::{AffordanceConfig, AgentRuntime, ExperimentMode, FrozenPhysiology, RuntimeError},
 };
 use sim_format::FounderSpec;
 use sim_kernels::brain::{MODULATORS, NEURONS};
@@ -64,6 +64,9 @@ pub struct AppliedPose {
 pub struct Diagnostics {
     /// Explicit policy that generated this response.
     pub experiment_mode: ExperimentMode,
+    /// Affordance learner settings, so a trace replays with the settings it was recorded with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub affordance_config: Option<AffordanceConfig>,
     /// Runtime decision counter after this response.
     pub decision_tick: u64,
     /// Fingerprint of the post-decision brain.
@@ -191,6 +194,28 @@ impl Bridge {
         }
     }
 
+    /// Constructs an affordance-discovery bridge with explicit learner settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns a description of the first learner setting out of range.
+    pub fn new_with_affordance(
+        seed: u64,
+        agent_id: u64,
+        affordance: AffordanceConfig,
+    ) -> Result<Self, String> {
+        let founder = FounderSpec::new(seed, agent_id);
+        Ok(Self {
+            runtime: AgentRuntime::new_with_affordance(
+                seed,
+                agent_id,
+                founder.genome.default_brain_config(),
+                affordance,
+            )?,
+            trace: Vec::new(),
+        })
+    }
+
     /// Validates and processes one complete Luanti observation interval.
     ///
     /// # Errors
@@ -241,6 +266,9 @@ fn response_for(
         diagnostics: Diagnostics {
             decision_tick: transition.decision_tick,
             experiment_mode: runtime.state().experiment_mode,
+            affordance_config: (runtime.state().experiment_mode
+                == ExperimentMode::AffordanceDiscovery)
+                .then_some(runtime.state().affordance.config),
             brain_fingerprint: transition.brain_fingerprint,
             baseline_action: if runtime.state().experiment_mode
                 == ExperimentMode::PredictiveBaseline
@@ -280,20 +308,28 @@ fn mean_modulator_activity(runtime: &AgentRuntime) -> u16 {
 ///
 /// Returns an error if any recorded response cannot be reproduced exactly.
 pub fn replay_trace(seed: u64, agent_id: u64, records: &[TraceRecord]) -> Result<(), BridgeError> {
-    let mode = records
-        .first()
-        .map_or(ExperimentMode::PredictiveBaseline, |record| {
-            record.response.diagnostics.experiment_mode
-        });
-    if records
-        .iter()
-        .any(|record| record.response.diagnostics.experiment_mode != mode)
-    {
+    let (mode, affordance) =
+        records
+            .first()
+            .map_or((ExperimentMode::PredictiveBaseline, None), |record| {
+                let diagnostics = &record.response.diagnostics;
+                (diagnostics.experiment_mode, diagnostics.affordance_config)
+            });
+    if records.iter().any(|record| {
+        record.response.diagnostics.experiment_mode != mode
+            || record.response.diagnostics.affordance_config != affordance
+    }) {
         return Err(BridgeError::Replay);
     }
     let founder = FounderSpec::new(seed, agent_id);
-    let mut runtime =
-        AgentRuntime::new_with_mode(seed, agent_id, founder.genome.default_brain_config(), mode);
+    let brain = founder.genome.default_brain_config();
+    let mut runtime = match (mode, affordance) {
+        (ExperimentMode::AffordanceDiscovery, Some(settings)) => {
+            AgentRuntime::new_with_affordance(seed, agent_id, brain, settings)
+                .map_err(|_| BridgeError::Replay)?
+        }
+        _ => AgentRuntime::new_with_mode(seed, agent_id, brain, mode),
+    };
     for record in records {
         let transition = runtime
             .step(record.request.observation)
@@ -547,6 +583,28 @@ mod tests {
         replay_trace(4, 9, &records).expect("replay");
         let mut tampered = records;
         tampered[1].request.observation.body.hand_contact = 255;
+        assert_eq!(replay_trace(4, 9, &tampered), Err(BridgeError::Replay));
+    }
+
+    #[test]
+    fn custom_learner_settings_are_recorded_and_replayed() {
+        let settings = AffordanceConfig {
+            rule: sim_core::runtime::ScoringRule::LearningProgress,
+            action_horizon: 16,
+            ..AffordanceConfig::default()
+        };
+        let mut bridge = Bridge::new_with_affordance(4, 9, settings).expect("valid settings");
+        for sequence in 0..6 {
+            bridge.handle(request(sequence)).expect("in sequence");
+        }
+        let records = bridge.drain_trace();
+        assert_eq!(
+            records[0].response.diagnostics.affordance_config,
+            Some(settings)
+        );
+        replay_trace(4, 9, &records).expect("replay with recorded settings");
+        let mut tampered = records;
+        tampered[3].response.diagnostics.affordance_config = Some(AffordanceConfig::default());
         assert_eq!(replay_trace(4, 9, &tampered), Err(BridgeError::Replay));
     }
 

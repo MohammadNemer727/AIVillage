@@ -40,36 +40,105 @@ pub const VISUAL_CHANGE_FEATURE: usize = 7;
 const VIEW_CHANNELS: usize = 5;
 /// Fixed-point scale of the outcome averages.
 const OUTCOME_SCALE: i32 = 256;
-/// Per-action averages settle at this many visits, so they keep tracking a changed world.
-const ACTION_HORIZON: u16 = 8;
-/// The overall average adapts more slowly than any one action's.
-const OVERALL_HORIZON: i32 = 16;
 /// Smallest overall spread an outcome is judged against, so a nearly constant receptor cannot
 /// turn receptor noise into huge contingency.
 const SPREAD_FLOOR: i32 = 16 * OUTCOME_SCALE;
-/// Contingency points for an outcome that differs from normal by one overall spread.
+/// Score points for an outcome that differs from normal by one overall spread.
 const SPREAD_POINTS: i64 = 64;
-/// Unused experiment memories drift toward the overall outcome by this fraction per decision,
-/// so a consequence that stops can fade without being re-tested.
-const FORGETTING_HORIZON: i32 = 32;
-/// Contingency points one outcome feature can contribute at most.
+/// Score points one outcome feature can contribute at most.
 const FEATURE_POINTS_CAP: i64 = 8 * SPREAD_POINTS;
-/// Recent experiments that share credit for each outcome, so a consequence that arrives a few
-/// decisions late still reaches its cause. Credit halves with each decision of age.
-const ELIGIBILITY_SPAN: usize = 4;
-/// Curiosity gained per decision since an experiment was last tried, up to the cap.
-const RECENCY_RATE: u64 = 4;
-const RECENCY_CAP: u64 = 1_024;
+/// Longest supported eligibility span; [`AffordanceConfig::eligibility_span`] selects how much
+/// of it is used.
+pub const MAX_ELIGIBILITY_SPAN: usize = 8;
+
+/// What makes an experiment interesting to the affordance learner.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ScoringRule {
+    /// How far an experiment's outcomes differ from normal, in average and spread (after Xu &
+    /// Triesch's causal action influence).
+    #[default]
+    Contingency,
+    /// How fast the learner's prediction error for an experiment is changing (after Oudeyer's
+    /// learning progress): interesting while being learned, boring once mastered or
+    /// unlearnable.
+    LearningProgress,
+}
+
+/// Tunable settings of the affordance learner. They are checkpointed with its statistics, so a
+/// resumed run keeps the settings it started with.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default)]
+pub struct AffordanceConfig {
+    /// What makes an experiment interesting.
+    pub rule: ScoringRule,
+    /// Tries after which an experiment's averages stop settling and keep tracking a changed
+    /// world: the learner's memory window.
+    pub action_horizon: u16,
+    /// Decisions over which the overall averages adapt.
+    pub overall_horizon: u16,
+    /// Decisions over which an unused experiment's memory drifts back to normal.
+    pub forgetting_horizon: u16,
+    /// Recent experiments that share credit for each outcome, halving with each decision of
+    /// age, so a consequence that arrives late can still reach its cause.
+    pub eligibility_span: usize,
+    /// Curiosity gained per decision since an experiment was last tried.
+    pub recency_rate: u64,
+    /// Largest curiosity an untried experiment can gather.
+    pub recency_cap: u64,
+}
+
+impl Default for AffordanceConfig {
+    fn default() -> Self {
+        Self {
+            rule: ScoringRule::Contingency,
+            action_horizon: 8,
+            overall_horizon: 16,
+            forgetting_horizon: 32,
+            eligibility_span: 4,
+            recency_rate: 4,
+            recency_cap: 1_024,
+        }
+    }
+}
+
+impl AffordanceConfig {
+    /// Checks that every setting is within its supported range.
+    ///
+    /// # Errors
+    ///
+    /// Returns a description of the first setting out of range.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.action_horizon == 0 || self.overall_horizon == 0 || self.forgetting_horizon == 0 {
+            return Err("affordance horizons must be at least 1".to_owned());
+        }
+        if self.action_horizon > 1_024 || self.overall_horizon > 1_024 {
+            return Err("affordance horizons must be at most 1024".to_owned());
+        }
+        if !(1..=MAX_ELIGIBILITY_SPAN).contains(&self.eligibility_span) {
+            return Err(format!(
+                "eligibility span must be between 1 and {MAX_ELIGIBILITY_SPAN}"
+            ));
+        }
+        if self.recency_cap > u64::from(u32::MAX / 4) {
+            return Err("recency cap is out of range".to_owned());
+        }
+        Ok(())
+    }
+}
 
 /// Checkpointed bounded statistics for intrinsic action discovery.
 ///
-/// The learner measures contingency: how far the outcomes that follow an experiment differ from
-/// the outcomes overall, in both their average and their spread. Each outcome is judged in
-/// units of its own overall spread, so a small visual change can matter as much as a large
-/// change of body posture. An effect that follows regardless of action, or that stops
-/// following, carries no contingency, so neither keeps attracting experiments.
+/// Under the default [`ScoringRule::Contingency`] the learner measures how far the outcomes that
+/// follow an experiment differ from the outcomes overall, in both their average and their
+/// spread. Each outcome is judged in units of its own overall spread, so a small visual change
+/// can matter as much as a large change of body posture. An effect that follows regardless of
+/// action, or that stops following, carries no contingency, so neither keeps attracting
+/// experiments.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AffordanceLearner {
+    /// Settings the statistics below were gathered with.
+    #[serde(default)]
+    pub config: AffordanceConfig,
     /// Number of observed outcomes per experiment, saturating.
     pub visits: [u16; AFFORDANCE_ACTIONS],
     /// Recent average outcome following each experiment, scaled by 256.
@@ -82,39 +151,71 @@ pub struct AffordanceLearner {
     /// Recent mean absolute deviation of the outcome over all decisions, scaled by 256.
     #[serde(default)]
     pub overall_spread: [i32; OUTCOME_FEATURES],
+    /// Recent prediction error of each experiment's direct outcome over a short window, in
+    /// score points scaled by 256.
+    #[serde(default)]
+    pub error_fast: [i32; AFFORDANCE_ACTIONS],
+    /// The same prediction error over a long window; its gap to the short window is learning
+    /// progress.
+    #[serde(default)]
+    pub error_slow: [i32; AFFORDANCE_ACTIONS],
     /// Decision tick at which each experiment was last selected.
     pub last_tried: [u64; AFFORDANCE_ACTIONS],
     /// Last selected experiment, whose outcome the next observation reports.
     pub previous_action: usize,
     /// Recent experiments, most recent first, that share credit for the next outcome.
     #[serde(default = "no_recent_actions")]
-    pub recent_actions: [usize; ELIGIBILITY_SPAN],
+    pub recent_actions: [usize; MAX_ELIGIBILITY_SPAN],
     /// Previous retinal view, so the next outcome can report how much the view changed.
     #[serde(default)]
     pub previous_view: [[u16; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
 }
 
-const fn no_recent_actions() -> [usize; ELIGIBILITY_SPAN] {
-    [AFFORDANCE_ACTIONS; ELIGIBILITY_SPAN]
+const fn no_recent_actions() -> [usize; MAX_ELIGIBILITY_SPAN] {
+    [AFFORDANCE_ACTIONS; MAX_ELIGIBILITY_SPAN]
 }
 
 impl Default for AffordanceLearner {
     fn default() -> Self {
+        Self::new(AffordanceConfig::default())
+    }
+}
+
+impl AffordanceLearner {
+    /// A blank learner with the given settings.
+    #[must_use]
+    pub const fn new(config: AffordanceConfig) -> Self {
         Self {
+            config,
             visits: [0; AFFORDANCE_ACTIONS],
             after: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
             overall: [0; OUTCOME_FEATURES],
             after_spread: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
             overall_spread: [0; OUTCOME_FEATURES],
+            error_fast: [0; AFFORDANCE_ACTIONS],
+            error_slow: [0; AFFORDANCE_ACTIONS],
             last_tried: [0; AFFORDANCE_ACTIONS],
             previous_action: AFFORDANCE_ACTIONS,
             recent_actions: no_recent_actions(),
             previous_view: [[0; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
         }
     }
-}
 
-impl AffordanceLearner {
+    /// Checks settings and every stored experiment index, so a decoded learner cannot index
+    /// outside its fixed tables.
+    fn validate(&self) -> Result<(), String> {
+        self.config.validate()?;
+        if self.previous_action > AFFORDANCE_ACTIONS
+            || self
+                .recent_actions
+                .iter()
+                .any(|action| *action > AFFORDANCE_ACTIONS)
+        {
+            return Err("affordance experiment index is out of range".to_owned());
+        }
+        Ok(())
+    }
+
     /// Bounded body and visual outcome. Vision is summarized without identities or locations:
     /// the largest apparent motion on any ray, and the largest change of any ray since the
     /// previous view. Taking the largest rather than the mean keeps a small object salient
@@ -159,20 +260,55 @@ impl AffordanceLearner {
         .map(|value| value * OUTCOME_SCALE)
     }
 
+    /// Score points for a `difference` on `feature`, in units of that feature's overall spread.
+    fn points(&self, feature: usize, difference: i32) -> i64 {
+        let spread = i64::from(self.overall_spread[feature].max(SPREAD_FLOOR));
+        (i64::from(difference.abs()) * SPREAD_POINTS / spread).min(FEATURE_POINTS_CAP)
+    }
+
+    /// How badly the learner predicted `now` after `action`, in score points scaled by 256.
+    fn prediction_error(&self, action: usize, now: &[i32; OUTCOME_FEATURES]) -> i32 {
+        let points: i64 = (0..OUTCOME_FEATURES)
+            .map(|feature| self.points(feature, now[feature] - self.after[action][feature]))
+            .sum();
+        i32::try_from(points * i64::from(OUTCOME_SCALE)).unwrap_or(i32::MAX)
+    }
+
     fn observe(&mut self, observation: &EnvironmentObservation) {
         let now = self.outcome(observation);
         if self.previous_action >= AFFORDANCE_ACTIONS {
             self.overall = now;
             return;
         }
+        let config = self.config;
         let action = self.previous_action;
-        self.visits[action] = self.visits[action].saturating_add(1);
-        for (age, credited) in self.recent_actions.into_iter().enumerate() {
+        let visits = self.visits[action].saturating_add(1);
+        self.visits[action] = visits;
+        if visits > 1 {
+            // Learning progress compares the direct outcome's prediction error over a short and
+            // a long window, before this outcome updates the prediction.
+            let error = self.prediction_error(action, &now);
+            if visits == 2 {
+                self.error_fast[action] = error;
+                self.error_slow[action] = error;
+            } else {
+                let fast = i32::from((config.action_horizon / 2).max(1));
+                let slow = i32::from(config.action_horizon) * 2;
+                self.error_fast[action] += (error - self.error_fast[action]) / fast;
+                self.error_slow[action] += (error - self.error_slow[action]) / slow;
+            }
+        }
+        for (age, credited) in self
+            .recent_actions
+            .into_iter()
+            .take(config.eligibility_span)
+            .enumerate()
+        {
             if credited >= AFFORDANCE_ACTIONS || self.visits[credited] == 0 {
                 continue;
             }
             let count = self.visits[credited];
-            let horizon = i32::from(count.min(ACTION_HORIZON)) << age;
+            let horizon = i32::from(count.min(config.action_horizon)) << age;
             for (feature, value) in now.into_iter().enumerate() {
                 // Spreads are measured against the averages before this outcome joins them;
                 // an experiment's first outcome sets its average and has no spread yet.
@@ -184,19 +320,20 @@ impl AffordanceLearner {
                 self.after[credited][feature] += (value - self.after[credited][feature]) / horizon;
             }
         }
+        let overall_horizon = i32::from(config.overall_horizon);
         for (feature, value) in now.into_iter().enumerate() {
             let deviation = (value - self.overall[feature]).abs();
             self.overall_spread[feature] +=
-                (deviation - self.overall_spread[feature]) / OVERALL_HORIZON;
-            self.overall[feature] += (value - self.overall[feature]) / OVERALL_HORIZON;
+                (deviation - self.overall_spread[feature]) / overall_horizon;
+            self.overall[feature] += (value - self.overall[feature]) / overall_horizon;
         }
+        let forgetting = i32::from(config.forgetting_horizon);
         for other in (0..AFFORDANCE_ACTIONS).filter(|other| *other != action) {
             for feature in 0..OUTCOME_FEATURES {
                 self.after[other][feature] +=
-                    (self.overall[feature] - self.after[other][feature]) / FORGETTING_HORIZON;
-                self.after_spread[other][feature] += (self.overall_spread[feature]
-                    - self.after_spread[other][feature])
-                    / FORGETTING_HORIZON;
+                    (self.overall[feature] - self.after[other][feature]) / forgetting;
+                self.after_spread[other][feature] +=
+                    (self.overall_spread[feature] - self.after_spread[other][feature]) / forgetting;
             }
         }
     }
@@ -217,37 +354,42 @@ impl AffordanceLearner {
         }
         let points: i64 = (0..OUTCOME_FEATURES)
             .map(|feature| {
-                let difference =
-                    i64::from((self.after[action][feature] - self.overall[feature]).abs())
-                        + i64::from(
-                            (self.after_spread[action][feature] - self.overall_spread[feature])
-                                .abs(),
-                        );
-                let spread = i64::from(self.overall_spread[feature].max(SPREAD_FLOOR));
-                (difference * SPREAD_POINTS / spread).min(FEATURE_POINTS_CAP)
+                let average = (self.after[action][feature] - self.overall[feature]).abs();
+                let spread =
+                    (self.after_spread[action][feature] - self.overall_spread[feature]).abs();
+                self.points(feature, average.saturating_add(spread))
             })
             .sum();
         u32::try_from(points).unwrap_or(u32::MAX)
     }
 
+    /// How fast an experiment's prediction error is changing, in either direction: rising
+    /// error marks a consequence that changed, falling error one being learned.
+    fn learning_progress(&self, action: usize) -> u32 {
+        let gap = (self.error_slow[action] - self.error_fast[action]).unsigned_abs();
+        gap / OUTCOME_SCALE.cast_unsigned()
+    }
+
     fn select(&mut self, seed: u64, tick: u64) -> (PrimitiveAction, u32) {
+        let config = self.config;
         let mut best = 0;
         let mut best_score = 0_u32;
         for candidate in 0..AFFORDANCE_ACTIONS {
             // Curiosity regrows while an experiment goes untried, so exploration never stops
             // and a world that changed is noticed again.
             let since = if self.visits[candidate] == 0 {
-                RECENCY_CAP
+                config.recency_cap
             } else {
-                (tick - self.last_tried[candidate]).saturating_mul(RECENCY_RATE)
+                (tick - self.last_tried[candidate]).saturating_mul(config.recency_rate)
             };
-            let curiosity = u32::try_from(since.min(RECENCY_CAP)).unwrap_or_default();
+            let curiosity = u32::try_from(since.min(config.recency_cap)).unwrap_or_default();
             // Seed-keyed tie breaking is endogenous deterministic initialization, not a schedule.
             let tie = (derive(seed, tick, candidate as u64, 0x4146_464F) & 0xff) as u32;
-            let score = self
-                .contingency(candidate)
-                .saturating_add(curiosity)
-                .saturating_add(tie);
+            let interest = match config.rule {
+                ScoringRule::Contingency => self.contingency(candidate),
+                ScoringRule::LearningProgress => self.learning_progress(candidate),
+            };
+            let score = interest.saturating_add(curiosity).saturating_add(tie);
             if score > best_score {
                 best = candidate;
                 best_score = score;
@@ -419,6 +561,28 @@ impl AgentRuntime {
         runtime
     }
 
+    /// Constructs an affordance-discovery runtime with explicit learner settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns a description of the first learner setting out of range.
+    pub fn new_with_affordance(
+        seed: u64,
+        agent_id: u64,
+        developmental_config: BrainConfig,
+        affordance: AffordanceConfig,
+    ) -> Result<Self, String> {
+        affordance.validate()?;
+        let mut runtime = Self::new_with_mode(
+            seed,
+            agent_id,
+            developmental_config,
+            ExperimentMode::AffordanceDiscovery,
+        );
+        runtime.state.affordance = AffordanceLearner::new(affordance);
+        Ok(runtime)
+    }
+
     /// Restores an exact runtime state.
     #[must_use]
     pub const fn from_state(seed: u64, agent_id: u64, state: AgentRuntimeState) -> Self {
@@ -534,6 +698,21 @@ impl AgentRuntime {
 #[must_use]
 pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
     let mut fingerprint = derive(0, learner.previous_action as u64, 0, 0x4146_4650);
+    let config = learner.config;
+    for (index, value) in [
+        u64::from(config.rule == ScoringRule::LearningProgress),
+        u64::from(config.action_horizon),
+        u64::from(config.overall_horizon),
+        u64::from(config.forgetting_horizon),
+        config.eligibility_span as u64,
+        config.recency_rate,
+        config.recency_cap,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        fingerprint = derive(fingerprint, value, index as u64, 0x4346_4746);
+    }
     for (age, action) in learner.recent_actions.iter().enumerate() {
         fingerprint = derive(fingerprint, *action as u64, age as u64, 0x5245_434E);
     }
@@ -565,6 +744,18 @@ pub fn affordance_fingerprint(learner: &AffordanceLearner) -> u64 {
     }
     for (action, count) in learner.visits.iter().enumerate() {
         fingerprint = derive(fingerprint, u64::from(*count), action as u64, 0x5649_5349);
+        fingerprint = derive(
+            fingerprint,
+            i64::from(learner.error_fast[action]).cast_unsigned(),
+            action as u64,
+            0x4552_4646,
+        );
+        fingerprint = derive(
+            fingerprint,
+            i64::from(learner.error_slow[action]).cast_unsigned(),
+            action as u64,
+            0x4552_5353,
+        );
         fingerprint = derive(
             fingerprint,
             learner.last_tried[action],
@@ -659,6 +850,7 @@ impl TryFrom<StateRepr> for AgentRuntimeState {
         if repr.connection_stride == 0 || repr.plasticity_scale < 1 {
             return Err("developmental configuration is out of range".to_owned());
         }
+        repr.affordance.validate()?;
         Ok(Self {
             brain,
             developmental_config: BrainConfig {
@@ -773,7 +965,10 @@ impl EnvironmentAdapter for FakeEnvironment {
 mod tests {
     use sim_kernels::gpu::GpuFrame;
 
-    use super::{AgentRuntime, FakeEnvironment, FrozenPhysiology, RuntimeError};
+    use super::{
+        AFFORDANCE_ACTIONS, AffordanceConfig, AgentRuntime, FakeEnvironment, FrozenPhysiology,
+        MAX_ELIGIBILITY_SPAN, RuntimeError, ScoringRule,
+    };
     use crate::{
         BrainConfig, RawSensoryFrame, compose_raw_sensory_frame,
         environment::{
@@ -921,6 +1116,90 @@ mod tests {
         let runtime = AgentRuntime::new(71, 4, config());
         let mut json = serde_json::to_value(runtime.state()).expect("encode");
         json["brain"].as_array_mut().expect("brain words").pop();
+        assert!(serde_json::from_value::<super::AgentRuntimeState>(json).is_err());
+    }
+
+    fn affordance_runtime(learner: AffordanceConfig) -> AgentRuntime {
+        AgentRuntime::new_with_affordance(71, 4, config(), learner).expect("valid settings")
+    }
+
+    #[test]
+    fn out_of_range_affordance_settings_are_rejected() {
+        for invalid in [
+            AffordanceConfig {
+                action_horizon: 0,
+                ..AffordanceConfig::default()
+            },
+            AffordanceConfig {
+                eligibility_span: MAX_ELIGIBILITY_SPAN + 1,
+                ..AffordanceConfig::default()
+            },
+            AffordanceConfig {
+                forgetting_horizon: 0,
+                ..AffordanceConfig::default()
+            },
+        ] {
+            assert!(AgentRuntime::new_with_affordance(71, 4, config(), invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn affordance_settings_and_learning_progress_survive_a_checkpoint() {
+        let settings = AffordanceConfig {
+            rule: ScoringRule::LearningProgress,
+            action_horizon: 16,
+            eligibility_span: 2,
+            ..AffordanceConfig::default()
+        };
+        let mut runtime = affordance_runtime(settings);
+        let mut environment = FakeEnvironment::new(71);
+        for _ in 0..40 {
+            let transition = runtime.step(environment.observe()).expect("in sequence");
+            environment.act(&transition.action);
+        }
+        let encoded = serde_json::to_string(runtime.state()).expect("encode");
+        let decoded: super::AgentRuntimeState = serde_json::from_str(&encoded).expect("decode");
+        assert_eq!(&decoded, runtime.state());
+        assert_eq!(decoded.affordance.config, settings);
+        let mut resumed = AgentRuntime::from_state(71, 4, decoded);
+        for _ in 0..40 {
+            let observation = environment.observe();
+            let expected = runtime.step(observation).expect("in sequence");
+            assert_eq!(resumed.step(observation).expect("in sequence"), expected);
+            environment.act(&expected.action);
+        }
+    }
+
+    #[test]
+    fn settings_change_behaviour_and_are_fingerprinted() {
+        let run = |settings| {
+            let mut runtime = affordance_runtime(settings);
+            let mut environment = FakeEnvironment::new(71);
+            (0..60)
+                .map(|_| {
+                    let transition = runtime.step(environment.observe()).expect("in sequence");
+                    environment.act(&transition.action);
+                    transition.affordance_fingerprint
+                })
+                .collect::<Vec<_>>()
+        };
+        let default = run(AffordanceConfig::default());
+        let progress = run(AffordanceConfig {
+            rule: ScoringRule::LearningProgress,
+            ..AffordanceConfig::default()
+        });
+        assert_eq!(default, run(AffordanceConfig::default()));
+        assert_ne!(default, progress);
+    }
+
+    #[test]
+    fn corrupt_affordance_indices_are_rejected_on_decode() {
+        let runtime = affordance_runtime(AffordanceConfig::default());
+        let mut json = serde_json::to_value(runtime.state()).expect("encode");
+        json["affordance"]["previous_action"] = serde_json::json!(AFFORDANCE_ACTIONS + 1);
+        assert!(serde_json::from_value::<super::AgentRuntimeState>(json).is_err());
+        let mut json = serde_json::to_value(runtime.state()).expect("encode");
+        json["affordance"]["config"]["eligibility_span"] = serde_json::json!(0);
         assert!(serde_json::from_value::<super::AgentRuntimeState>(json).is_err());
     }
 }

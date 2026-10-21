@@ -20,8 +20,8 @@ use serde::Serialize;
 use sim_core::{
     environment::{BodyProprioception, PrimitiveAction},
     runtime::{
-        AFFORDANCE_ACTIONS, AgentRuntime, ExperimentMode, HAND_CONTACT_FEATURE,
-        VISUAL_CHANGE_FEATURE,
+        AFFORDANCE_ACTIONS, AffordanceConfig, AgentRuntime, ExperimentMode, HAND_CONTACT_FEATURE,
+        ScoringRule, VISUAL_CHANGE_FEATURE,
     },
 };
 
@@ -43,13 +43,33 @@ const SEEN_COLOUR: u16 = 176;
 pub enum Controller {
     PredictiveBaseline,
     Random,
+    /// The affordance learner with its default contingency rule.
     AffordanceDiscovery,
+    /// The affordance learner scoring experiments by learning progress instead.
+    LearningProgress,
 }
 
-pub const CONTROLLERS: [Controller; 3] = [
+impl Controller {
+    /// Settings of the affordance learner this controller runs, if it runs one.
+    #[must_use]
+    pub fn learner(self) -> Option<AffordanceConfig> {
+        let rule = match self {
+            Self::PredictiveBaseline | Self::Random => return None,
+            Self::AffordanceDiscovery => ScoringRule::Contingency,
+            Self::LearningProgress => ScoringRule::LearningProgress,
+        };
+        Some(AffordanceConfig {
+            rule,
+            ..AffordanceConfig::default()
+        })
+    }
+}
+
+pub const CONTROLLERS: [Controller; 4] = [
     Controller::PredictiveBaseline,
     Controller::Random,
     Controller::AffordanceDiscovery,
+    Controller::LearningProgress,
 ];
 
 /// How the founder senses the coupled object.
@@ -169,12 +189,11 @@ pub fn run(
     seed: u64,
     partner: Option<&Trace>,
 ) -> Trace {
-    let mode = if controller == Controller::AffordanceDiscovery {
-        ExperimentMode::AffordanceDiscovery
-    } else {
-        ExperimentMode::PredictiveBaseline
+    let mut runtime = match controller.learner() {
+        Some(learner) => AgentRuntime::new_with_affordance(seed, 1, config(), learner)
+            .expect("default learner settings are valid"),
+        None => AgentRuntime::new_with_mode(seed, 1, config(), ExperimentMode::PredictiveBaseline),
     };
-    let mut runtime = AgentRuntime::new_with_mode(seed, 1, config(), mode);
     let mut body = BodyProprioception {
         eye_pitch: 128,
         grounded: 255,
@@ -215,11 +234,13 @@ pub fn run(
         }
         let transition = runtime.step(sensed).expect("fixture sequence");
         let action = match controller {
-            Controller::PredictiveBaseline | Controller::AffordanceDiscovery => transition.action,
             Controller::Random => random_action(seed, tick),
+            _ => transition.action,
         };
         let chosen = slot(&action);
-        let expected = (controller == Controller::AffordanceDiscovery)
+        let expected = controller
+            .learner()
+            .is_some()
             .then(|| runtime.state().affordance.expected_after(object.target))
             .flatten()
             .map(|outcome| object.anticipation(outcome));

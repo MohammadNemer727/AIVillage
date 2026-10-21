@@ -256,7 +256,12 @@ pub fn run() -> ContingencyReport {
     let delays = DELAYS
         .iter()
         .flat_map(|delay| {
-            [Controller::Random, Controller::AffordanceDiscovery].map(|controller| DelayCell {
+            [
+                Controller::Random,
+                Controller::AffordanceDiscovery,
+                Controller::LearningProgress,
+            ]
+            .map(|controller| DelayCell {
                 delay: *delay,
                 cell: cell(
                     Paradigm::Standard,
@@ -471,7 +476,7 @@ mod tests {
     #[test]
     fn controllers_blind_to_consequences_show_no_contingency() {
         for cell in run().cells {
-            if cell.controller != Controller::AffordanceDiscovery {
+            if cell.controller.learner().is_none() {
                 assert!(!cell.shows_contingency, "{cell:?}");
                 assert_eq!(cell.contingent[1].anticipation, 0);
             }

@@ -14,24 +14,32 @@ Anticipation is the learner's expected contact after a hand pulse, as distance f
 | Standard | Random | Yoked | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Standard | AffordanceDiscovery | Contingent | 5.4 | 19.9 | 14.3 | 8.0 | 153 | 0 → 91 → 39 → 3 |
 | Standard | AffordanceDiscovery | Yoked | 5.4 | 5.9 | 7.0 | 6.7 | 153 | 0 → 31 → 32 → 4 |
+| Standard | LearningProgress | Contingent | 5.3 | 18.3 | 7.2 | 14.8 | 141 | 0 → 101 → 44 → 5 |
+| Standard | LearningProgress | Yoked | 5.3 | 8.0 | 8.5 | 7.5 | 141 | 0 → 27 → 20 → 2 |
 | Inverted | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Inverted | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Inverted | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Inverted | Random | Yoked | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Inverted | AffordanceDiscovery | Contingent | 5.4 | 19.9 | 14.3 | 8.0 | 153 | 0 → 92 → 40 → 4 |
 | Inverted | AffordanceDiscovery | Yoked | 5.4 | 5.9 | 7.0 | 6.7 | 153 | 0 → 32 → 33 → 5 |
+| Inverted | LearningProgress | Contingent | 5.3 | 18.3 | 7.2 | 14.8 | 141 | 0 → 102 → 45 → 6 |
+| Inverted | LearningProgress | Yoked | 5.3 | 8.0 | 8.5 | 7.5 | 141 | 0 → 28 → 21 → 3 |
 | Bimodal | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Bimodal | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Bimodal | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Bimodal | Random | Yoked | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Bimodal | AffordanceDiscovery | Contingent | 5.4 | 19.4 | 13.8 | 7.2 | 149 | 0 → 19 → 6 → 0 |
 | Bimodal | AffordanceDiscovery | Yoked | 5.4 | 6.1 | 6.5 | 5.7 | 149 | 0 → 4 → 4 → 0 |
+| Bimodal | LearningProgress | Contingent | 5.3 | 25.3 | 11.4 | 32.8 | 195 | 0 → 21 → 8 → 1 |
+| Bimodal | LearningProgress | Yoked | 5.3 | 8.3 | 6.2 | 4.4 | 195 | 0 → 7 → 3 → 0 |
 | Seen | PredictiveBaseline | Contingent | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Seen | PredictiveBaseline | Yoked | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 → 0 → 0 → 0 |
 | Seen | Random | Contingent | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Seen | Random | Yoked | 7.6 | 8.5 | 9.6 | 8.5 | 66 | 0 → 0 → 0 → 0 |
 | Seen | AffordanceDiscovery | Contingent | 6.2 | 13.6 | 12.5 | 5.9 | 105 | 8 → 32 → 17 → 1 |
 | Seen | AffordanceDiscovery | Yoked | 6.2 | 5.4 | 6.2 | 5.9 | 105 | 8 → 12 → 12 → 2 |
+| Seen | LearningProgress | Contingent | 5.3 | 14.8 | 7.8 | 5.7 | 114 | 8 → 41 → 19 → 2 |
+| Seen | LearningProgress | Yoked | 5.3 | 6.3 | 8.3 | 4.4 | 114 | 8 → 15 → 10 → 1 |
 
 ## Verdicts
 
@@ -42,15 +50,19 @@ A run shows contingency when connected-phase pulses are at least 1.5× both base
 | Standard | PredictiveBaseline | false | 0/8 |
 | Standard | Random | false | 0/8 |
 | Standard | AffordanceDiscovery | true | 7/8 |
+| Standard | LearningProgress | true | 4/8 |
 | Inverted | PredictiveBaseline | false | 0/8 |
 | Inverted | Random | false | 0/8 |
 | Inverted | AffordanceDiscovery | true | 7/8 |
+| Inverted | LearningProgress | true | 4/8 |
 | Bimodal | PredictiveBaseline | false | 0/8 |
 | Bimodal | Random | false | 0/8 |
 | Bimodal | AffordanceDiscovery | true | 7/8 |
+| Bimodal | LearningProgress | false | 1/8 |
 | Seen | PredictiveBaseline | false | 0/8 |
 | Seen | Random | false | 0/8 |
 | Seen | AffordanceDiscovery | true | 7/8 |
+| Seen | LearningProgress | true | 8/8 |
 
 ## Delayed consequences
 
@@ -60,14 +72,19 @@ The standard paradigm with contact arriving `delay` decisions later than the nex
 |---:|---|---:|---:|---:|---:|---:|---:|---:|
 | 0 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 0 | AffordanceDiscovery | 5.4 | 19.9 | 14.3 | 8.0 | 5.9 | 91 | 7/8 |
+| 0 | LearningProgress | 5.3 | 18.3 | 7.2 | 14.8 | 8.0 | 101 | 4/8 |
 | 1 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 1 | AffordanceDiscovery | 5.4 | 9.5 | 13.0 | 7.8 | 4.6 | 34 | 3/8 |
+| 1 | LearningProgress | 5.3 | 9.7 | 9.1 | 6.2 | 7.5 | 34 | 2/8 |
 | 2 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 2 | AffordanceDiscovery | 5.4 | 5.2 | 8.0 | 6.7 | 4.6 | 13 | 1/8 |
+| 2 | LearningProgress | 5.3 | 9.5 | 9.8 | 4.1 | 8.0 | 27 | 3/8 |
 | 4 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 4 | AffordanceDiscovery | 5.4 | 4.0 | 5.2 | 5.7 | 5.0 | 3 | 0/8 |
+| 4 | LearningProgress | 5.3 | 7.8 | 5.7 | 5.7 | 7.0 | 11 | 1/8 |
 | 8 | Random | 7.6 | 8.5 | 9.6 | 8.5 | 8.5 | 0 | 0/8 |
 | 8 | AffordanceDiscovery | 5.4 | 4.0 | 3.9 | 6.7 | 4.6 | 3 | 0/8 |
+| 8 | LearningProgress | 5.3 | 7.4 | 6.7 | 5.2 | 7.4 | 8 | 1/8 |
 
 ## AffordanceDiscovery learning curves
 

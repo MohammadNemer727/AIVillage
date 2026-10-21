@@ -5,7 +5,7 @@
 
 use std::{fs::OpenOptions, io::Write, path::PathBuf, time::Duration};
 
-use sim_core::runtime::ExperimentMode;
+use sim_core::runtime::{AffordanceConfig, ExperimentMode};
 use sim_luanti::{
     Bridge, TraceRecord, benchmark, bind_loopback, contingency, replay_trace, serve_once_with_stall,
 };
@@ -85,7 +85,18 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     };
     eprintln!("sim-luanti mode: {mode:?}");
-    let mut bridge = Bridge::new_with_mode(seed, agent_id, mode);
+    // Optional affordance learner settings as JSON; omitted fields keep their defaults, e.g.
+    // SIM_LUANTI_AFFORDANCE='{"rule":"LearningProgress","action_horizon":16}'.
+    let mut bridge = match std::env::var("SIM_LUANTI_AFFORDANCE") {
+        Ok(json) if mode == ExperimentMode::AffordanceDiscovery => {
+            let settings: AffordanceConfig = serde_json::from_str(&json)
+                .map_err(|error| format!("SIM_LUANTI_AFFORDANCE is not valid JSON: {error}"))?;
+            eprintln!("sim-luanti affordance settings: {settings:?}");
+            Bridge::new_with_affordance(seed, agent_id, settings)?
+        }
+        Ok(_) => return Err("SIM_LUANTI_AFFORDANCE requires SIM_LUANTI_MODE=affordance".into()),
+        Err(_) => Bridge::new_with_mode(seed, agent_id, mode),
+    };
     let trace_path = std::env::var_os("SIM_LUANTI_TRACE").map(PathBuf::from);
     let stall_sequence = std::env::var("SIM_LUANTI_STALL_SEQUENCE")
         .ok()
