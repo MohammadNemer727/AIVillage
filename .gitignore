@@ -13,3 +13,15 @@ integrations/luanti/.observe-launcher.log
 integrations/luanti/.observe-trace.ndjson
 integrations/luanti/.play-world/
 integrations/luanti/.body-test-world/
+/integrations/luanti/experiment-001-runs/
+/integrations/luanti/.experiment-001-*/
+/integrations/luanti/episodic-ab-runs/
+/integrations/luanti/.episodic-ab-*/
+
+# Luanti runtime state belongs outside source history.
+/integrations/luanti/**/.cache/
+/integrations/luanti/**/*.log
+/integrations/luanti/**/*.sqlite
+/integrations/luanti/**/*.sqlite-shm
+/integrations/luanti/**/*.sqlite-wal
+/integrations/luanti/**/*trace*.ndjson

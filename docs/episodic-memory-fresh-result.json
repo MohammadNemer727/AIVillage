@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-23",
+  "preregistration": "episodic-live-ab-preregistration.json",
+  "live_result": "../integrations/luanti/episodic-ab-runs/2026-10-22-valid/episodic-live-ab-result.json",
+  "behavior": {
+    "environment": "real Luanti 5.17.0 with VoxeLibre 0.92.4",
+    "paired_seeds": [211, 223, 227, 229],
+    "trials_per_arm_per_seed": 16,
+    "A_recurrent_only": {
+      "injuries": 64,
+      "resource_returns": 0
+    },
+    "B_episodic_policy_only": {
+      "injuries": 64,
+      "resource_returns": 0
+    },
+    "positive_pairs": 0,
+    "negative_pairs": 0,
+    "success": false
+  },
+  "fresh_prediction": {
+    "source": "the four previously untouched recurrent-only live traces",
+    "split": "first_80_percent_train_final_20_percent_no_writes",
+    "prediction_retrieval_scope": "body_only; vision and held-item remain recurrent",
+    "per_seed": [
+      {"seed": 211, "held_out_transitions": 13, "vision_A_milli": 24397, "vision_B_milli": 24397, "body_A_milli": 2128, "body_B_milli": 2128},
+      {"seed": 223, "held_out_transitions": 13, "vision_A_milli": 0, "vision_B_milli": 0, "body_A_milli": 2128, "body_B_milli": 2128},
+      {"seed": 227, "held_out_transitions": 12, "vision_A_milli": 15006, "vision_B_milli": 15006, "body_A_milli": 2125, "body_B_milli": 2125},
+      {"seed": 229, "held_out_transitions": 13, "vision_A_milli": 0, "vision_B_milli": 0, "body_A_milli": 2128, "body_B_milli": 2128}
+    ],
+    "episodic_wins": 0,
+    "ties": 51,
+    "episodic_losses": 0,
+    "regression_corrected": true,
+    "strict_improvement": false
+  },
+  "causal_diagnosis": {
+    "consumed_v1": "64 injuries versus 64; zero returns in both arms; the continuous predictive policy never sampled the sole relieving action",
+    "invalid_v2": "post-injury health reset created an unintended positive contingency credited to an intervening action",
+    "invalid_v3": "asynchronous globalstep timing allowed the fullness consequence to miss the next observation and be credited to an intervening action",
+    "v4_alignment": "test-only pre-observation hook applies the consequence after the complete action hold and before interoception; eligibility delay is exactly one",
+    "classification": [
+      "v1 invalid behavioral fixture",
+      "v2-v3 action/outcome alignment defects",
+      "policy integration is a hard switch, not too weak",
+      "bounded horizon was not the primary failure",
+      "v4 backward-thrust evidence was present in top-k whenever positive history existed",
+      "v4 residual failure was a per-record evidence-greater-than-contradictions veto that double-counted pairwise contradiction edges while exact-context reinforcement stayed sparse",
+      "small latent distances in aligned contexts and larger fullness-drive margins rule out action/body misalignment and unsupported graph or spatial changes"
+    ],
+    "v5_correction": "evidence-weighted signed local outcome consensus per exact primitive action; positive support must exceed negative support and beat fallback, otherwise abstain"
+  },
+  "fresh_behavior_v4": {
+    "preregistration": "episodic-live-choice-v4-preregistration.json",
+    "paired_seeds": [379, 383, 389, 397, 401, 409],
+    "fixture_valid": true,
+    "A_resource_losses": 121,
+    "B_resource_losses": 22,
+    "A_resource_returns": 119,
+    "B_resource_returns": 218,
+    "resource_return_delta_by_seed": [22, 24, 20, 16, -5, 22],
+    "positive_pairs": 5,
+    "negative_pairs": 1,
+    "mediation": {
+      "B_episode_insertions": 541,
+      "B_positive_outcome_writes": 51,
+      "B_negative_outcome_writes": 38,
+      "B_retrievals_with_body_evidence": 922,
+      "B_retrievals_with_positive_score_delta": 302,
+      "B_action_changes": 302,
+      "B_changed_actions_followed_by_positive_outcome": 15,
+      "eligibility_delays": [1],
+      "B_nearest_distance_range": [6, 942],
+      "B_baseline_policy_score_range": [55, 2238],
+      "B_episodic_score_delta_range": [0, 712]
+    },
+    "mediation_valid": true,
+    "behavioral_success": false,
+    "failure_reason": "the preregistered rule required at least five positive pairs and no negative pair; seed 401 was negative"
+  },
+  "fresh_behavior_v5": {
+    "preregistration": "episodic-live-choice-v5-preregistration.json",
+    "live_result": "../integrations/luanti/episodic-ab-runs/2026-10-23-choice-v5/episodic-live-choice-result.json",
+    "paired_seeds": [431, 433, 439, 443, 449, 457, 461, 463],
+    "fixture_valid": true,
+    "A_resource_losses": 173,
+    "B_resource_losses": 0,
+    "A_resource_returns": 147,
+    "B_resource_returns": 320,
+    "resource_return_delta_by_seed": [19, 30, 16, 21, 21, 19, 25, 22],
+    "positive_pairs": 8,
+    "negative_pairs": 0,
+    "aggregate_improvement_threshold": 16,
+    "mediation": {
+      "B_episode_insertions": 547,
+      "B_episode_reinforcements": 22,
+      "B_positive_outcome_writes": 47,
+      "B_negative_outcome_writes": 29,
+      "B_retrievals_with_body_evidence": 924,
+      "B_retrievals_with_positive_score_delta": 509,
+      "B_action_changes": 509,
+      "B_action_changes_to_backward": 472,
+      "B_changed_to_backward_followed_by_nonnegative_outcome": 464,
+      "B_changed_to_backward_followed_by_positive_outcome": 21,
+      "eligibility_delays": [1],
+      "B_nearest_distance_range": [8, 951],
+      "B_episodic_score_delta_range": [0, 204]
+    },
+    "mediation_valid": true,
+    "behavioral_success": true
+  },
+  "untouched_prediction_v5": {
+    "source": "the eight v5 recurrent-only live traces, evaluated once after the behavioral run",
+    "split": "first_80_percent_train_final_20_percent_no_writes",
+    "prediction_retrieval_scope": "body only; vision and held-item remain recurrent",
+    "held_out_transitions": 740,
+    "vision": {
+      "recurrent_only_mae_milli": 18269,
+      "episodic_mae_milli": 18269,
+      "wins": 0,
+      "ties": 740,
+      "losses": 0,
+      "non_regressive": true
+    },
+    "body": {
+      "recurrent_only_mae_milli": 3291,
+      "episodic_mae_milli": 5351,
+      "wins": 25,
+      "ties": 619,
+      "losses": 96,
+      "regressed_seed_traces": 7,
+      "non_regressive": false
+    },
+    "causally_independent_of_policy_result": true,
+    "prediction_retrieval_enabled_in_live_arms": false,
+    "success": false
+  },
+  "rechecks": {
+    "newborn_isolation": "pass",
+    "capacity_64_and_deterministic_eviction": "pass",
+    "checkpoint_restart": "pass; golden resume and real body resume",
+    "live_trace_replay": "16 of 16 v5 arms replayed exactly",
+    "runtime_decisions_per_second_with_bounded_memory_path": 35225,
+    "gpu_parallel_test_process_before": "SIGSEGV",
+    "gpu_each_test_individually": "pass",
+    "gpu_serialized_hardware_parity_suite": "4 passed",
+    "core_cpu_tests": "72 passed",
+    "non_gui_workspace_tests": "pass",
+    "full_workspace_test_note": "GUI sim-app link was unavailable because the host lacks libwayland-client; no episodic test failed",
+    "strict_workspace_clippy": "pass",
+    "luanti_smoke": "149 bounded transitions and exact replay passed",
+    "voxelibre_body": "all abilities, 185 felt observations and saved-brain resume passed"
+  },
+  "behavioral_policy_gate_passes": true,
+  "prediction_non_regression_passes": false,
+  "episodic_gate_passes": false,
+  "failure_reason": "the untouched v5 body-prediction evaluation regressed, so the preregistered full gate fails despite passing every behavioral pair"
+}

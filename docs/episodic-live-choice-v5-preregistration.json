@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "protocol": "episodic-policy-live-choice-v5",
+  "status": "preregistered_before_outcome_generation",
+  "predecessor": "episodic-live-choice-v4-preregistration.json",
+  "consumed_diagnostic_seeds": [379, 383, 389, 397, 401, 409],
+  "frozen_correction": {
+    "scope": "policy decision only",
+    "rule": "aggregate retrieved outcomes per exact primitive action with evidence weights; a candidate qualifies only when positive support exceeds negative support, its mean body utility is positive, and it exceeds the fallback consensus",
+    "abstention": "abstain on tied positive/negative support, nonpositive consensus, or no improvement over represented fallback",
+    "unchanged": [
+      "64-event private capacity",
+      "four-summary retrieval bound",
+      "latent plus body-drive distance",
+      "deterministic retention and eviction",
+      "independent prediction and policy switches",
+      "body-only conservative prediction retrieval"
+    ]
+  },
+  "world": {
+    "engine": "Luanti",
+    "game": "VoxeLibre",
+    "map_seed": 424244,
+    "mapgen": "flat",
+    "decision_seconds": 0.1,
+    "consequence_delay_decisions": 1
+  },
+  "paired_runtime_seeds": [431, 433, 439, 443, 449, 457, 461, 463],
+  "arms": {
+    "A": "affordance curiosity policy; SIM_LUANTI_EPISODIC=off",
+    "B": "same affordance policy with policy retrieval only; SIM_LUANTI_EPISODIC=policy"
+  },
+  "controls": [
+    "fresh reset world and newborn checkpoint per arm",
+    "same genome identity, runtime seed, map seed, game configuration, spawn and stopping rule within each pair",
+    "prediction retrieval disabled in both arms",
+    "no action override, body-state reset, outcome label or task reward enters Rust",
+    "a test-only bridge hook applies the consequence after the selected action hold and immediately before constructing the next observation",
+    "consequences enter Rust only through ordinary VoxeLibre hunger interoception",
+    "non-choice primitives have no assigned bodily consequence"
+  ],
+  "choice": {
+    "forward_thrust": "subtract four VoxeLibre hunger units, bounded at zero",
+    "backward_thrust": "add four VoxeLibre hunger units, bounded at twenty",
+    "initial_hunger": 10,
+    "warmup_eligible_choices": 24,
+    "scored_eligible_choices": 40
+  },
+  "fixture_validity": {
+    "each_A_warmup_requires": "at least 4 forward and 4 backward choices",
+    "each_A_arm_requires": "at least one observed negative fullness delta and one observed positive fullness delta",
+    "each_arm_requires": "exactly 40 scored eligible choices",
+    "invalid_fixture_rule": "failure of exposure or opportunity invalidates the fixture and cannot count as a memory result"
+  },
+  "primary_success_rule": {
+    "aggregate": "during scored choices B has at least 16 fewer resource-loss choices and at least 16 more resource-return choices than A across all eight pairs",
+    "paired": "resource-return delta B-A is nonnegative in every pair and positive in at least 6 of 8 pairs",
+    "mediation": "B records a positive episode at eligibility delay one, retrieves body evidence, produces a positive score delta, changes an action to backward thrust, and the following observation records a nonnegative fullness outcome",
+    "prediction_independence": "prediction retrieval remains disabled; the frozen corrected prediction evaluation remains non-regressive for vision and body"
+  },
+  "failure_rule": "Any unmet primary success condition fails the episodic gate; these seeds are consumed after one paired run and thresholds are not changed from their outcomes."
+}

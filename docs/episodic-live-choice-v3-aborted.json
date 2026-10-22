@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "protocol": "episodic-policy-live-choice-v3",
+  "status": "invalid_fixture_aborted",
+  "consumed_seeds": [347, 349, 353, 359, 367, 373],
+  "completed_before_abort": ["seed-347-off"],
+  "trigger": "seed-347-policy timed out after 5778 transitions",
+  "evidence": {
+    "pre_episodic_backward_choices": 411,
+    "selected_backward_choices": 13,
+    "episodic_action_changes": 5289,
+    "selected_jaw_actions": 5664,
+    "positive_outcome_observations": 9
+  },
+  "root_cause": "The fixture globalstep observed the asynchronous Rust reply too late to guarantee that its hunger change preceded construction of the next observation. The positive fullness consequence could therefore arrive two decisions after backward thrust and was attributed by the one-step episodic event boundary to the intervening jaw action.",
+  "disposition": "No v3 arm is gate evidence. No seed is rerun. Files remain under integrations/luanti/episodic-ab-runs/2026-10-22-choice-v3."
+}

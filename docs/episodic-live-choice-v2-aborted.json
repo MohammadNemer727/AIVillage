@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "protocol": "episodic-policy-live-choice-v2",
+  "status": "invalid_fixture_aborted",
+  "consumed_seeds": [307, 311, 313, 317, 331, 337],
+  "completed_before_abort": [
+    "seed-307-off",
+    "seed-307-policy",
+    "seed-311-off",
+    "seed-311-policy",
+    "seed-313-off"
+  ],
+  "trigger": "seed-313-policy timed out after 5792 transitions",
+  "evidence": {
+    "pre_episodic_backward_choices": 417,
+    "pre_episodic_forward_choices": 408,
+    "selected_backward_choices": 9,
+    "episodic_action_changes": 5315,
+    "selected_jaw_actions": 5729,
+    "positive_outcome_observations": 1
+  },
+  "root_cause": "The post-injury reset from 16 to 20 hit points was itself an ordinary positive bodily consequence. It arrived after the action selected between injury observation and reset observation, so episodic memory correctly retained that intervening jaw action as relieving. The fixture therefore contained an unpreregistered second contingency and could not test the intended forward-versus-backward choice.",
+  "disposition": "No v2 arm is gate evidence. No seed is rerun. Files remain under integrations/luanti/episodic-ab-runs/2026-10-22-choice-v2."
+}

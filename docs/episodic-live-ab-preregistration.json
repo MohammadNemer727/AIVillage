@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "protocol": "episodic-policy-live-ab-v1",
+  "status": "preregistered_before_outcome_generation",
+  "world": {
+    "engine": "Luanti",
+    "game": "VoxeLibre",
+    "map_seed": 424242,
+    "mapgen": "flat",
+    "decision_seconds": 0.1,
+    "trials_per_arm": 16
+  },
+  "paired_runtime_seeds": [211, 223, 227, 229],
+  "arms": {
+    "A": "recurrent-only; SIM_LUANTI_EPISODIC=off",
+    "B": "same runtime with policy retrieval only; SIM_LUANTI_EPISODIC=policy"
+  },
+  "controls": [
+    "fresh reset world and newborn checkpoint per arm",
+    "same genome identity, runtime seed, map seed, game configuration, spawn and trial count within each pair",
+    "prediction retrieval disabled in both arms",
+    "no action override",
+    "outcomes enter Rust only through ordinary body interoception"
+  ],
+  "embodied_contingency": {
+    "backward_thrust": "one ordinary VoxeLibre hunger unit returned",
+    "other_thrust": "one ordinary VoxeLibre hit point lost",
+    "outcomes": ["injury", "resource_return"]
+  },
+  "primary_success_rule": {
+    "aggregate": "B has fewer injuries and more resource returns than A",
+    "paired": "resource-return delta B-A is positive in at least 3 of 4 seeds and negative in none",
+    "prediction_independence": "prediction retrieval remains disabled; prediction is evaluated separately on fresh held-out traces"
+  },
+  "failure_rule": "Any unmet primary success condition fails the behavioral gate; no threshold changes or reruns replace these outcomes.",
+  "machine_readable_outputs": [
+    "one episodic-ab-result.json and bridge.ndjson per arm",
+    "combined episodic-live-ab-result.json"
+  ]
+}

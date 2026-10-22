@@ -1,0 +1,115 @@
+{
+  "seed": 101,
+  "agent_id": 4,
+  "arms": [
+    "A_recurrent_predictor_only",
+    "B_predictor_plus_episodic_retrieval"
+  ],
+  "prediction_split": "first_80_percent_train_final_20_percent_untouched_no_writes",
+  "train_transitions": 148,
+  "held_out_transitions": 38,
+  "prediction": {
+    "body": {
+      "feature_samples": 228,
+      "recurrent_only_mae_milli": 4614,
+      "episodic_mae_milli": 4504,
+      "episodic_wins": 8,
+      "ties": 26,
+      "episodic_losses": 4,
+      "episodic_beats_recurrent": true
+    },
+    "held_item": {
+      "feature_samples": 228,
+      "recurrent_only_mae_milli": 0,
+      "episodic_mae_milli": 0,
+      "episodic_wins": 0,
+      "ties": 38,
+      "episodic_losses": 0,
+      "episodic_beats_recurrent": false
+    },
+    "vision": {
+      "feature_samples": 456,
+      "recurrent_only_mae_milli": 21515,
+      "episodic_mae_milli": 29032,
+      "episodic_wins": 8,
+      "ties": 9,
+      "episodic_losses": 21,
+      "episodic_beats_recurrent": false
+    }
+  },
+  "prediction_success": false,
+  "action": [
+    {
+      "seed": 11,
+      "held_out_trials": 16,
+      "recurrent_only_injuries": 16,
+      "episodic_injuries": 0,
+      "recurrent_only_resource_returns": 0,
+      "episodic_resource_returns": 16
+    },
+    {
+      "seed": 23,
+      "held_out_trials": 16,
+      "recurrent_only_injuries": 16,
+      "episodic_injuries": 0,
+      "recurrent_only_resource_returns": 0,
+      "episodic_resource_returns": 16
+    },
+    {
+      "seed": 37,
+      "held_out_trials": 16,
+      "recurrent_only_injuries": 16,
+      "episodic_injuries": 0,
+      "recurrent_only_resource_returns": 0,
+      "episodic_resource_returns": 16
+    },
+    {
+      "seed": 41,
+      "held_out_trials": 16,
+      "recurrent_only_injuries": 16,
+      "episodic_injuries": 0,
+      "recurrent_only_resource_returns": 0,
+      "episodic_resource_returns": 16
+    },
+    {
+      "seed": 59,
+      "held_out_trials": 16,
+      "recurrent_only_injuries": 16,
+      "episodic_injuries": 0,
+      "recurrent_only_resource_returns": 0,
+      "episodic_resource_returns": 16
+    },
+    {
+      "seed": 67,
+      "held_out_trials": 16,
+      "recurrent_only_injuries": 16,
+      "episodic_injuries": 0,
+      "recurrent_only_resource_returns": 0,
+      "episodic_resource_returns": 16
+    },
+    {
+      "seed": 83,
+      "held_out_trials": 16,
+      "recurrent_only_injuries": 16,
+      "episodic_injuries": 0,
+      "recurrent_only_resource_returns": 0,
+      "episodic_resource_returns": 16
+    },
+    {
+      "seed": 101,
+      "held_out_trials": 16,
+      "recurrent_only_injuries": 16,
+      "episodic_injuries": 0,
+      "recurrent_only_resource_returns": 0,
+      "episodic_resource_returns": 16
+    }
+  ],
+  "action_success": true,
+  "episodic_gate_passes": false,
+  "bounds": {
+    "capacity": 64,
+    "top_k": 4,
+    "latent_features": 16,
+    "source_features": 24
+  }
+}

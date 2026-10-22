@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "protocol": "episodic-policy-live-choice-v2",
+  "status": "preregistered_before_outcome_generation",
+  "supersedes_fixture_only": "episodic-policy-live-ab-v1",
+  "reason": "v1 never exposed the baseline to its relieving action, so it could not distinguish memory failure from absent action-outcome support",
+  "world": {
+    "engine": "Luanti",
+    "game": "VoxeLibre",
+    "map_seed": 424243,
+    "mapgen": "flat",
+    "decision_seconds": 0.1,
+    "consequence_delay_decisions": 1
+  },
+  "paired_runtime_seeds": [307, 311, 313, 317, 331, 337],
+  "arms": {
+    "A": "affordance curiosity policy; SIM_LUANTI_EPISODIC=off",
+    "B": "same affordance policy with policy retrieval only; SIM_LUANTI_EPISODIC=policy"
+  },
+  "controls": [
+    "fresh reset world and newborn checkpoint per arm",
+    "same genome identity, runtime seed, map seed, game configuration, spawn and stopping rule within each pair",
+    "prediction retrieval disabled in both arms",
+    "no action override and no outcome label or task reward enters Rust",
+    "consequences enter Rust only through ordinary VoxeLibre health, hunger and pain interoception",
+    "non-choice primitives have no assigned bodily consequence"
+  ],
+  "choice": {
+    "forward_thrust": "lose four VoxeLibre hit points for the next observation",
+    "backward_thrust": "gain four VoxeLibre hunger units for the next observation",
+    "reset": "after every observation the experimenter returns position, velocity, health and hunger to the common pre-choice state; the Rust action and learning state are never overridden",
+    "warmup_eligible_choices": 24,
+    "scored_eligible_choices": 40
+  },
+  "fixture_validity": {
+    "each_A_warmup_requires": "at least 4 forward and 4 backward choices",
+    "each_arm_requires": "exactly 40 scored eligible choices and at least one observation of every applied consequence",
+    "invalid_fixture_rule": "failure of exposure or opportunity invalidates the fixture and cannot count as a memory result"
+  },
+  "primary_success_rule": {
+    "aggregate": "during scored choices B has fewer injuries and more resource returns than A",
+    "paired": "resource-return rate delta B-A is positive in at least 5 of 6 seeds and negative in none",
+    "mediation": "B records at least one positive-body episode, retrieves it, produces positive score delta, changes an action, and the delayed observation records the corresponding positive outcome",
+    "prediction_independence": "prediction retrieval remains disabled"
+  },
+  "failure_rule": "Any unmet primary success condition fails the episodic gate; these seeds are consumed after one paired run and thresholds are not changed from their outcomes."
+}

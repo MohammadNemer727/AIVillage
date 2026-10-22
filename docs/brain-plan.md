@@ -1,7 +1,9 @@
-# Plan: the founder's new brain
+# Brain component plan
 
-Status: proposed, 2026-10-22. Open decisions are listed at the end and must be settled before
-milestone 1 starts.
+Status: brain architecture direction, 2026-10-22. The authoritative population, inheritance,
+identity and experiment boundaries are in
+[`evolving-population.md`](evolving-population.md). Open brain implementation decisions are
+listed at the end.
 
 ## Why a new brain
 
@@ -10,7 +12,7 @@ retina), feels (health, fullness, air, pain), and acts (walk, turn, look, jump, 
 use and place, take the next item, eat). It is saved between sessions and covered by
 `integrations/luanti/ci/body-test.sh`.
 
-Its brain has not kept up. The curiosity learner that drives it counts which of 12 moves tends to
+Its brain has not kept up. The curiosity learner that drives it counts which of 14 moves tends to
 change its senses. It learns what its actions do, which our infant tests measure, but it cannot
 learn what anything *is*. It has no notion of a zombie, food, a place or a cause, keeps no
 memory beyond those counts, and ignores what its body feels. In the game it mostly wanders.
@@ -21,9 +23,11 @@ experience, never transferred (no pretrained models, labels, language models or 
 
 ## Principles the design must keep
 
-1. **Grown, not transferred.** Every network starts blank and learns only from the founder's own
-   senses and actions. Innate structure is allowed only as a body would have it: senses, drives,
-   reflexes and the shape of the brain, never knowledge about the world.
+1. **Grown, not transferred.** A newborn starts only from genome-derived developmental
+   parameters, architecture and reflexes, then learns from its own senses and actions. It never
+   receives a parent's acquired weights or memories, pretrained models, labels or world
+   knowledge; see the newborn contract in
+   [`evolving-population.md`](evolving-population.md).
 2. **Driven by its own body.** The only "reward" is the founder's own drive: the fall of its felt
    hunger and injury (homeostasis), plus curiosity. Nothing rewards a task.
 3. **Judged by what it visibly does.** Progress is measured in the game against a random founder
@@ -87,12 +91,11 @@ in four ways:
    watching; you can join it at any time with `/founder` to see what it has learned.
 2. **Dreaming.** Imagined rollouts in the world model give many training updates per real
    decision.
-3. **Several founders at once.** Each founder is one more windowless client; four founders give
-   four times the experience, and they start the village. Each still learns only from its own
-   experience at first.
-4. **A nursery (to decide).** A small, fast simulated world, like the existing synthetic
-   harnesses, for the first sensorimotor learning before the game. It is the founder's own
-   experience in a simpler world, not transferred knowledge, but it is a design choice for you.
+3. **Several individuals at once.** Canonical individuals gather only their own lived experience.
+   Parallel experimental bodies run only in reset clones, and clone state never returns to the
+   canonical population.
+4. **Reset-clone fixtures.** Synthetic harnesses and reset game clones test early sensorimotor
+   learning without becoming inherited experience or a second persistent population.
 
 ## Architecture changes
 
@@ -104,7 +107,7 @@ in four ways:
   saved with the brain.
 - **Checkpoints:** the saved brain grows from the current JSON state to weights plus optimiser
   state plus buffer, in versioned files.
-- **Action set:** the 14 body actions (adding use and next item to today's 12), each held for a
+- **Action set:** the implemented 14 body actions, including use and next item, each held for a
   decision.
 - **Seeing what it learned:** the observer HUD shows what the world model predicts the founder
   will see next beside what it actually sees, plus its drive and value. Its understanding then
@@ -126,8 +129,9 @@ Each milestone ends with a short written result in `docs/`, including results th
 
 ## Risks
 
-- **Too slow to learn in real time.** Mitigated by dreaming, several founders and the nursery.
-  If M1 needs more experience than a week of play gives, the nursery decision becomes urgent.
+- **Too slow to learn in real time.** Mitigated by dreaming, concurrent canonical individuals
+  and repeatable reset-clone fixtures. Clone experience remains experimental evidence and never
+  becomes canonical inherited or lifetime state.
 - **CPU-bound training competes with the game.** Training gets a fixed thread budget, and
   decisions are served from the last good weights.
 - **Learns the wrong things.** Prediction from colours might fixate on sky and ground. The HUD
@@ -135,11 +139,23 @@ Each milestone ends with a short written result in `docs/`, including results th
 - **Floating-point replay.** Exact replay holds on one machine and build; across machines it is
   not promised.
 
-## Decisions for you
+## Implemented baseline
 
-1. **Framework:** Burn (recommended), another Rust library such as Candle, or our own small
-   networks written from scratch (slower to build, full control).
-2. **The nursery:** allow a simple fast world for early learning, or game only.
-3. **Several founders:** start with one, or run several from M0 to gather experience faster.
-4. **The held item:** the founder does not yet feel what is in its hand. Add a sense for it (the
-   item's colour and weight, never its name) in M0, or later.
+The first recurrent milestone uses a small in-tree deterministic fixed-point model rather than a
+framework: a 16-value gated recurrent reservoir and lifetime-trained next-sense decoder. Its exact
+sequence, replay, initialization, checkpoint, and held-out evaluation contracts are documented in
+[`lifetime-predictor.md`](lifetime-predictor.md). This is a compact predictive-representation
+baseline, not the larger Dreamer/RSSM design above; that remains contingent on this baseline
+beating both preregistered held-out baselines.
+
+The next bounded milestone adds private lifetime episodic records over this representation,
+documented in [`episodic-memory.md`](episodic-memory.md). The implementation has fixed capacity,
+versioned keys and retained source evidence, exact checkpoint/restart, newborn clearing, and
+separate prediction/policy retrieval ablations.
+
+After diagnostic and invalid-fixture runs, the final preregistered policy-only A/B passed all
+eight untouched VoxeLibre pairs: losses fell from 173 to zero and returns rose from 147 to 320.
+Prediction retrieval was disabled in both live arms, so it did not mediate the behavioral result.
+The independent untouched prediction check kept vision tied but regressed body MAE from 3.291 to
+5.351 in seven of eight traces. The episodic policy criterion passes, but the full episodic gate
+remains failed. Semantic, spatial, graph, communication and cultural-memory work has not started.

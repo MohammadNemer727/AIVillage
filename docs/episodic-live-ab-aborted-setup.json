@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "protocol": "episodic-policy-live-ab-v1",
+  "status": "aborted_invalid_before_first_pair_completed",
+  "seed": 211,
+  "arm": "A",
+  "observed_trials": 17,
+  "planned_trials": 16,
+  "B_generated": false,
+  "reasons": [
+    "fixture scheduled shutdown without stopping an additional decision",
+    "replay command omitted the arm seed",
+    "VoxeLibre map seed was not fixed by the initial setting"
+  ],
+  "disposition": "Excluded as invalid setup evidence. Seeds, outcomes, success thresholds and trial contingency were not changed."
+}

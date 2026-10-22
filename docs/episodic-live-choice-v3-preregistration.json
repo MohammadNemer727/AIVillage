@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "protocol": "episodic-policy-live-choice-v3",
+  "status": "preregistered_before_outcome_generation",
+  "invalid_predecessor": "episodic-live-choice-v2-aborted.json",
+  "world": {
+    "engine": "Luanti",
+    "game": "VoxeLibre",
+    "map_seed": 424244,
+    "mapgen": "flat",
+    "decision_seconds": 0.1,
+    "consequence_delay_decisions": 1
+  },
+  "paired_runtime_seeds": [347, 349, 353, 359, 367, 373],
+  "arms": {
+    "A": "affordance curiosity policy; SIM_LUANTI_EPISODIC=off",
+    "B": "same affordance policy with policy retrieval only; SIM_LUANTI_EPISODIC=policy"
+  },
+  "controls": [
+    "fresh reset world and newborn checkpoint per arm",
+    "same genome identity, runtime seed, map seed, game configuration, spawn and stopping rule within each pair",
+    "prediction retrieval disabled in both arms",
+    "no action override, body-state reset, outcome label or task reward enters Rust",
+    "only position and velocity are returned to the common choice pose after an observation",
+    "consequences enter Rust only through ordinary VoxeLibre hunger interoception",
+    "non-choice primitives have no assigned bodily consequence"
+  ],
+  "choice": {
+    "forward_thrust": "subtract four VoxeLibre hunger units, bounded at zero",
+    "backward_thrust": "add four VoxeLibre hunger units, bounded at twenty",
+    "initial_hunger": 10,
+    "warmup_eligible_choices": 24,
+    "scored_eligible_choices": 40
+  },
+  "fixture_validity": {
+    "each_A_warmup_requires": "at least 4 forward and 4 backward choices",
+    "each_A_arm_requires": "at least one observed negative fullness delta and one observed positive fullness delta",
+    "each_arm_requires": "exactly 40 scored eligible choices",
+    "invalid_fixture_rule": "failure of exposure or opportunity invalidates the fixture and cannot count as a memory result"
+  },
+  "primary_success_rule": {
+    "aggregate": "during scored choices B has fewer resource-loss choices and more resource-return choices than A",
+    "paired": "resource-return delta B-A is positive in at least 5 of 6 seeds and negative in none",
+    "mediation": "B records a positive episode, retrieves it, produces positive score delta, changes an action, and the following observation records nonnegative fullness with at least one positive delayed fullness outcome in the arm",
+    "prediction_independence": "prediction retrieval remains disabled"
+  },
+  "failure_rule": "Any unmet primary success condition fails the episodic gate; these seeds are consumed after one paired run and thresholds are not changed from their outcomes."
+}
