@@ -1,0 +1,22 @@
+# External inputs of Dockerfile.body-test, recorded 2026-10-22. Update this file and the
+# Dockerfile together, and only after the body test passes with the new inputs.
+#
+# Fedora's updates repository keeps only the newest build of a package. When a pinned update
+# below is replaced upstream, the image build fails at "dnf install" and the pin must be moved
+# deliberately to the new build.
+
+base_image        registry.fedoraproject.org/fedora@sha256:b96f024cecbe9515eb049107d2856e7ad923f7aac09a3c90e7a0d52a46fa3454
+                  # OCI image index of fedora:44 (amd64 manifest sha256:6994884e00951ada912893c0d7686d99be2ff91e449a0ee7535866aa16609ec6)
+
+package           minetest-5.17.0-1.fc44              # Luanti client
+package           minetest-server-5.17.0-1.fc44       # Luanti server
+package           minetest-data-common-5.17.0-1.fc44  # Luanti builtin Lua and data
+package           mesa-dri-drivers-26.2.5-1.fc44      # llvmpipe software OpenGL
+package           mesa-libEGL-26.2.5-1.fc44
+package           mesa-libGL-26.2.5-1.fc44
+package           unzip-6.0-69.fc44
+
+voxelibre         0.92.4 (ContentDB Wuzzy/mineclone2 release 39534)
+voxelibre_commit  a5078bab2efbc8a670b8b10c290ade73aa87be6a
+voxelibre_url     https://cdn.content.luanti.org/uploads/3e11bd7181.zip
+voxelibre_sha256  6215d4da27900874959ff586fb266091be3d4161b9d4f5d27ce0d0cdc49f1af2

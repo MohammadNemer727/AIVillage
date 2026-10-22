@@ -80,6 +80,20 @@ a restarted brain must continue the founder saved in `founder-brain.json`. It ne
 `~/.minetest/games/mineclone2` (or `LUANTI_GAMES`) and exits 77 when it is missing. Run it after
 any change to the founder's body or the play mode.
 
+CI runs the same test from a pinned image, and so can you:
+
+```sh
+docker build -f integrations/luanti/ci/Dockerfile.body-test -t ai-village-body-test integrations/luanti/ci
+BODY_TEST_IMAGE=ai-village-body-test sh integrations/luanti/ci/body-test.sh
+```
+
+The image holds the Luanti 5.17.0 server and client, Mesa's software OpenGL (so the founder's
+client needs no GPU) and checksum-verified VoxeLibre 0.92.4; every input is recorded in
+`integrations/luanti/ci/body-test-deps.lock`. The brain still runs on the host. Use
+`BODY_TEST_RUNTIME=podman` for rootless Podman. Each wait is bounded and a stopped process ends
+the run at once, printing the end of every log; all logs (`server.log`, `founder-client.log`,
+`bridge.log`, `bridge.ndjson`) stay in the world folder, and CI uploads them when the job fails.
+
 ## Luanti graphical observer
 
 Run the three local processes against one isolated world with:

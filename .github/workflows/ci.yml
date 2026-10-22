@@ -48,3 +48,32 @@ jobs:
         env:
           LUANTI_SERVER_IMAGE: ai-village-luanti
         run: sh integrations/luanti/ci/headless-smoke.sh "$RUNNER_TEMP/luanti-smoke"
+
+  luanti-body:
+    name: Founder player body (VoxeLibre)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.1
+      - name: Build the pinned body-test image
+        run: >
+          docker build -f integrations/luanti/ci/Dockerfile.body-test
+          -t ai-village-body-test integrations/luanti/ci
+      - name: Drive the founder's body through every ability
+        timeout-minutes: 12
+        env:
+          BODY_TEST_IMAGE: ai-village-body-test
+        run: sh integrations/luanti/ci/body-test.sh "$RUNNER_TEMP/body-test"
+      - name: Keep the logs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: body-test-logs
+          path: |
+            ${{ runner.temp }}/body-test/*.log
+            ${{ runner.temp }}/body-test/bridge.ndjson
+            ${{ runner.temp }}/body-test/minetest.conf
+          if-no-files-found: ignore

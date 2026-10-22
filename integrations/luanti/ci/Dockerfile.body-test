@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1.7
+# Full-stack image for ci/body-test.sh: the Luanti 5.17.0 server and client, software OpenGL
+# (Mesa llvmpipe) so the founder's windowless client runs without a GPU, and VoxeLibre. Every
+# external input is pinned; the revisions and checksums are recorded in body-test-deps.lock.
+# Build from integrations/luanti/ci:
+#   docker build -f Dockerfile.body-test -t ai-village-body-test .
+FROM registry.fedoraproject.org/fedora@sha256:b96f024cecbe9515eb049107d2856e7ad923f7aac09a3c90e7a0d52a46fa3454
+
+RUN dnf -y install --setopt=install_weak_deps=False \
+      minetest-5.17.0-1.fc44 minetest-server-5.17.0-1.fc44 minetest-data-common-5.17.0-1.fc44 \
+      mesa-dri-drivers-26.2.5-1.fc44 mesa-libEGL-26.2.5-1.fc44 mesa-libGL-26.2.5-1.fc44 \
+      unzip-6.0-69.fc44 \
+    && dnf clean all
+
+# VoxeLibre 0.92.4 from ContentDB (release 39534, commit a5078bab2efbc8a670b8b10c290ade73aa87be6a).
+ADD --checksum=sha256:6215d4da27900874959ff586fb266091be3d4161b9d4f5d27ce0d0cdc49f1af2 \
+    https://cdn.content.luanti.org/uploads/3e11bd7181.zip /tmp/voxelibre.zip
+RUN mkdir -p /opt/luanti/games && unzip -q /tmp/voxelibre.zip -d /opt/luanti/games && rm /tmp/voxelibre.zip
+
+ENV LUANTI_GAMES=/opt/luanti/games \
+    LIBGL_ALWAYS_SOFTWARE=1 \
+    SDL_VIDEODRIVER=offscreen
