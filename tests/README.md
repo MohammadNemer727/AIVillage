@@ -75,16 +75,21 @@ Runs the shared VoxeLibre world headlessly with everything real: the server, the
 mod's test hooks, so each one travels the path of a brain decision. It checks that the founder
 digs a block (with the game's dig time), picks up what dropped, places a held block, opens a
 fence gate with the use pulse, brings the next hotbar item into its hand and eats it, and that
-its brain receives what the body feels (body contract 6: hunger, lost health and pain). Finally
+its brain receives what the body feels (body contract 7: hunger, lost health and pain). Finally
 a restarted brain must continue the founder saved in `founder-brain.json`. It needs VoxeLibre in
 `~/.minetest/games/mineclone2` (or `LUANTI_GAMES`) and exits 77 when it is missing. Run it after
 any change to the founder's body or the play mode.
+
+Placement passes only when one item was consumed and dirt appears in the freshly cleared
+reachable volume. The fixture checks both x columns beside its boundary-aligned look ray because
+Luanti may validly resolve that ray to either voxel; it does not weaken the placement guarantee.
 
 CI runs the same test from a pinned image, and so can you:
 
 ```sh
 docker build -f integrations/luanti/ci/Dockerfile.body-test -t ai-village-body-test integrations/luanti/ci
 BODY_TEST_IMAGE=ai-village-body-test sh integrations/luanti/ci/body-test.sh
+BODY_TEST_IMAGE=ai-village-body-test BODY_TEST_FOUNDER_COUNT=4 sh integrations/luanti/ci/body-test.sh
 ```
 
 The image holds the Luanti 5.17.0 server and client, Mesa's software OpenGL (so the founder's
