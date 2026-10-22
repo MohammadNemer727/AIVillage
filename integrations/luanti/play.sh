@@ -68,7 +68,7 @@ bridge_pid=
 if [ "$founder" = 1 ]; then
   bridge_log="$world/bridge.log"
   cargo build --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml"
-  SIM_LUANTI_PORT=$bridge_port SIM_LUANTI_MODE=affordance \
+  SIM_LUANTI_PORT=$bridge_port SIM_LUANTI_MODE=affordance SIM_LUANTI_STATE="$world/founder-brain.json" \
     "$repo/target/debug/sim-luanti" >"$bridge_log" 2>&1 &
   bridge_pid=$!
   for _ in $(seq 1 240); do

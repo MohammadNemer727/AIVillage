@@ -247,6 +247,22 @@ impl Bridge {
         Ok(response)
     }
 
+    /// Constructs a bridge that continues an existing founder runtime, such as one loaded from
+    /// a saved state.
+    #[must_use]
+    pub const fn from_runtime(runtime: AgentRuntime) -> Self {
+        Self {
+            runtime,
+            trace: Vec::new(),
+        }
+    }
+
+    /// The founder runtime, whose exact state can be saved.
+    #[must_use]
+    pub const fn runtime(&self) -> &AgentRuntime {
+        &self.runtime
+    }
+
     /// Removes all accepted exchanges recorded since the previous drain.
     #[must_use]
     pub fn drain_trace(&mut self) -> Vec<TraceRecord> {
@@ -345,6 +361,39 @@ pub fn replay_trace(
         }
     }
     Ok(runtime)
+}
+
+/// Saves a founder's exact runtime state (everything it has learned) to `path`, replacing the
+/// file only once the new state is completely written.
+///
+/// # Errors
+///
+/// Propagates serialization and file-system errors.
+pub fn save_state(
+    path: &std::path::Path,
+    runtime: &AgentRuntime,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let partial = path.with_extension("partial");
+    std::fs::write(&partial, serde_json::to_vec(runtime.state())?)?;
+    std::fs::rename(&partial, path)?;
+    Ok(())
+}
+
+/// Loads a founder saved by [`save_state`], or `None` if nothing has been saved at `path`.
+///
+/// # Errors
+///
+/// Returns an error for an unreadable file or a state that fails validation.
+pub fn load_state(
+    path: &std::path::Path,
+    seed: u64,
+    agent_id: u64,
+) -> Result<Option<AgentRuntime>, Box<dyn std::error::Error + Send + Sync>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let state = serde_json::from_slice(&std::fs::read(path)?)?;
+    Ok(Some(AgentRuntime::from_state(seed, agent_id, state)))
 }
 
 /// Binds an HTTP server exclusively to `127.0.0.1`.
@@ -510,6 +559,7 @@ mod tests {
                 capabilities: EnvironmentCapabilities::default(),
                 transport: TransportStatus::Healthy,
                 retina: None,
+                interoception: None,
             },
             trace: ApplicationTrace {
                 applied_server_step: 10,
@@ -524,6 +574,61 @@ mod tests {
                 },
             },
         }
+    }
+
+    fn felt(sequence: u64) -> BridgeRequest {
+        let mut felt = request(sequence);
+        felt.observation.interoception = Some(sim_core::environment::Interoception {
+            health: 200,
+            fullness: 120,
+            air: 255,
+            pain: u16::try_from(sequence % 2 * 40).expect("small"),
+        });
+        felt
+    }
+
+    #[test]
+    fn felt_body_replaces_the_fixed_internal_stores() {
+        let mut bridge = Bridge::new(4, 9);
+        let response = bridge.handle(felt(0)).expect("accepted");
+        assert_eq!(response.diagnostics.frozen_physiology.energy, 120);
+        assert_eq!(response.diagnostics.frozen_physiology.damage, 55);
+        let mut unfelt = Bridge::new(4, 9);
+        let response = unfelt.handle(request(0)).expect("accepted");
+        assert_eq!(
+            response.diagnostics.frozen_physiology,
+            FrozenPhysiology::default()
+        );
+    }
+
+    #[test]
+    fn a_saved_founder_continues_exactly_where_it_stopped() {
+        let path =
+            std::env::temp_dir().join(format!("sim-luanti-state-{}.json", std::process::id()));
+        let mut lived = Bridge::new_with_mode(4, 9, ExperimentMode::Homeostatic);
+        for sequence in 0..3 {
+            lived.handle(felt(sequence)).expect("accepted");
+        }
+        save_state(&path, lived.runtime()).expect("saved");
+        let mut resumed =
+            Bridge::from_runtime(load_state(&path, 4, 9).expect("loaded").expect("present"));
+        std::fs::remove_file(&path).expect("removed");
+        assert_eq!(resumed.runtime(), lived.runtime());
+        // A restarted game begins counting again; it is told where the founder left off.
+        assert!(matches!(
+            resumed.handle(felt(0)),
+            Err(BridgeError::Sequence(RuntimeError::UnexpectedSequence {
+                expected: 3,
+                ..
+            }))
+        ));
+        for sequence in 3..6 {
+            assert_eq!(
+                resumed.handle(felt(sequence)).expect("resumed"),
+                lived.handle(felt(sequence)).expect("lived")
+            );
+        }
+        assert!(load_state(&path, 4, 9).expect("readable").is_none());
     }
 
     #[test]

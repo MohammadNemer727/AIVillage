@@ -98,6 +98,9 @@ pub struct Homeostasis {
     /// Decisions until the rooting reflex can fire again.
     #[serde(default)]
     pub reflex_rest: u8,
+    /// Drive felt at the previous observation, when the body reports what it feels.
+    #[serde(default)]
+    pub felt_drive: Option<i64>,
 }
 
 impl Homeostasis {
@@ -111,6 +114,7 @@ impl Homeostasis {
             weights: vec![0; AFFORDANCE_ACTIONS * FEATURES],
             recent: Vec::new(),
             reflex_rest: 0,
+            felt_drive: None,
         }
     }
 
@@ -151,6 +155,18 @@ impl Homeostasis {
     /// Lives through the interval that `observation` reports: burns energy for the action that
     /// was held and gains what was swallowed. Returns the fall in drive, the reward.
     pub(super) fn live(&mut self, observation: &EnvironmentObservation) -> i64 {
+        if let Some(felt) = observation.interoception {
+            // A body that feels itself: its energy is how fed it feels, and being hurt adds to
+            // its drive, so pain is felt as a rise in drive and healing as a fall.
+            if observation.body.swallowed > 0 {
+                self.meals = self.meals.saturating_add(1);
+            }
+            self.energy = felt.fullness.min(ENERGY_MAX);
+            let now = drive(self.energy) + injury(felt.health);
+            let reward = self.felt_drive.map_or(0, |before| before - now);
+            self.felt_drive = Some(now);
+            return reward;
+        }
         let before = drive(self.energy);
         let moved = self
             .recent
@@ -324,6 +340,12 @@ fn drive(energy: u16) -> i64 {
     distance * distance
 }
 
+/// Drive from injury: the distance of health from full, squared like hunger's.
+fn injury(health: u16) -> i64 {
+    let missing = 255 - i64::from(health.min(255));
+    missing * missing
+}
+
 const fn moves(action: PrimitiveAction) -> bool {
     action.thrust != 0 || action.strafe != 0 || action.jump != 0 || action.turn != 0
 }
@@ -343,6 +365,9 @@ pub fn homeostasis_fingerprint(homeostasis: &Homeostasis) -> u64 {
         0,
         0x484F_5246,
     );
+    if let Some(felt) = homeostasis.felt_drive {
+        fingerprint = derive(fingerprint, felt.cast_unsigned(), 1, 0x484F_5246);
+    }
     for (index, weight) in homeostasis.weights.iter().enumerate() {
         if *weight != 0 {
             fingerprint = derive(

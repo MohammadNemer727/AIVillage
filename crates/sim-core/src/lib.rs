@@ -52,6 +52,8 @@ pub fn decode_motor_outputs(outputs: &[i16; OUTPUTS]) -> environment::PrimitiveA
         chemical: outputs[6].max(0).cast_unsigned(),
         visual: outputs[7].max(0).cast_unsigned(),
         signals: core::array::from_fn(|symbol| outputs[8 + symbol]),
+        use_pulse: 0,
+        next_slot: 0,
     }
 }
 

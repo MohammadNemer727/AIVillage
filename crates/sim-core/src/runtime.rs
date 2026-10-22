@@ -412,7 +412,8 @@ fn affordance_action(index: usize) -> PrimitiveAction {
     action
 }
 
-/// Frozen internal stores used by the external one-agent runtime.
+/// Internal stores felt by the external one-agent runtime: frozen at these values unless the
+/// endpoint reports what the body feels (body contract version 6).
 ///
 /// The defaults sit far enough above the founder reflex thresholds that receptor noise cannot
 /// trigger the low-energy, swallowing, or toxin reflexes.
@@ -647,6 +648,12 @@ impl AgentRuntime {
         let mut external = observation.senses;
         observation.capabilities.dead.silence(&mut external);
         let smell = [external.chemicals[0], external.chemicals[1]];
+        if let Some(felt) = observation.interoception {
+            // A body that reports what it feels replaces the fixed stores with its own: energy
+            // is how fed it is, damage how far from full health.
+            self.state.physiology.energy = felt.fullness;
+            self.state.physiology.damage = 255_u16.saturating_sub(felt.health);
+        }
         let reward = if self.state.experiment_mode == ExperimentMode::Homeostatic {
             let reward = self.state.homeostasis.live(&observation);
             self.state.physiology.energy = self.state.homeostasis.energy;
@@ -988,6 +995,7 @@ impl EnvironmentAdapter for FakeEnvironment {
             },
             transport: self.fault,
             retina: None,
+            interoception: None,
         };
         self.fault = TransportStatus::Healthy;
         self.sequence += 1;

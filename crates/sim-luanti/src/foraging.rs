@@ -220,6 +220,7 @@ impl Clearing {
             capabilities,
             transport: TransportStatus::Healthy,
             retina: Some(retina),
+            interoception: None,
         };
         self.sequence += 1;
         self.swallowed = 0;

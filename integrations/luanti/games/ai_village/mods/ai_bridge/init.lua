@@ -105,13 +105,20 @@ minetest.register_node("ai_bridge:observer_light", {
   groups = {not_in_creative_inventory = 1},
 })
 
-local state = { sequence = 0, server_step = 0, pending = false, pending_at = 0, request_token = 0,
+local state = { pain = 0, sequence = 0, server_step = 0, pending = false, pending_at = 0, request_token = 0,
   held = { thrust = 0, turn = 0, strafe = 0, look_pitch = 0, jump = 0, jaw = 0, hand_pulse = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} },
   applied_step = 0, applied_steps = 0, elapsed = 0, previous_velocity = {x = 0, z = 0}, touch = 0, grounded = 0, hand_contact = 0, eye_pitch = 0, status = "healthy",
   smoke = mode == "smoke", learn_decisions = 0, learn_phase = nil, learn_cube = nil,
   decisions = 0, pushes = 0, hits = 0, pushed_at = nil, swallowed = 0, meals = 0,
   forceloaded = {}, diagnostics = nil, latency_ms = 0, founder = nil, body_parts = {},
   observer_resets = 0, safety_resets = 0, last_safety_reset = "none" }
+
+-- Automated body tests (integrations/luanti/ci/body-test.sh) may steer the held action and read
+-- the bridge state through this table; it exists only when ai_bridge_test_hooks is set.
+local test_hooks = minetest.settings:get_bool("ai_bridge_test_hooks", false)
+if test_hooks then
+  rawset(_G, "ai_bridge_test", {state = state})
+end
 
 local function smoke_log(event)
   if state.smoke then minetest.log("action", "AI_BRIDGE_SMOKE " .. minetest.write_json(event)) end
@@ -179,6 +186,8 @@ local function describe(action)
   add((action.hand_pulse or 0) > 0, "pushing with hand")
   add((action.jaw or 0) > 0, "opening jaw")
   add((action.acoustic or 0) > 0, "making a sound")
+  add((action.use_pulse or 0) > 0, "using what is in reach")
+  add((action.next_slot or 0) > 0, "taking the next item in hand")
   return #parts > 0 and table.concat(parts, ", ") or "still"
 end
 
@@ -491,6 +500,17 @@ local function learn_step()
   end
 end
 
+-- What a player body feels of itself (body contract version 6), from the game's own health,
+-- hunger and breath, and the hurt it took since the previous observation. Never what hurt it.
+local function felt_body(player)
+  local properties = player:get_properties()
+  local hp_max, breath_max = properties.hp_max or 20, properties.breath_max or 10
+  local hunger = rawget(_G, "mcl_hunger")
+  local fullness = hunger and hunger.get_hunger(player) / 20 or 1
+  return {health = byte(player:get_hp() * 255 / hp_max), fullness = byte(fullness * 255),
+    air = byte(player:get_breath() * 255 / breath_max), pain = byte((state.pain or 0) * 255 / hp_max)}
+end
+
 local function send_transition(self, dt)
   if not http then zero_action("disconnected") return end
   local velocity = self.object:get_velocity()
@@ -500,7 +520,8 @@ local function send_transition(self, dt)
     body = { eye_pitch = byte(state.eye_pitch + 128), grounded = state.grounded, vertical_motion = signed(velocity.y * 64), hand_contact = state.hand_contact,
       swallowed = state.swallowed },
     retina = state.retina,
-    capabilities = { body_contract_version = 5, checkpoint_resume = false, dead = { chemicals = {not open_world, not open_world, true, true}, vibration = true,
+    interoception = self.player and felt_body(self.player) or nil,
+    capabilities = { body_contract_version = self.player and 6 or 5, checkpoint_resume = false, dead = { chemicals = {not open_world, not open_world, true, true}, vibration = true,
       touch = false, joint_position = false, muscle_tension = false, acceleration = false, orientation = false } },
     transport = transport_name[state.status] or "Disconnected" }
   local body = minetest.write_json({ protocol = protocol, agent_id = agent_id, observation = observation,
@@ -510,6 +531,7 @@ local function send_transition(self, dt)
   -- then clear it.  It never carries target identity or any other world fact.
   state.hand_contact = 0
   state.swallowed = 0
+  state.pain = 0
   state.last_retinal = observation.senses.retinal
   local ray = observation.senses.retinal[1]
   smoke_log({event = "observation", sequence = state.sequence, transport = observation.transport, touch = observation.senses.touch,
@@ -553,6 +575,10 @@ local function send_transition(self, dt)
       smoke_log({event = "override_action", sequence = sequence, thrust = state.held.thrust,
         strafe = state.held.strafe, jump = state.held.jump, turn = state.held.turn,
         hand_pulse = state.held.hand_pulse})
+    end
+    local hooks = test_hooks and rawget(_G, "ai_bridge_test")
+    if hooks and hooks.override then
+      for field, value in pairs(hooks.override(state.sequence) or {}) do state.held[field] = value end
     end
     if learn then learn_step() end
     if mode == "observe" then swing_back(state.observe_cube) end
@@ -677,6 +703,50 @@ local function use_hand(player, body)
   state.dig = nil
 end
 
+-- The use pulse: what a player's other hand does on what is within reach, through the game's
+-- own handlers: operate it (a door, gate, bed, chest...), or else place or use the held item.
+local function use_other_hand(player, body)
+  local eye = vector.offset(player:get_pos(), 0, body.eye_height, 0)
+  local look = player:get_look_dir()
+  local stack = player:get_wielded_item()
+  local item = stack:get_definition()
+  for pointed in minetest.raycast(eye, vector.add(eye, vector.multiply(look, 4)), true, false) do
+    local own = pointed.type == "object" and (pointed.ref == player or pointed.ref:get_attach() == player)
+    if pointed.type == "object" and not own then
+      local entity = pointed.ref:get_luaentity()
+      if entity and entity.on_rightclick then entity:on_rightclick(player) end
+      return
+    elseif pointed.type == "node" then
+      local node = minetest.get_node(pointed.under)
+      local def = minetest.registered_nodes[node.name] or {}
+      if def.on_rightclick then
+        player:set_wielded_item(def.on_rightclick(pointed.under, node, player, stack, pointed) or stack)
+      elseif item and item.on_place then
+        player:set_wielded_item(item.on_place(stack, player, pointed) or stack)
+      end
+      return
+    end
+  end
+  if item and item.on_secondary_use then
+    player:set_wielded_item(item.on_secondary_use(stack, player, {type = "nothing"}) or stack)
+  end
+end
+
+-- Brings the next hotbar item into the founder's hand. A server cannot move a player's selected
+-- hotbar slot (only its client can), so the hotbar's items move along by one instead: what the
+-- hand holds changes exactly as if the next slot were selected.
+local function next_item(player)
+  local inventory = player:get_inventory()
+  local slots = player:hud_get_hotbar_itemcount()
+  local hand = player:get_wield_index()
+  local hotbar = {}
+  for slot = 1, slots do hotbar[slot] = inventory:get_stack("main", slot) end
+  for offset = 0, slots - 1 do
+    local slot = (hand - 1 + offset) % slots + 1
+    inventory:set_stack("main", slot, hotbar[(hand + offset) % slots + 1])
+  end
+end
+
 local function chew(player, jaw)
   local hunger = rawget(_G, "mcl_hunger")
   local stack = player:get_wielded_item()
@@ -736,6 +806,8 @@ local function drive_founder(player, dtime)
       if hunger and hunger.exhaust then hunger.exhaust(founder_name, hunger.EXHAUST_JUMP or 50) end
     end
     if (action.hand_pulse or 0) > 0 then use_hand(player, body) else state.dig = nil end
+    if (action.use_pulse or 0) > 0 then use_other_hand(player, body) end
+    if (action.next_slot or 0) > 0 then next_item(player) end
     chew(player, action.jaw or 0)
   end
   if not state.pending and state.elapsed >= step_seconds then send_transition(body, state.elapsed) end
@@ -745,6 +817,9 @@ if play then
   minetest.register_globalstep(function(dtime)
     local player = state.founder
     if player and player:get_pos() and state.founder_body then drive_founder(player, dtime) end
+  end)
+  minetest.register_on_player_hpchange(function(player, change)
+    if change < 0 and player:get_player_name() == founder_name then state.pain = (state.pain or 0) - change end
   end)
   minetest.register_on_dieplayer(function(player)
     if player:get_player_name() ~= founder_name then return end

@@ -7,9 +7,12 @@ use std::{fs::OpenOptions, io::Write, path::PathBuf, time::Duration};
 
 use sim_core::runtime::{AffordanceConfig, ExperimentMode};
 use sim_luanti::{
-    Bridge, TraceRecord, benchmark, bind_loopback, contingency, foraging, reaching, replay_trace,
-    serve_once_with_stall,
+    Bridge, TraceRecord, benchmark, bind_loopback, contingency, foraging, load_state, reaching,
+    replay_trace, save_state, serve_once_with_stall,
 };
+
+/// Decisions between saves of the founder's brain (about ten seconds of watched play).
+const SAVE_EVERY_DECISIONS: u64 = 40;
 
 /// Writes an experiment report to `[report.json] [report.md]`, defaulting to
 /// `target/<name>.json` and `docs/<name>.md`.
@@ -51,6 +54,52 @@ fn replay(
     replay_trace(seed, agent_id, &records)?;
     println!("replayed {} recorded transitions exactly", records.len());
     Ok(())
+}
+
+/// The founder the bridge serves: the one saved at `state_path` (`SIM_LUANTI_STATE`, where its brain
+/// is kept between sessions) if there is one, continuing with everything it learned in the mode
+/// it was saved in; otherwise a newborn in the mode `SIM_LUANTI_MODE` selects.
+fn founder_bridge(
+    seed: u64,
+    agent_id: u64,
+    state_path: Option<&std::path::Path>,
+) -> Result<Bridge, Box<dyn std::error::Error + Send + Sync>> {
+    let mode = match std::env::var("SIM_LUANTI_MODE").as_deref() {
+        Ok("affordance") => ExperimentMode::AffordanceDiscovery,
+        Ok("homeostatic") => ExperimentMode::Homeostatic,
+        Ok("baseline") | Err(_) => ExperimentMode::PredictiveBaseline,
+        Ok(value) => {
+            return Err(format!(
+                "SIM_LUANTI_MODE must be baseline, affordance or homeostatic, got {value}"
+            )
+            .into());
+        }
+    };
+    eprintln!("sim-luanti mode: {mode:?}");
+    // Optional affordance learner settings as JSON; omitted fields keep their defaults, e.g.
+    // SIM_LUANTI_AFFORDANCE='{"rule":"LearningProgress","action_horizon":16}'.
+    let bridge = match std::env::var("SIM_LUANTI_AFFORDANCE") {
+        Ok(json) if mode == ExperimentMode::AffordanceDiscovery => {
+            let settings: AffordanceConfig = serde_json::from_str(&json)
+                .map_err(|error| format!("SIM_LUANTI_AFFORDANCE is not valid JSON: {error}"))?;
+            eprintln!("sim-luanti affordance settings: {settings:?}");
+            Bridge::new_with_affordance(seed, agent_id, settings)?
+        }
+        Ok(_) => return Err("SIM_LUANTI_AFFORDANCE requires SIM_LUANTI_MODE=affordance".into()),
+        Err(_) => Bridge::new_with_mode(seed, agent_id, mode),
+    };
+    if let Some(path) = state_path
+        && let Some(runtime) = load_state(path, seed, agent_id)?
+    {
+        eprintln!(
+            "sim-luanti: continuing the saved founder ({:?}, {} decisions) from {}",
+            runtime.state().experiment_mode,
+            runtime.state().decision_tick,
+            path.display()
+        );
+        return Ok(Bridge::from_runtime(runtime));
+    }
+    Ok(bridge)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -98,30 +147,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
     let server = bind_loopback(port)?;
     eprintln!("sim-luanti listening on 127.0.0.1:{port}");
-    let mode = match std::env::var("SIM_LUANTI_MODE").as_deref() {
-        Ok("affordance") => ExperimentMode::AffordanceDiscovery,
-        Ok("homeostatic") => ExperimentMode::Homeostatic,
-        Ok("baseline") | Err(_) => ExperimentMode::PredictiveBaseline,
-        Ok(value) => {
-            return Err(format!(
-                "SIM_LUANTI_MODE must be baseline, affordance or homeostatic, got {value}"
-            )
-            .into());
-        }
-    };
-    eprintln!("sim-luanti mode: {mode:?}");
-    // Optional affordance learner settings as JSON; omitted fields keep their defaults, e.g.
-    // SIM_LUANTI_AFFORDANCE='{"rule":"LearningProgress","action_horizon":16}'.
-    let mut bridge = match std::env::var("SIM_LUANTI_AFFORDANCE") {
-        Ok(json) if mode == ExperimentMode::AffordanceDiscovery => {
-            let settings: AffordanceConfig = serde_json::from_str(&json)
-                .map_err(|error| format!("SIM_LUANTI_AFFORDANCE is not valid JSON: {error}"))?;
-            eprintln!("sim-luanti affordance settings: {settings:?}");
-            Bridge::new_with_affordance(seed, agent_id, settings)?
-        }
-        Ok(_) => return Err("SIM_LUANTI_AFFORDANCE requires SIM_LUANTI_MODE=affordance".into()),
-        Err(_) => Bridge::new_with_mode(seed, agent_id, mode),
-    };
+    let state_path = std::env::var_os("SIM_LUANTI_STATE").map(PathBuf::from);
+    let mut bridge = founder_bridge(seed, agent_id, state_path.as_deref())?;
+    let mut saved_at = bridge.runtime().state().decision_tick;
     let trace_path = std::env::var_os("SIM_LUANTI_TRACE").map(PathBuf::from);
     let stall_sequence = std::env::var("SIM_LUANTI_STALL_SEQUENCE")
         .ok()
@@ -142,6 +170,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             stall_sequence,
             &mut stalled,
         )?;
+        if let Some(path) = &state_path {
+            let decisions = bridge.runtime().state().decision_tick;
+            if decisions >= saved_at + SAVE_EVERY_DECISIONS {
+                save_state(path, bridge.runtime())?;
+                saved_at = decisions;
+            }
+        }
         if let Some(path) = &trace_path {
             let mut file = OpenOptions::new().create(true).append(true).open(path)?;
             for record in bridge.drain_trace() {

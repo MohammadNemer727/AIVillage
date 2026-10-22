@@ -63,6 +63,23 @@ at 4 m/s² per full-scale unit and clamped to `[-255, 255]`. This can saturate d
 gravity-adjacent motion; changing the fixed receptor mapping requires a versioned V2 contract
 decision rather than a bridge-local adjustment.
 
+## Founder player body (VoxeLibre)
+
+```sh
+sh integrations/luanti/ci/body-test.sh
+```
+
+Runs the shared VoxeLibre world headlessly with everything real: the server, the founder's brain
+(the Rust bridge) and the founder's own windowless client (OpenGL drawing offscreen). The
+`body_test` world mod builds a platform in the sky and steers the founder's actions through the
+mod's test hooks, so each one travels the path of a brain decision. It checks that the founder
+digs a block (with the game's dig time), picks up what dropped, places a held block, opens a
+fence gate with the use pulse, brings the next hotbar item into its hand and eats it, and that
+its brain receives what the body feels (body contract 6: hunger, lost health and pain). Finally
+a restarted brain must continue the founder saved in `founder-brain.json`. It needs VoxeLibre in
+`~/.minetest/games/mineclone2` (or `LUANTI_GAMES`) and exits 77 when it is missing. Run it after
+any change to the founder's body or the play mode.
+
 ## Luanti graphical observer
 
 Run the three local processes against one isolated world with:

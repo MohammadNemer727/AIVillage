@@ -92,6 +92,7 @@ pub(crate) fn observation(
         },
         transport: TransportStatus::Healthy,
         retina: None,
+        interoception: None,
     }
 }
 pub(crate) fn random_action(seed: u64, tick: u64) -> PrimitiveAction {

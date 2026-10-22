@@ -96,6 +96,21 @@ pub struct BodyProprioception {
     pub swallowed: u16,
 }
 
+/// What the body feels of itself (body contract version 6): how healthy, fed and breathing it is,
+/// and how much it was hurt since the previous observation. Each is 0 to 255 (255 is full health,
+/// fully fed, full lungs). It never says what caused a feeling: pain is pain, whatever hurt.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Interoception {
+    /// Health of the body.
+    pub health: u16,
+    /// How fed the body is; falls as it grows hungry.
+    pub fullness: u16,
+    /// Air in the lungs; falls only while breathing is impossible.
+    pub air: u16,
+    /// Hurt felt since the previous observation.
+    pub pain: u16,
+}
+
 /// Current transport health, separate from sensory data.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum TransportStatus {
@@ -213,6 +228,10 @@ pub struct EnvironmentObservation {
     /// rays in `senses` remain for the founder's brain and older learners.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retina: Option<Retina>,
+    /// What the body feels of itself, from endpoints implementing body contract version 6.
+    /// Without it the runtime keeps its fixed internal stores.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interoception: Option<Interoception>,
 }
 
 /// Primitive motor amplitudes emitted by the runtime.
@@ -244,6 +263,13 @@ pub struct PrimitiveAction {
     pub visual: u16,
     /// Blank signal outputs, recorded only; nothing receives them in the one-agent milestone.
     pub signals: [i16; SIGNAL_CHANNELS],
+    /// Use pulse (body contract version 6): what a player does with the other hand, such as
+    /// placing a held block or opening a door, on whatever is within reach.
+    #[serde(default, skip_serializing_if = "is_zero_u16")]
+    pub use_pulse: u16,
+    /// Moves the hand to the next held item (body contract version 6).
+    #[serde(default, skip_serializing_if = "is_zero_u16")]
+    pub next_slot: u16,
 }
 
 /// One recorded observation-to-action decision.
