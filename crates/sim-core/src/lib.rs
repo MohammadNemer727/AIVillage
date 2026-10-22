@@ -1022,7 +1022,7 @@ pub enum LifeStage {
 /// This deliberately contains no learned activity, traces, memories, or direct controller
 /// weights. The bounded loci express morphology, receptors, neural connection templates,
 /// metabolic costs, and plasticity gain.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct DevelopmentalGenome {
     loci: [u8; 16],
     mutation_rate_ppm: u16,
@@ -1058,6 +1058,52 @@ impl DevelopmentalGenome {
     #[must_use]
     pub const fn mutation_rate_ppm(&self) -> u16 {
         self.mutation_rate_ppm
+    }
+
+    /// Derives one asexual offspring program without carrying any acquired lifetime state.
+    ///
+    /// Mutation is keyed only by durable lineage values, so restarting or changing execution
+    /// order cannot change an individual's inherited program.
+    #[must_use]
+    pub fn asexual_offspring(
+        &self,
+        seed: u64,
+        parent_id: u64,
+        child_id: u64,
+        generation: u32,
+    ) -> Self {
+        self.asexual_offspring_with_mutation(seed, parent_id, child_id, generation, true)
+    }
+
+    /// Derives an asexual offspring with an explicit deterministic mutation cohort switch.
+    ///
+    /// Disabling mutation returns the exact inherited genome byte-for-byte.
+    #[must_use]
+    pub fn asexual_offspring_with_mutation(
+        &self,
+        seed: u64,
+        parent_id: u64,
+        child_id: u64,
+        generation: u32,
+        mutation_enabled: bool,
+    ) -> Self {
+        if !mutation_enabled {
+            return self.clone();
+        }
+        let mut child = self.clone();
+        for (locus, value) in child.loci.iter_mut().enumerate() {
+            let random = derive(
+                seed,
+                parent_id,
+                child_id ^ u64::from(generation),
+                0x504F_5000 + locus as u64,
+            );
+            if random % 1_000_000 < u64::from(child.mutation_rate_ppm) {
+                let delta = i16::try_from(random % 5).unwrap_or_default() - 2;
+                *value = u8::try_from((i16::from(*value) + delta).clamp(0, 64)).unwrap_or_default();
+            }
+        }
+        child
     }
 
     fn locus(&self, index: usize) -> u16 {

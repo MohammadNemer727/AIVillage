@@ -111,6 +111,27 @@ pub struct Interoception {
     pub pain: u16,
 }
 
+/// Bounded physical appearance and condition of what the player body currently holds (body
+/// contract version 7). It deliberately omits item names, groups, recipes, descriptions and
+/// other semantic game data. `VoxeLibre` exposes no physical item mass, so no weight is invented.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct HeldItemSense {
+    /// Whether the selected inventory position contains anything.
+    pub occupied: u16,
+    /// Red component of the held item's rendered inventory or wield appearance.
+    pub red: u16,
+    /// Green component of the held item's rendered inventory or wield appearance.
+    pub green: u16,
+    /// Blue component of the held item's rendered inventory or wield appearance.
+    pub blue: u16,
+    /// Number of items in the selected stack, clamped to the receptor range.
+    pub amount: u16,
+    /// Maximum stack amount advertised by the physical inventory stack.
+    pub capacity: u16,
+    /// Remaining durability inferred from engine wear; full for unworn items.
+    pub durability: u16,
+}
+
 /// Current transport health, separate from sensory data.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum TransportStatus {
@@ -232,6 +253,14 @@ pub struct EnvironmentObservation {
     /// Without it the runtime keeps its fixed internal stores.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interoception: Option<Interoception>,
+    /// Physical appearance and condition of the selected inventory stack, from player endpoints
+    /// implementing body contract version 7.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_held_item"
+    )]
+    pub held_item: Option<HeldItemSense>,
 }
 
 /// Primitive motor amplitudes emitted by the runtime.
@@ -288,6 +317,15 @@ pub struct EnvironmentTransition {
     /// Intrinsic information score of the selected action, in experiment mode.
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub intrinsic_score: u32,
+    /// Action selected by the active baseline policy before episodic mediation.
+    #[serde(default, skip_serializing_if = "is_default_action")]
+    pub pre_episodic_action: PrimitiveAction,
+    /// Episode completed by this observation, if a prediction was pending.
+    #[serde(default)]
+    pub episodic_write: crate::runtime::EpisodicWrite,
+    /// Bounded retrieval and score evidence for this action decision.
+    #[serde(default)]
+    pub episodic_policy: crate::runtime::EpisodicPolicyDecision,
     /// Fingerprint of the checkpointed affordance learner, or zero for the baseline.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     pub affordance_fingerprint: u64,
@@ -304,6 +342,32 @@ fn is_default_body(value: &BodyProprioception) -> bool {
 }
 fn is_default_action(value: &PrimitiveAction) -> bool {
     *value == PrimitiveAction::default()
+}
+
+fn deserialize_held_item<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<HeldItemSense>, D::Error> {
+    use serde::de::Error as _;
+
+    let held = Option::<HeldItemSense>::deserialize(deserializer)?;
+    if held.is_some_and(|item| {
+        [
+            item.occupied,
+            item.red,
+            item.green,
+            item.blue,
+            item.amount,
+            item.capacity,
+            item.durability,
+        ]
+        .into_iter()
+        .any(|value| value > 255)
+    }) {
+        return Err(D::Error::custom(
+            "held-item amplitude is out of the receptor range",
+        ));
+    }
+    Ok(held)
 }
 #[allow(
     clippy::trivially_copy_pass_by_ref,

@@ -70,6 +70,18 @@ cargo install cargo-gpu --version 0.11.0 --locked   # once
 sh crates/sim-shaders/build-shaders.sh              # rebuilds sim-gpu/shaders/sim_shaders.spv
 ```
 
+`cargo-gpu` builds SPIRV-Tools for the host and requires a GNU-compatible C/C++ toolchain.
+On Fedora, if `cc` or `c++` is a Zig wrapper (or native GCC is otherwise unavailable), use the
+reproducible Fedora 44 container path:
+
+```sh
+sh crates/sim-shaders/build-shaders-container.sh
+```
+
+This uses the host's pinned `cargo-gpu` and rustup toolchains but compiles and links host
+dependencies with Fedora's `/usr/bin/gcc` and `/usr/bin/g++`. Set
+`SHADER_CONTAINER_RUNTIME=docker` when Podman is unavailable.
+
 CI runs `build-shaders.sh --check`, which fails if the committed shader is stale.
 
 Verify the GPU against the CPU on your machine (needs a Vulkan GPU):

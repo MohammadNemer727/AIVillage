@@ -42,6 +42,13 @@ pub const CONTEXT_CHANNELS: usize = 4;
 )]
 const CONTEXT_DIVISOR: i32 = CONTEXT_CHANNELS as i32;
 #[allow(
+    clippy::manual_midpoint,
+    reason = "Operands are widened i16 rates, and this arithmetic must remain rust-gpu compatible."
+)]
+fn mean_two(left: i32, right: i32) -> i32 {
+    (left + right) / 2
+}
+#[allow(
     clippy::cast_possible_truncation,
     reason = "Fixed sensor geometry is a small compile-time constant."
 )]
@@ -152,6 +159,25 @@ impl EndogenousEvents {
 }
 
 impl PredictiveBrain {
+    /// Returns the seven independent controller readouts used for blank signal outputs.
+    ///
+    /// Kept as a fixed-array indexed projection so the same implementation compiles for SPIR-V.
+    #[must_use]
+    pub fn signal_outputs(&self) -> [i16; OUTPUTS - MOTORS] {
+        let damage = i32::from(self.activity[MODULATOR_START]);
+        let metabolic = i32::from(self.activity[MODULATOR_START + 1]);
+        let surprise = i32::from(self.activity[MODULATOR_START + 2]);
+        [
+            clamp_i16(surprise, i16::MIN, i16::MAX),
+            clamp_i16(damage, i16::MIN, i16::MAX),
+            clamp_i16(metabolic, i16::MIN, i16::MAX),
+            clamp_i16(mean_two(damage, surprise), i16::MIN, i16::MAX),
+            clamp_i16(mean_two(metabolic, surprise), i16::MIN, i16::MAX),
+            clamp_i16(mean_two(damage, metabolic), i16::MIN, i16::MAX),
+            clamp_i16((damage + metabolic + surprise) / 3, i16::MIN, i16::MAX),
+        ]
+    }
+
     /// Advances the brain by one tick from a raw receptor frame.
     #[must_use]
     pub fn step(&mut self, config: &BrainConfig, frame: &RawSensoryFrame) -> BrainStep {
@@ -166,6 +192,15 @@ impl PredictiveBrain {
         let mut outputs = [0; OUTPUTS];
         for motor in 0..MOTORS {
             outputs[motor] = self.activity[MOTOR_START + motor];
+        }
+        // The seven previously unwritten blank-signal channels are distinct controller
+        // projections of the three endogenous event populations. This preserves every existing
+        // actuator and checkpoint/GPU layout without aliases or external schedules.
+        let signals = self.signal_outputs();
+        let mut signal = 0;
+        while signal < signals.len() {
+            outputs[MOTORS + signal] = signals[signal];
+            signal += 1;
         }
         apply_reflexes(&mut outputs, frame);
         BrainStep { outputs, learned }
@@ -370,7 +405,10 @@ pub fn compressed_brain_context(frame: &RawSensoryFrame) -> [i16; CONTEXT_CHANNE
 
 #[cfg(test)]
 mod tests {
-    use super::{BrainConfig, CONTINGENCY_FEATURES, PredictiveBrain, compressed_brain_context};
+    use super::{
+        BrainConfig, CONTINGENCY_FEATURES, MODULATOR_START, MOTOR_START, PredictiveBrain,
+        compressed_brain_context,
+    };
     use crate::senses::RawSensoryFrame;
 
     const ALL_ENABLED: BrainConfig = BrainConfig {
@@ -451,5 +489,43 @@ mod tests {
             ..RawSensoryFrame::EMPTY
         };
         assert_eq!(brain.step(&ALL_ENABLED, &toxic).outputs[4], 0);
+    }
+
+    #[test]
+    fn reproduction_signal_is_a_natural_independent_controller_readout() {
+        let mut brain = PredictiveBrain::default();
+        let calm = brain.step(&ALL_ENABLED, &frame(0, 0));
+        assert_eq!(calm.outputs[8], 0);
+
+        let damaged = brain.step(&ALL_ENABLED, &frame(120, 90));
+        assert!(damaged.outputs[8] > 0);
+        assert_eq!(damaged.outputs[8], brain.activity[MODULATOR_START + 2]);
+        assert_ne!(damaged.outputs[8], brain.activity[MOTOR_START]);
+
+        let signal = damaged.outputs[8];
+        brain.learned_bias[MOTOR_START] = -96;
+        let next = brain.step(&ALL_ENABLED, &frame(120, 90));
+        assert_ne!(next.outputs[0], damaged.outputs[0]);
+        assert!(next.outputs[8] > 0);
+        assert_ne!(next.outputs[8], next.outputs[0]);
+        assert_ne!(signal, 0);
+    }
+
+    #[test]
+    fn all_predictive_signal_channels_have_distinct_histories() {
+        let mut brain = PredictiveBrain::default();
+        let frames = [frame(0, 0), frame(120, 90), frame(240, 0), frame(0, 45)];
+        let mut histories = [[0; 4]; 7];
+        for tick in 0..frames.len() {
+            let step = brain.step(&ALL_ENABLED, &frames[tick]);
+            for signal in 0..histories.len() {
+                histories[signal][tick] = step.outputs[super::MOTORS + signal];
+            }
+        }
+        for left in 0..histories.len() {
+            for right in 0..left {
+                assert_ne!(histories[left], histories[right]);
+            }
+        }
     }
 }

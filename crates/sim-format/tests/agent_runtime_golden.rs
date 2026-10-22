@@ -3,6 +3,9 @@
 //! Fixture source of truth: `tests/fixtures/agent_runtime_golden.ndjson`, one
 //! [`EnvironmentTransition`] per line. Regenerate after an intentional behaviour change with
 //! `UPDATE_AGENT_GOLDEN=1 cargo test -p sim-format --test agent_runtime_golden`.
+//! The 2026-10-22 refresh records controller outputs 8–14, which had previously been unwritten
+//! zeros. No checkpoint schema changed: the new values are readouts of existing, already
+//! checkpointed neurons, so brain state and GPU layouts retain their exact interpretation.
 
 #![allow(missing_docs, reason = "Integration test crate.")]
 
@@ -111,7 +114,7 @@ fn resuming_from_a_toml_checkpoint_reproduces_the_rest_of_the_trace() {
     for expected in before {
         assert_eq!(runtime.step(expected.observation).unwrap(), *expected);
     }
-    let encoded = AgentCheckpoint::v1(&runtime).to_toml().unwrap();
+    let encoded = AgentCheckpoint::current(&runtime).to_toml().unwrap();
     let mut resumed = AgentCheckpoint::from_toml(&encoded)
         .unwrap()
         .restore()

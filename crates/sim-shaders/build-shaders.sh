@@ -8,7 +8,8 @@
 # Run without arguments after any change to sim-kernels or sim-shaders, then commit both outputs.
 # Requires cargo-gpu (`cargo install cargo-gpu --version 0.11.0 --locked`); the first run
 # installs its pinned nightly toolchain and SPIR-V codegen backend. `--check` needs only a POSIX
-# shell and sha256sum, so stable-only CI can catch a stale shader.
+# shell and sha256sum, so stable-only CI can catch a stale shader. On Fedora hosts whose cc/c++
+# commands are non-GNU wrappers, use build-shaders-container.sh for the native GNU build.
 set -eu
 cd "$(dirname "$0")"
 output=../sim-gpu/shaders
@@ -17,7 +18,8 @@ fingerprint_file="$output/sources.sha256"
 # Hashes every input with CRLF normalised, so Windows and Linux checkouts agree.
 fingerprint() {
     for file in $(find ../sim-kernels/src src -name '*.rs' | sort) \
-        ../sim-kernels/Cargo.toml Cargo.toml Cargo.lock build-shaders.sh; do
+        ../sim-kernels/Cargo.toml Cargo.toml Cargo.lock build-shaders.sh \
+        build-shaders-container.sh Dockerfile; do
         printf '%s %s\n' "$file" "$(tr -d '\r' < "$file" | sha256sum | cut -d' ' -f1)"
     done | sha256sum | cut -d' ' -f1
 }

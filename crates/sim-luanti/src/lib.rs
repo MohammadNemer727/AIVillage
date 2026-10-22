@@ -9,28 +9,46 @@
 
 pub mod benchmark;
 pub mod contingency;
+pub mod episodic_eval;
 pub mod foraging;
 pub mod harness;
+pub mod population;
+pub mod prediction_eval;
 pub mod reaching;
+
+pub use population::{
+    BirthKind, BodySlotId, LifecycleCommand, LifecycleConfig, LifecycleError, LifecycleEvent,
+    LifecycleOperation, PopulationCoordinator,
+};
+/// Backward-compatible name for the now population-aware coordinator.
+pub type Bridge = PopulationCoordinator;
 
 use std::{
     io::Read,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
 use serde::{Deserialize, Serialize};
 use sim_core::{
     environment::{EnvironmentObservation, EnvironmentTransition, PrimitiveAction},
-    runtime::{AffordanceConfig, AgentRuntime, ExperimentMode, FrozenPhysiology, RuntimeError},
+    runtime::{
+        AffordanceConfig, AgentRuntime, EpisodicConfig, EpisodicPolicyDecision, EpisodicWrite,
+        ExperimentMode, FrozenPhysiology, RuntimeError,
+    },
 };
 use sim_format::FounderSpec;
 use sim_kernels::brain::{MODULATORS, NEURONS};
 use tiny_http::{Header, Method, Response, Server, StatusCode};
 
-/// Wire protocol accepted by this crate.
-pub const PROTOCOL_VERSION: u16 = 3;
-/// Requests larger than this cannot be receptor frames from the one-agent protocol.
+/// Wire protocol accepted by this crate. Version 5 adds recurrent-predictor diagnostics while
+/// preserving the version-4 body observation contract.
+pub const PROTOCOL_VERSION: u16 = 5;
+/// Requests larger than this cannot be one body's receptor frame.
 pub const MAX_PAYLOAD_BYTES: usize = 64 * 1024;
 
 /// Luanti timing evidence recorded with each request. It is not given to the brain.
@@ -81,6 +99,21 @@ pub struct Diagnostics {
     pub intrinsic_score: u32,
     /// Fingerprint of checkpointed affordance state.
     pub affordance_fingerprint: u64,
+    /// Fingerprint of the checkpointed recurrent representation and acquired decoder state.
+    #[serde(default)]
+    pub recurrent_fingerprint: u64,
+    /// Fingerprint of private checkpointed episodic records.
+    #[serde(default)]
+    pub episodic_fingerprint: u64,
+    /// Number of private events currently retained.
+    #[serde(default)]
+    pub episodic_events: usize,
+    /// Independent episodic prediction and action-selection ablations.
+    #[serde(default)]
+    pub episodic_config: EpisodicConfig,
+    /// Episode write → retrieval → score delta → selected-action causal evidence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episodic_mediation: Option<EpisodicMediation>,
     /// Whether any lifetime brain parameter has departed from its blank initial state.
     pub learned: bool,
     /// Mean absolute activity of the modulatory population.
@@ -89,13 +122,31 @@ pub struct Diagnostics {
     pub frozen_physiology: FrozenPhysiology,
 }
 
-/// A request from the one permitted Lua bridge endpoint.
+/// Observer-only causal evidence for the episodic policy path.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EpisodicMediation {
+    /// Consequence of the preceding action completed by this observation.
+    pub write: EpisodicWrite,
+    /// Retrieval and remembered score comparison for the current decision.
+    pub retrieval: EpisodicPolicyDecision,
+    /// Active policy action before episodic retrieval.
+    pub pre_episodic_action: PrimitiveAction,
+    /// Action emitted after the episodic policy switch.
+    pub selected_action: PrimitiveAction,
+    /// Curiosity or homeostatic policy score before episodic mediation.
+    pub baseline_policy_score: u32,
+}
+
+/// A request from one body using the permitted Lua bridge endpoint.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BridgeRequest {
     /// Versioned contract discriminator.
     pub protocol: u16,
-    /// Stable founder identity; exactly one ID is accepted by a bridge instance.
+    /// Stable, never-reused evolving individual identity.
     pub agent_id: u64,
+    /// Reusable body slot occupied by this individual. Omitted by protocol-v3 legacy clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_slot: Option<u32>,
     /// Complete post-action external observation.
     pub observation: EnvironmentObservation,
     /// Evidence of the preceding action's actual application.
@@ -109,6 +160,8 @@ pub struct BridgeResponse {
     pub protocol: u16,
     /// Echoed stable founder identity.
     pub agent_id: u64,
+    /// Current reusable Luanti body slot, distinct from individual identity.
+    pub body_slot: u32,
     /// Observation sequence for which this action was generated.
     pub generated_sequence: u64,
     /// The sequence the bridge will accept next.
@@ -126,6 +179,28 @@ pub struct TraceRecord {
     pub request: BridgeRequest,
     /// The action generated from its observation.
     pub response: BridgeResponse,
+    /// Population eligibility state retained at this transition boundary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reproduction: Option<ReproductionTransitionAudit>,
+}
+
+/// Observer-only reproduction evidence retained with an accepted transition.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReproductionTransitionAudit {
+    /// Independent controller output decoded as blank signal zero.
+    pub signal_0: i16,
+    /// Decision tick that emitted `signal_0`.
+    pub decision_tick: u64,
+    /// Configured maturity threshold.
+    pub maturity_decisions: u64,
+    /// Whether this decision met the maturity threshold.
+    pub mature: bool,
+    /// Durable reserve before any lifecycle command caused by this transition.
+    pub reproductive_reserve: u16,
+    /// Body fullness observed at this transition, when available.
+    pub fullness: Option<u16>,
+    /// Whether some configured body slot was unoccupied at this transition.
+    pub slot_available: bool,
 }
 
 /// Rejected transport input, before any runtime mutation.
@@ -145,6 +220,17 @@ pub enum BridgeError {
         /// Identity supplied by the endpoint.
         received: u64,
     },
+    /// No live individual has the supplied evolving identity.
+    UnknownIndividual(u64),
+    /// The individual exists but does not occupy the claimed body slot.
+    BodySlot {
+        /// Evolving individual identity supplied by the request.
+        individual_id: u64,
+        /// Slot currently occupied by the individual.
+        expected: u32,
+        /// Slot claimed by the request.
+        received: u32,
+    },
     /// The observation did not carry the expected sequence.
     Sequence(RuntimeError),
     /// A recorded response does not reproduce from the Milestone A runtime.
@@ -159,6 +245,15 @@ impl core::fmt::Display for BridgeError {
             Self::Agent { expected, received } => {
                 write!(formatter, "expected agent {expected}, received {received}")
             }
+            Self::UnknownIndividual(id) => write!(formatter, "unknown individual {id}"),
+            Self::BodySlot {
+                individual_id,
+                expected,
+                received,
+            } => write!(
+                formatter,
+                "individual {individual_id} occupies body slot {expected}, received {received}"
+            ),
             Self::Sequence(error) => error.fmt(formatter),
             Self::Replay => formatter.write_str("recorded bridge transition did not replay"),
         }
@@ -167,117 +262,16 @@ impl core::fmt::Display for BridgeError {
 
 impl std::error::Error for BridgeError {}
 
-/// Stateful protocol handler, separately testable from the HTTP server.
-#[derive(Clone, Debug)]
-pub struct Bridge {
-    runtime: AgentRuntime,
-    trace: Vec<TraceRecord>,
-}
-
-impl Bridge {
-    /// Constructs a bridge for one deterministic founder.
-    #[must_use]
-    pub fn new(seed: u64, agent_id: u64) -> Self {
-        Self::new_with_mode(seed, agent_id, ExperimentMode::PredictiveBaseline)
-    }
-
-    /// Constructs a bridge with an explicit baseline or affordance-discovery policy.
-    #[must_use]
-    pub fn new_with_mode(seed: u64, agent_id: u64, mode: ExperimentMode) -> Self {
-        let founder = FounderSpec::new(seed, agent_id);
-        Self {
-            runtime: AgentRuntime::new_with_mode(
-                seed,
-                agent_id,
-                founder.genome.default_brain_config(),
-                mode,
-            ),
-            trace: Vec::new(),
-        }
-    }
-
-    /// Constructs an affordance-discovery bridge with explicit learner settings.
-    ///
-    /// # Errors
-    ///
-    /// Returns a description of the first learner setting out of range.
-    pub fn new_with_affordance(
-        seed: u64,
-        agent_id: u64,
-        affordance: AffordanceConfig,
-    ) -> Result<Self, String> {
-        let founder = FounderSpec::new(seed, agent_id);
-        Ok(Self {
-            runtime: AgentRuntime::new_with_affordance(
-                seed,
-                agent_id,
-                founder.genome.default_brain_config(),
-                affordance,
-            )?,
-            trace: Vec::new(),
-        })
-    }
-
-    /// Validates and processes one complete Luanti observation interval.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error without mutating the runtime when protocol, agent, or sequence mismatch.
-    pub fn handle(&mut self, request: BridgeRequest) -> Result<BridgeResponse, BridgeError> {
-        if request.protocol != PROTOCOL_VERSION {
-            return Err(BridgeError::Protocol {
-                received: request.protocol,
-            });
-        }
-        if request.agent_id != self.runtime.agent_id() {
-            return Err(BridgeError::Agent {
-                expected: self.runtime.agent_id(),
-                received: request.agent_id,
-            });
-        }
-        let transition = self
-            .runtime
-            .step(request.observation)
-            .map_err(BridgeError::Sequence)?;
-        let response = response_for(request.agent_id, &transition, &self.runtime);
-        self.trace.push(TraceRecord {
-            request,
-            response: response.clone(),
-        });
-        Ok(response)
-    }
-
-    /// Constructs a bridge that continues an existing founder runtime, such as one loaded from
-    /// a saved state.
-    #[must_use]
-    pub const fn from_runtime(runtime: AgentRuntime) -> Self {
-        Self {
-            runtime,
-            trace: Vec::new(),
-        }
-    }
-
-    /// The founder runtime, whose exact state can be saved.
-    #[must_use]
-    pub const fn runtime(&self) -> &AgentRuntime {
-        &self.runtime
-    }
-
-    /// Removes all accepted exchanges recorded since the previous drain.
-    #[must_use]
-    pub fn drain_trace(&mut self) -> Vec<TraceRecord> {
-        core::mem::take(&mut self.trace)
-    }
-}
-
 fn response_for(
     agent_id: u64,
+    body_slot: u32,
     transition: &EnvironmentTransition,
     runtime: &AgentRuntime,
 ) -> BridgeResponse {
     BridgeResponse {
         protocol: PROTOCOL_VERSION,
         agent_id,
+        body_slot,
         generated_sequence: transition.observation.sequence,
         expected_sequence: transition.observation.sequence + 1,
         action: transition.action,
@@ -298,12 +292,29 @@ fn response_for(
             intrinsic_action: transition.action,
             intrinsic_score: transition.intrinsic_score,
             affordance_fingerprint: transition.affordance_fingerprint,
+            recurrent_fingerprint: runtime.state().recurrent_predictor.fingerprint(),
+            episodic_fingerprint: runtime.state().episodic_memory.fingerprint(),
+            episodic_events: runtime.state().episodic_memory.events.len(),
+            episodic_config: runtime.state().episodic_memory.config,
+            episodic_mediation: Some(EpisodicMediation {
+                write: transition.episodic_write,
+                retrieval: transition.episodic_policy,
+                pre_episodic_action: transition.pre_episodic_action,
+                selected_action: transition.action,
+                baseline_policy_score: transition.intrinsic_score,
+            }),
             learned: runtime
                 .state()
                 .brain
                 .learned_bias
                 .iter()
-                .any(|value| *value != 0),
+                .any(|value| *value != 0)
+                || runtime
+                    .state()
+                    .recurrent_predictor
+                    .decoder_delta
+                    .iter()
+                    .any(|value| *value != 0),
             mean_modulator_activity: mean_modulator_activity(runtime),
             frozen_physiology: runtime.state().physiology,
         },
@@ -330,16 +341,33 @@ pub fn replay_trace(
     agent_id: u64,
     records: &[TraceRecord],
 ) -> Result<AgentRuntime, BridgeError> {
-    let (mode, affordance) =
-        records
-            .first()
-            .map_or((ExperimentMode::PredictiveBaseline, None), |record| {
-                let diagnostics = &record.response.diagnostics;
-                (diagnostics.experiment_mode, diagnostics.affordance_config)
-            });
+    if let Some(record) = records
+        .iter()
+        .find(|record| record.request.protocol != PROTOCOL_VERSION)
+    {
+        return Err(BridgeError::Protocol {
+            received: record.request.protocol,
+        });
+    }
+    let (mode, affordance, episodic) = records.first().map_or(
+        (
+            ExperimentMode::PredictiveBaseline,
+            None,
+            EpisodicConfig::default(),
+        ),
+        |record| {
+            let diagnostics = &record.response.diagnostics;
+            (
+                diagnostics.experiment_mode,
+                diagnostics.affordance_config,
+                diagnostics.episodic_config,
+            )
+        },
+    );
     if records.iter().any(|record| {
         record.response.diagnostics.experiment_mode != mode
             || record.response.diagnostics.affordance_config != affordance
+            || record.response.diagnostics.episodic_config != episodic
     }) {
         return Err(BridgeError::Replay);
     }
@@ -352,11 +380,21 @@ pub fn replay_trace(
         }
         _ => AgentRuntime::new_with_mode(seed, agent_id, brain, mode),
     };
+    runtime.set_episodic_config(episodic);
     for record in records {
         let transition = runtime
             .step(record.request.observation)
             .map_err(BridgeError::Sequence)?;
-        if response_for(record.request.agent_id, &transition, &runtime) != record.response {
+        let mut replayed = response_for(
+            record.request.agent_id,
+            record.response.body_slot,
+            &transition,
+            &runtime,
+        );
+        if record.response.diagnostics.episodic_mediation.is_none() {
+            replayed.diagnostics.episodic_mediation = None;
+        }
+        if replayed != record.response {
             return Err(BridgeError::Replay);
         }
     }
@@ -446,7 +484,14 @@ pub fn serve_once_with_stall(
     let Some(mut request) = server.recv_timeout(wait)? else {
         return Ok(());
     };
-    if request.method() != &Method::Post || request.url() != "/v1/transition" {
+    if request.method() == &Method::Get && request.url() == "/v1/population" {
+        let manifest = bridge.manifest();
+        respond_or_log(request, StatusCode(200), &manifest);
+        return Ok(());
+    }
+    if request.method() != &Method::Post
+        || (request.url() != "/v1/transition" && request.url() != "/v1/lifecycle")
+    {
         if let Err(error) = request.respond(Response::empty(StatusCode(404))) {
             eprintln!("sim-luanti: failed to respond to invalid route: {error}");
         }
@@ -459,6 +504,29 @@ pub fn serve_once_with_stall(
         .read_to_end(&mut body)
     {
         eprintln!("sim-luanti: failed to read request: {error}");
+        return Ok(());
+    }
+    if request.url() == "/v1/lifecycle" {
+        let command: LifecycleCommand = match serde_json::from_slice(&body) {
+            Ok(command) => command,
+            Err(error) => {
+                respond_or_log(
+                    request,
+                    StatusCode(400),
+                    &serde_json::json!({"error": format!("invalid lifecycle command: {error}")}),
+                );
+                return Ok(());
+            }
+        };
+        let result = bridge.process_lifecycle(command);
+        match result {
+            Ok(response) => respond_or_log(request, StatusCode(200), &response),
+            Err(error) => respond_or_log(
+                request,
+                StatusCode(400),
+                &serde_json::json!({"error": error.to_string()}),
+            ),
+        }
         return Ok(());
     }
     let wire = match decode_request(&body) {
@@ -509,6 +577,145 @@ pub fn serve_once_with_stall(
     Ok(())
 }
 
+/// Accepts one request and handles its runtime work on an independent worker.
+///
+/// This is the population-serving path: a deliberately delayed request from one body does not
+/// prevent another body from reaching the coordinator. Runtime mutation remains serialized by
+/// the coordinator lock, while network delay and response delivery happen outside it.
+///
+/// # Errors
+///
+/// Returns failures of the HTTP server itself.
+#[allow(clippy::too_many_lines)]
+pub fn serve_once_concurrent(
+    server: &Server,
+    bridge: &Arc<Mutex<Bridge>>,
+    wait: Duration,
+    stall_sequence: Option<(u64, Duration)>,
+    stalled: &Arc<AtomicBool>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let Some(mut request) = server.recv_timeout(wait)? else {
+        return Ok(());
+    };
+    if request.method() == &Method::Get && request.url() == "/v1/population" {
+        let manifest = bridge
+            .lock()
+            .map_err(|_| "population coordinator lock was poisoned")?
+            .manifest();
+        respond_or_log(request, StatusCode(200), &manifest);
+        return Ok(());
+    }
+    if request.method() != &Method::Post
+        || (request.url() != "/v1/transition" && request.url() != "/v1/lifecycle")
+    {
+        respond_or_log(
+            request,
+            StatusCode(404),
+            &serde_json::json!({"error": "not found"}),
+        );
+        return Ok(());
+    }
+    let mut body = Vec::new();
+    if let Err(error) = request
+        .as_reader()
+        .take((MAX_PAYLOAD_BYTES + 1) as u64)
+        .read_to_end(&mut body)
+    {
+        eprintln!("sim-luanti: failed to read request: {error}");
+        return Ok(());
+    }
+    if request.url() == "/v1/lifecycle" {
+        let command: LifecycleCommand = match serde_json::from_slice(&body) {
+            Ok(command) => command,
+            Err(error) => {
+                respond_or_log(
+                    request,
+                    StatusCode(400),
+                    &serde_json::json!({"error": format!("invalid lifecycle command: {error}")}),
+                );
+                return Ok(());
+            }
+        };
+        let result = bridge
+            .lock()
+            .map_err(|_| "population coordinator lock was poisoned")?
+            .process_lifecycle(command);
+        match result {
+            Ok(response) => respond_or_log(request, StatusCode(200), &response),
+            Err(error) => respond_or_log(
+                request,
+                StatusCode(400),
+                &serde_json::json!({"error": error.to_string()}),
+            ),
+        }
+        return Ok(());
+    }
+    let wire = match decode_request(&body) {
+        Ok(wire) => wire,
+        Err(error) => {
+            eprintln!("sim-luanti: rejected request: {error}");
+            respond_or_log(
+                request,
+                StatusCode(400),
+                &serde_json::json!({"error": error.to_string(), "expected_sequence": null}),
+            );
+            return Ok(());
+        }
+    };
+    let stall_delay = stall_sequence.and_then(|(sequence, delay)| {
+        (wire.observation.sequence == sequence
+            && stalled
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok())
+        .then_some(delay)
+    });
+    let bridge = Arc::clone(bridge);
+    std::thread::spawn(move || {
+        if let Some(delay) = stall_delay {
+            std::thread::sleep(delay);
+            respond_or_log(
+                request,
+                StatusCode(503),
+                &serde_json::json!({"error": "injected smoke stall"}),
+            );
+            return;
+        }
+        let result = match bridge.lock() {
+            Ok(mut coordinator) => coordinator.handle(wire),
+            Err(error) => {
+                eprintln!("sim-luanti: population coordinator lock poisoned: {error}");
+                respond_or_log(
+                    request,
+                    StatusCode(500),
+                    &serde_json::json!({"error": "population coordinator unavailable"}),
+                );
+                return;
+            }
+        };
+        match result {
+            Ok(response) => respond_or_log(request, StatusCode(200), &response),
+            Err(error) => {
+                eprintln!("sim-luanti: rejected request: {error}");
+                let expected_sequence = match &error {
+                    BridgeError::Sequence(RuntimeError::UnexpectedSequence {
+                        expected, ..
+                    }) => Some(*expected),
+                    _ => None,
+                };
+                respond_or_log(
+                    request,
+                    StatusCode(400),
+                    &serde_json::json!({
+                        "error": error.to_string(),
+                        "expected_sequence": expected_sequence,
+                    }),
+                );
+            }
+        }
+    });
+    Ok(())
+}
+
 fn respond_or_log<T: Serialize>(request: tiny_http::Request, status: StatusCode, value: &T) {
     if let Err(error) = respond_json(request, status, value) {
         eprintln!("sim-luanti: failed to respond to request: {error}");
@@ -541,9 +748,16 @@ fn respond_json<T: Serialize>(
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        io::{Read, Write},
+        net::TcpStream,
+    };
+
     use sim_core::{
         RawSensoryFrame,
-        environment::{BodyProprioception, EnvironmentCapabilities, TransportStatus},
+        environment::{
+            BodyProprioception, EnvironmentCapabilities, HeldItemSense, TransportStatus,
+        },
     };
 
     use super::*;
@@ -552,6 +766,7 @@ mod tests {
         BridgeRequest {
             protocol: PROTOCOL_VERSION,
             agent_id: 9,
+            body_slot: None,
             observation: EnvironmentObservation {
                 sequence,
                 senses: RawSensoryFrame::EMPTY,
@@ -560,6 +775,7 @@ mod tests {
                 transport: TransportStatus::Healthy,
                 retina: None,
                 interoception: None,
+                held_item: None,
             },
             trace: ApplicationTrace {
                 applied_server_step: 10,
@@ -602,6 +818,38 @@ mod tests {
     }
 
     #[test]
+    fn independent_reproduction_output_traverses_http_json() {
+        let server = bind_loopback(0).expect("bind ephemeral loopback port");
+        let address = server.server_addr().to_ip().expect("IP listener");
+        let mut damaged = felt(0);
+        damaged.observation.interoception.as_mut().unwrap().health = 0;
+        let body = serde_json::to_vec(&damaged).unwrap();
+        let worker = std::thread::spawn(move || {
+            let mut bridge = Bridge::new(4, 9);
+            serve_once(&server, &mut bridge, Duration::from_secs(2)).unwrap();
+        });
+
+        let mut stream = TcpStream::connect(address).unwrap();
+        write!(
+            stream,
+            "POST /v1/transition HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .unwrap();
+        stream.write_all(&body).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        worker.join().unwrap();
+        let payload = response.split("\r\n\r\n").nth(1).expect("HTTP body");
+        let decoded: BridgeResponse = serde_json::from_str(payload).unwrap();
+        assert!(decoded.action.signals[0] > 0);
+        assert_eq!(
+            serde_json::to_value(&decoded).unwrap()["action"]["signals"][0],
+            decoded.action.signals[0]
+        );
+    }
+
+    #[test]
     fn a_saved_founder_continues_exactly_where_it_stopped() {
         let path =
             std::env::temp_dir().join(format!("sim-luanti-state-{}.json", std::process::id()));
@@ -635,7 +883,7 @@ mod tests {
     fn rejects_protocol_agent_and_sequence_without_advancing() {
         let mut bridge = Bridge::new(4, 9);
         let mut wrong_protocol = request(0);
-        wrong_protocol.protocol = 4;
+        wrong_protocol.protocol = PROTOCOL_VERSION + 1;
         assert!(matches!(
             bridge.handle(wrong_protocol),
             Err(BridgeError::Protocol { .. })
@@ -644,7 +892,7 @@ mod tests {
         wrong_agent.agent_id = 10;
         assert!(matches!(
             bridge.handle(wrong_agent),
-            Err(BridgeError::Agent { .. })
+            Err(BridgeError::UnknownIndividual(10))
         ));
         assert_eq!(
             bridge.handle(request(0)).expect("first").generated_sequence,
@@ -687,6 +935,18 @@ mod tests {
     }
 
     #[test]
+    fn replay_rejects_a_trace_from_an_older_body_protocol() {
+        let mut bridge = Bridge::new(4, 9);
+        bridge.handle(request(0)).expect("first");
+        let mut records = bridge.drain_trace();
+        records[0].request.protocol = PROTOCOL_VERSION - 1;
+        assert!(matches!(
+            replay_trace(4, 9, &records),
+            Err(BridgeError::Protocol { .. })
+        ));
+    }
+
+    #[test]
     fn affordance_trace_replays_and_rejects_tampering() {
         let mut bridge = Bridge::new_with_mode(4, 9, ExperimentMode::AffordanceDiscovery);
         bridge.handle(request(0)).expect("first");
@@ -725,5 +985,52 @@ mod tests {
             decode_request(&vec![b' '; MAX_PAYLOAD_BYTES + 1]),
             Err(BridgeError::InvalidPayload(_))
         ));
+    }
+
+    #[test]
+    fn held_item_physics_reaches_rust_without_semantic_fields() {
+        let mut empty = request(0);
+        empty.observation.capabilities.body_contract_version = 7;
+        empty.observation.held_item = Some(HeldItemSense::default());
+        let mut selected = request(0);
+        selected.observation.capabilities.body_contract_version = 7;
+        selected.observation.held_item = Some(HeldItemSense {
+            occupied: 255,
+            red: 61,
+            green: 142,
+            blue: 39,
+            amount: 2,
+            capacity: 64,
+            durability: 255,
+        });
+        let empty = decode_request(&serde_json::to_vec(&empty).expect("encode")).expect("decode");
+        let selected =
+            decode_request(&serde_json::to_vec(&selected).expect("encode")).expect("decode");
+        assert_ne!(empty.observation.held_item, selected.observation.held_item);
+        let wire = serde_json::to_value(selected.observation.held_item.expect("held")).unwrap();
+        assert_eq!(
+            wire.as_object().expect("object").keys().collect::<Vec<_>>(),
+            [
+                "amount",
+                "blue",
+                "capacity",
+                "durability",
+                "green",
+                "occupied",
+                "red"
+            ]
+        );
+        assert!(
+            wire.as_object()
+                .unwrap()
+                .values()
+                .all(serde_json::Value::is_number)
+        );
+        let mut invalid = serde_json::to_value(request(0)).unwrap();
+        invalid["observation"]["held_item"] = serde_json::json!({
+            "occupied": 256, "red": 0, "green": 0, "blue": 0,
+            "amount": 0, "capacity": 0, "durability": 0
+        });
+        assert!(decode_request(&serde_json::to_vec(&invalid).unwrap()).is_err());
     }
 }

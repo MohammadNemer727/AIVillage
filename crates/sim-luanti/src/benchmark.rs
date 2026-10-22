@@ -25,7 +25,7 @@ use sim_core::{
         BodyProprioception, DeadChannels, EnvironmentCapabilities, EnvironmentObservation,
         PrimitiveAction, TransportStatus,
     },
-    runtime::{AgentRuntime, ExperimentMode},
+    runtime::{AFFORDANCE_ACTIONS, AgentRuntime, ExperimentMode},
 };
 use sim_kernels::derive;
 
@@ -93,11 +93,12 @@ pub(crate) fn observation(
         transport: TransportStatus::Healthy,
         retina: None,
         interoception: None,
+        held_item: None,
     }
 }
 pub(crate) fn random_action(seed: u64, tick: u64) -> PrimitiveAction {
     let mut a = PrimitiveAction::default();
-    match derive(seed, tick, 0, 0x5241_4E44) % 12 {
+    match derive(seed, tick, 0, 0x5241_4E44) % AFFORDANCE_ACTIONS as u64 {
         0 => a.thrust = 256,
         1 => a.thrust = -256,
         2 => a.turn = 256,
@@ -109,7 +110,9 @@ pub(crate) fn random_action(seed: u64, tick: u64) -> PrimitiveAction {
         8 => a.jump = 256,
         9 => a.hand_pulse = 256,
         10 => a.jaw = 256,
-        _ => a.acoustic = 256,
+        11 => a.acoustic = 256,
+        12 => a.use_pulse = 256,
+        _ => a.next_slot = 256,
     };
     a
 }

@@ -13,6 +13,13 @@ use sim_kernels::{
 
 const RANDOM_AGENTS: u64 = 1_024;
 const RANDOM_TICKS: u64 = 64;
+static GPU_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn serial_gpu_test() -> std::sync::MutexGuard<'static, ()> {
+    GPU_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 fn stepper() -> Option<GpuBrainStepper> {
     match GpuBrainStepper::new() {
@@ -113,6 +120,7 @@ fn assert_backends_agree(
 
 #[test]
 fn gpu_brain_matches_cpu_on_random_receptor_frames() {
+    let _serial = serial_gpu_test();
     let Some(stepper) = stepper() else { return };
     let configs: Vec<_> = (0..RANDOM_AGENTS).map(random_config).collect();
     let frames: Vec<Vec<_>> = (0..RANDOM_TICKS)
@@ -127,6 +135,7 @@ fn gpu_brain_matches_cpu_on_random_receptor_frames() {
 
 #[test]
 fn gpu_brain_matches_cpu_on_simulated_world_frames() {
+    let _serial = serial_gpu_test();
     let Some(stepper) = stepper() else { return };
     let settings = WorldSettings::new(32, 32, 96).expect("valid settings");
     let mut world = World::with_settings_v2(WorldSeed::new(77), settings).expect("valid V2 world");
@@ -149,6 +158,7 @@ fn gpu_brain_matches_cpu_on_simulated_world_frames() {
 
 #[test]
 fn mismatched_inputs_are_rejected() {
+    let _serial = serial_gpu_test();
     let Some(stepper) = stepper() else { return };
     let mut brains = vec![GpuBrain::pack(&PredictiveBrain::default()); 2];
     let frames = vec![GpuFrame::pack(&RawSensoryFrame::EMPTY); 1];
@@ -161,6 +171,7 @@ fn mismatched_inputs_are_rejected() {
 
 #[test]
 fn world_history_with_gpu_brains_matches_cpu() {
+    let _serial = serial_gpu_test();
     let Some(mut stepper) = stepper() else { return };
     let settings = WorldSettings::new(48, 48, 300).expect("valid settings");
     let mut cpu = World::with_settings_v2(WorldSeed::new(2_026), settings).expect("valid V2 world");

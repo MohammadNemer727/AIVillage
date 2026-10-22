@@ -14,7 +14,7 @@
 use serde::{Deserialize, Serialize};
 use sim_kernels::derive;
 
-use super::AFFORDANCE_ACTIONS;
+use super::{AFFORDANCE_ACTIONS, LEGACY_AFFORDANCE_ACTIONS};
 use crate::environment::{EnvironmentObservation, PrimitiveAction, RETINA_COLUMNS, RETINA_ROWS};
 
 /// Largest energy store.
@@ -130,9 +130,12 @@ impl Homeostasis {
         self.energy < HUNGRY_BELOW
     }
 
-    pub(super) fn validate(&self) -> Result<(), String> {
+    pub(super) fn migrate_and_validate(&mut self) -> Result<(), String> {
         if !self.active() {
             return Ok(());
+        }
+        if self.weights.len() == LEGACY_AFFORDANCE_ACTIONS * FEATURES {
+            self.weights.resize(AFFORDANCE_ACTIONS * FEATURES, 0);
         }
         if self.weights.len() != AFFORDANCE_ACTIONS * FEATURES
             || self.energy > ENERGY_MAX

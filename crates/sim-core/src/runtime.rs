@@ -16,11 +16,23 @@ use crate::{
     scale_v2_orientation_turn,
 };
 
+mod episodic;
 mod homeostasis;
+mod predictive;
 
+pub use episodic::{
+    EPISODIC_CAPACITY, EPISODIC_ENCODER_VERSION, EPISODIC_SCHEMA_VERSION, EPISODIC_TOP_K,
+    EpisodicConfig, EpisodicEvent, EpisodicMemory, EpisodicPolicyDecision, EpisodicSummary,
+    EpisodicWrite,
+};
 pub use homeostasis::{
     ENERGY_AT_BIRTH, ENERGY_MAX, ENERGY_SET_POINT, FEATURES as HOMEOSTATIC_FEATURES, Homeostasis,
     JAW_EXPERIMENT, ROOTING_REST, ROOTING_SMELL, homeostasis_fingerprint,
+};
+pub use predictive::{
+    ACTION_FEATURES as PREDICTIVE_ACTION_FEATURES, LATENT_FEATURES, REPLAY_CAPACITY,
+    RecurrentPredictor, SENSE_FEATURES, TRUNCATED_SEQUENCE, UPDATE_BATCH, UPDATE_CADENCE,
+    developmental_key as predictive_developmental_key, sense_features,
 };
 
 /// Explicit action-selection policy for a standalone founder.
@@ -36,8 +48,12 @@ pub enum ExperimentMode {
     Homeostatic,
 }
 
-/// Number of primitive experiments the affordance learner chooses between.
-pub const AFFORDANCE_ACTIONS: usize = 12;
+/// Number of primitive experiments the live policy chooses between.
+///
+/// The first 12 preserve the original action indices; use and next-item were appended so old
+/// checkpoints can be expanded without reinterpreting learned rows.
+pub const AFFORDANCE_ACTIONS: usize = 14;
+const LEGACY_AFFORDANCE_ACTIONS: usize = 12;
 /// Number of bounded outcome features the affordance learner tracks.
 pub const OUTCOME_FEATURES: usize = 8;
 /// Index of the hand-contact feature in [`AffordanceLearner::expected_after`].
@@ -142,19 +158,19 @@ pub struct AffordanceLearner {
     #[serde(default)]
     pub config: AffordanceConfig,
     /// Number of observed outcomes per experiment, saturating.
-    pub visits: [u16; AFFORDANCE_ACTIONS],
+    pub visits: Vec<u16>,
     /// Recent average outcome following each experiment, scaled by 256.
-    pub after: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+    pub after: Vec<[i32; OUTCOME_FEATURES]>,
     /// Recent average outcome over all decisions, scaled by 256.
     pub overall: [i32; OUTCOME_FEATURES],
     /// Recent mean absolute deviation of the outcome following each experiment, scaled by 256.
     #[serde(default)]
-    pub after_spread: [[i32; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+    pub after_spread: Vec<[i32; OUTCOME_FEATURES]>,
     /// Recent mean absolute deviation of the outcome over all decisions, scaled by 256.
     #[serde(default)]
     pub overall_spread: [i32; OUTCOME_FEATURES],
     /// Decision tick at which each experiment was last selected.
-    pub last_tried: [u64; AFFORDANCE_ACTIONS],
+    pub last_tried: Vec<u64>,
     /// Last selected experiment, whose outcome the next observation reports.
     pub previous_action: usize,
     /// Recent experiments, most recent first, that share credit for the next outcome.
@@ -181,15 +197,15 @@ impl Default for AffordanceLearner {
 impl AffordanceLearner {
     /// A blank learner with the given settings.
     #[must_use]
-    pub const fn new(config: AffordanceConfig) -> Self {
+    pub fn new(config: AffordanceConfig) -> Self {
         Self {
             config,
-            visits: [0; AFFORDANCE_ACTIONS],
-            after: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+            visits: vec![0; AFFORDANCE_ACTIONS],
+            after: vec![[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
             overall: [0; OUTCOME_FEATURES],
-            after_spread: [[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
+            after_spread: vec![[0; OUTCOME_FEATURES]; AFFORDANCE_ACTIONS],
             overall_spread: [0; OUTCOME_FEATURES],
-            last_tried: [0; AFFORDANCE_ACTIONS],
+            last_tried: vec![0; AFFORDANCE_ACTIONS],
             previous_action: AFFORDANCE_ACTIONS,
             recent_actions: no_recent_actions(),
             previous_view: [[0; VIEW_CHANNELS]; RETINAL_RAY_COUNT],
@@ -199,7 +215,34 @@ impl AffordanceLearner {
 
     /// Checks settings and every stored experiment index, so a decoded learner cannot index
     /// outside its fixed tables.
-    fn validate(&self) -> Result<(), String> {
+    fn migrate_and_validate(&mut self) -> Result<(), String> {
+        let lengths = [
+            self.visits.len(),
+            self.after.len(),
+            self.after_spread.len(),
+            self.last_tried.len(),
+        ];
+        if lengths
+            .into_iter()
+            .all(|length| length == LEGACY_AFFORDANCE_ACTIONS)
+        {
+            self.visits.resize(AFFORDANCE_ACTIONS, 0);
+            self.after.resize(AFFORDANCE_ACTIONS, [0; OUTCOME_FEATURES]);
+            self.after_spread
+                .resize(AFFORDANCE_ACTIONS, [0; OUTCOME_FEATURES]);
+            self.last_tried.resize(AFFORDANCE_ACTIONS, 0);
+        }
+        if [
+            self.visits.len(),
+            self.after.len(),
+            self.after_spread.len(),
+            self.last_tried.len(),
+        ]
+        .into_iter()
+        .any(|length| length != AFFORDANCE_ACTIONS)
+        {
+            return Err("affordance action table has the wrong length".to_owned());
+        }
         self.config.validate()?;
         if self.bout_remaining >= self.config.bout_length {
             return Err("affordance bout is out of range".to_owned());
@@ -407,7 +450,10 @@ fn affordance_action(index: usize) -> PrimitiveAction {
         8 => action.jump = 256,
         9 => action.hand_pulse = 256,
         10 => action.jaw = 256,
-        _ => action.acoustic = 256,
+        11 => action.acoustic = 256,
+        12 => action.use_pulse = 256,
+        13 => action.next_slot = 256,
+        _ => {}
     }
     action
 }
@@ -487,6 +533,12 @@ pub struct AgentRuntimeState {
     /// Live energy and learned values in homeostatic mode; empty otherwise.
     #[serde(default)]
     pub homeostasis: Homeostasis,
+    /// Compact lifetime-only recurrent next-sense predictor.
+    #[serde(default)]
+    pub recurrent_predictor: RecurrentPredictor,
+    /// Private bounded lifetime episodic records and their independent ablation settings.
+    #[serde(default)]
+    pub episodic_memory: EpisodicMemory,
 }
 
 /// Rejected observation; the runtime state is unchanged.
@@ -539,6 +591,10 @@ impl AgentRuntime {
                 experiment_mode: ExperimentMode::PredictiveBaseline,
                 affordance: AffordanceLearner::default(),
                 homeostasis: Homeostasis::default(),
+                recurrent_predictor: RecurrentPredictor::new(predictive::developmental_key(
+                    &developmental_config,
+                )),
+                episodic_memory: EpisodicMemory::default(),
             },
         )
     }
@@ -610,6 +666,14 @@ impl AgentRuntime {
         &self.state
     }
 
+    /// Sets independent episodic prediction and policy ablations.
+    ///
+    /// Existing records are retained, so callers can perform paired inference ablations without
+    /// changing the experience available to either arm.
+    pub const fn set_episodic_config(&mut self, config: EpisodicConfig) {
+        self.state.episodic_memory.config = config;
+    }
+
     /// Consumes the next observation and emits primitive motor commands.
     ///
     /// An observation reporting a transport fault is consumed but not sensed: the brain and
@@ -621,6 +685,7 @@ impl AgentRuntime {
     /// observation, leaving the runtime unchanged.
     #[allow(
         clippy::large_types_passed_by_value,
+        clippy::too_many_lines,
         reason = "the observation is recorded by value in the returned transition"
     )]
     pub fn step(
@@ -641,6 +706,9 @@ impl AgentRuntime {
                 action: PrimitiveAction::default(),
                 baseline_action: PrimitiveAction::default(),
                 intrinsic_score: 0,
+                pre_episodic_action: PrimitiveAction::default(),
+                episodic_write: EpisodicWrite::default(),
+                episodic_policy: EpisodicPolicyDecision::default(),
                 affordance_fingerprint: learner_fingerprint(&self.state),
                 brain_fingerprint: brain_fingerprint(&self.state.brain),
             });
@@ -677,7 +745,12 @@ impl AgentRuntime {
             .step(&self.state.developmental_config, &frame);
         let decision_tick = self.state.decision_tick;
         let baseline_action = decode_motor_outputs(&step.outputs);
-        let (action, intrinsic_score, recorded_baseline) = match self.state.experiment_mode {
+        let current_source = sense_features(&observation);
+        let policy_summaries = self
+            .state
+            .episodic_memory
+            .retrieve(&self.state.recurrent_predictor.hidden, &current_source);
+        let (mut action, intrinsic_score, recorded_baseline) = match self.state.experiment_mode {
             ExperimentMode::PredictiveBaseline => (baseline_action, 0, PrimitiveAction::default()),
             ExperimentMode::AffordanceDiscovery => {
                 self.state.affordance.observe(&observation);
@@ -689,6 +762,48 @@ impl AgentRuntime {
                 (action, score, baseline_action)
             }
         };
+        let pre_episodic_action = action;
+        let (recommended_action, mut episodic_policy) =
+            EpisodicMemory::policy_decision(&policy_summaries, action);
+        if self.state.episodic_memory.config.policy_enabled {
+            action = recommended_action;
+        } else {
+            episodic_policy.action_changed = false;
+        }
+        let had_prediction = self.state.recurrent_predictor.prediction_ready;
+        let latent_before = self.state.recurrent_predictor.hidden.clone();
+        let source_before = self.state.recurrent_predictor.previous_senses.clone();
+        let pending_prediction = self.state.recurrent_predictor.prediction.clone();
+        let preceding_action = self.state.recurrent_predictor.previous_action;
+        let uncertainty = self.state.recurrent_predictor.uncertainty();
+        self.state
+            .recurrent_predictor
+            .observe(&observation, action, decision_tick);
+        let episodic_write = if had_prediction {
+            self.state.episodic_memory.observe(
+                &latent_before,
+                &self.state.recurrent_predictor.hidden,
+                &source_before,
+                &current_source,
+                preceding_action,
+                &pending_prediction,
+                uncertainty,
+                &observation,
+                decision_tick,
+            )
+        } else {
+            EpisodicWrite::default()
+        };
+        if self.state.episodic_memory.config.prediction_enabled {
+            let summaries = self.state.episodic_memory.retrieve_for_action(
+                &self.state.recurrent_predictor.hidden,
+                &current_source,
+                self.state.recurrent_predictor.previous_action,
+            );
+            self.state
+                .recurrent_predictor
+                .apply_episodic_prediction(&summaries);
+        }
         self.state.chemical_adaptation = adaptation;
         self.state.decision_tick += 1;
         Ok(EnvironmentTransition {
@@ -697,6 +812,9 @@ impl AgentRuntime {
             action,
             baseline_action: recorded_baseline,
             intrinsic_score,
+            pre_episodic_action,
+            episodic_write,
+            episodic_policy,
             affordance_fingerprint: learner_fingerprint(&self.state),
             brain_fingerprint: brain_fingerprint(&self.state.brain),
         })
@@ -856,6 +974,10 @@ struct StateRepr {
     affordance: AffordanceLearner,
     #[serde(default)]
     homeostasis: Homeostasis,
+    #[serde(default)]
+    recurrent_predictor: RecurrentPredictor,
+    #[serde(default)]
+    episodic_memory: EpisodicMemory,
 }
 
 impl From<AgentRuntimeState> for StateRepr {
@@ -876,6 +998,8 @@ impl From<AgentRuntimeState> for StateRepr {
             experiment_mode: state.experiment_mode,
             affordance: state.affordance,
             homeostasis: state.homeostasis,
+            recurrent_predictor: state.recurrent_predictor,
+            episodic_memory: state.episodic_memory,
         }
     }
 }
@@ -883,7 +1007,7 @@ impl From<AgentRuntimeState> for StateRepr {
 impl TryFrom<StateRepr> for AgentRuntimeState {
     type Error = String;
 
-    fn try_from(repr: StateRepr) -> Result<Self, Self::Error> {
+    fn try_from(mut repr: StateRepr) -> Result<Self, Self::Error> {
         let packed: GpuBrain = bytemuck::try_pod_read_unaligned(bytemuck::cast_slice(&repr.brain))
             .map_err(|_| format!("brain has {} words", repr.brain.len()))?;
         let brain = packed.unpack();
@@ -893,8 +1017,28 @@ impl TryFrom<StateRepr> for AgentRuntimeState {
         if repr.connection_stride == 0 || repr.plasticity_scale < 1 {
             return Err("developmental configuration is out of range".to_owned());
         }
-        repr.affordance.validate()?;
-        repr.homeostasis.validate()?;
+        repr.affordance.migrate_and_validate()?;
+        repr.homeostasis.migrate_and_validate()?;
+        let expected_key = predictive::developmental_key(&BrainConfig {
+            connection_stride: repr.connection_stride,
+            plasticity_scale: repr.plasticity_scale,
+            plasticity_enabled: repr.plasticity_enabled,
+            episodic_memory_enabled: repr.episodic_memory_enabled,
+            action_contingency_enabled: repr.action_contingency_enabled,
+            prediction_enabled: repr.prediction_enabled,
+        });
+        if repr.recurrent_predictor.developmental_key == 0
+            && repr.recurrent_predictor == RecurrentPredictor::default()
+        {
+            repr.recurrent_predictor = RecurrentPredictor::new(expected_key);
+        }
+        if repr.recurrent_predictor.developmental_key != expected_key {
+            return Err(
+                "recurrent predictor does not match developmental configuration".to_owned(),
+            );
+        }
+        repr.recurrent_predictor.validate()?;
+        repr.episodic_memory.migrate_and_validate()?;
         if (repr.experiment_mode == ExperimentMode::Homeostatic) != repr.homeostasis.active() {
             return Err("homeostatic state does not match the experiment mode".to_owned());
         }
@@ -915,6 +1059,8 @@ impl TryFrom<StateRepr> for AgentRuntimeState {
             experiment_mode: repr.experiment_mode,
             affordance: repr.affordance,
             homeostasis: repr.homeostasis,
+            recurrent_predictor: repr.recurrent_predictor,
+            episodic_memory: repr.episodic_memory,
         })
     }
 }
@@ -996,6 +1142,7 @@ impl EnvironmentAdapter for FakeEnvironment {
             transport: self.fault,
             retina: None,
             interoception: None,
+            held_item: None,
         };
         self.fault = TransportStatus::Healthy;
         self.sequence += 1;
@@ -1017,7 +1164,7 @@ mod tests {
 
     use super::{
         AFFORDANCE_ACTIONS, AffordanceConfig, AgentRuntime, FakeEnvironment, FrozenPhysiology,
-        MAX_ELIGIBILITY_SPAN, RuntimeError,
+        HOMEOSTATIC_FEATURES, MAX_ELIGIBILITY_SPAN, RuntimeError, affordance_action,
     };
     use crate::{
         BrainConfig, RawSensoryFrame, compose_raw_sensory_frame,
@@ -1261,6 +1408,34 @@ mod tests {
     }
 
     #[test]
+    fn every_live_policy_action_maps_to_one_primitive() {
+        let actions: Vec<_> = (0..AFFORDANCE_ACTIONS).map(affordance_action).collect();
+        assert_eq!(actions.len(), 14);
+        assert_eq!(actions[0].thrust, 256);
+        assert_eq!(actions[1].thrust, -256);
+        assert_eq!(actions[2].turn, 256);
+        assert_eq!(actions[3].turn, -256);
+        assert_eq!(actions[4].strafe, 256);
+        assert_eq!(actions[5].strafe, -256);
+        assert_eq!(actions[6].look_pitch, 256);
+        assert_eq!(actions[7].look_pitch, -256);
+        assert_eq!(actions[8].jump, 256);
+        assert_eq!(actions[9].hand_pulse, 256);
+        assert_eq!(actions[10].jaw, 256);
+        assert_eq!(actions[11].acoustic, 256);
+        assert_eq!(actions[12].use_pulse, 256);
+        assert_eq!(actions[13].next_slot, 256);
+        for (index, action) in actions.iter().enumerate() {
+            assert!(
+                actions
+                    .iter()
+                    .enumerate()
+                    .all(|(other, candidate)| other == index || candidate != action)
+            );
+        }
+    }
+
+    #[test]
     fn corrupt_affordance_indices_are_rejected_on_decode() {
         let runtime = affordance_runtime(AffordanceConfig::default());
         let mut json = serde_json::to_value(runtime.state()).expect("encode");
@@ -1269,5 +1444,53 @@ mod tests {
         let mut json = serde_json::to_value(runtime.state()).expect("encode");
         json["affordance"]["config"]["eligibility_span"] = serde_json::json!(0);
         assert!(serde_json::from_value::<super::AgentRuntimeState>(json).is_err());
+    }
+
+    #[test]
+    fn legacy_twelve_action_tables_expand_without_reinterpreting_rows() {
+        let runtime = affordance_runtime(AffordanceConfig::default());
+        let mut json = serde_json::to_value(runtime.state()).expect("encode");
+        for field in ["visits", "after", "after_spread", "last_tried"] {
+            json["affordance"][field]
+                .as_array_mut()
+                .expect("action table")
+                .truncate(12);
+        }
+        let decoded =
+            serde_json::from_value::<super::AgentRuntimeState>(json).expect("migrate legacy state");
+        assert_eq!(decoded.affordance.visits.len(), AFFORDANCE_ACTIONS);
+        assert!(
+            decoded.affordance.visits[12..]
+                .iter()
+                .all(|visits| *visits == 0)
+        );
+    }
+
+    #[test]
+    fn legacy_homeostatic_weights_append_blank_action_rows() {
+        let runtime =
+            AgentRuntime::new_with_mode(71, 4, config(), super::ExperimentMode::Homeostatic);
+        let mut json = serde_json::to_value(runtime.state()).expect("encode");
+        for field in ["visits", "after", "after_spread", "last_tried"] {
+            json["affordance"][field]
+                .as_array_mut()
+                .expect("action table")
+                .truncate(12);
+        }
+        json["homeostasis"]["weights"]
+            .as_array_mut()
+            .expect("weights")
+            .truncate(12 * HOMEOSTATIC_FEATURES);
+        let decoded =
+            serde_json::from_value::<super::AgentRuntimeState>(json).expect("migrate legacy state");
+        assert_eq!(
+            decoded.homeostasis.weights.len(),
+            AFFORDANCE_ACTIONS * HOMEOSTATIC_FEATURES
+        );
+        assert!(
+            decoded.homeostasis.weights[12 * HOMEOSTATIC_FEATURES..]
+                .iter()
+                .all(|weight| *weight == 0)
+        );
     }
 }

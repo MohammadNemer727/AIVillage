@@ -221,6 +221,7 @@ impl Clearing {
             transport: TransportStatus::Healthy,
             retina: Some(retina),
             interoception: None,
+            held_item: None,
         };
         self.sequence += 1;
         self.swallowed = 0;

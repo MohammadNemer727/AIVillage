@@ -10,7 +10,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::{error::Error, fmt};
+use std::{collections::BTreeMap, error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 use sim_core::{
@@ -26,8 +26,14 @@ pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 
 /// Version for durable exact-world checkpoint envelopes.
 pub const CHECKPOINT_SCHEMA_VERSION: u32 = 1;
-/// Version for standalone one-agent runtime checkpoints.
-pub const AGENT_CHECKPOINT_SCHEMA_VERSION: u32 = 1;
+/// Version for standalone one-agent runtime checkpoints. Version 4 adds private bounded episodic
+/// memory; versions 1–3 migrate to the canonical empty newborn memory.
+pub const AGENT_CHECKPOINT_SCHEMA_VERSION: u32 = 4;
+const FIRST_AGENT_CHECKPOINT_SCHEMA_VERSION: u32 = 1;
+/// Version for a live Luanti population manifest. Version 2 retains the exact pending
+/// reproduction signal and explicit attempt snapshots; version 1 loads with no pending decision.
+pub const POPULATION_MANIFEST_SCHEMA_VERSION: u32 = 2;
+const LEGACY_POPULATION_MANIFEST_SCHEMA_VERSION: u32 = 1;
 
 /// Version for append-only replay event logs.
 pub const EVENT_LOG_SCHEMA_VERSION: u32 = 1;
@@ -77,10 +83,209 @@ pub struct AgentCheckpoint {
     pub runtime: AgentRuntimeState,
 }
 
+/// Durable identity and lineage metadata for one live individual.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct PopulationIndividual {
+    /// Evolving individual identity; unlike a body slot, this is never reused.
+    pub individual_id: u64,
+    /// Luanti body slot currently occupied by this individual.
+    pub body_slot: u32,
+    /// Asexual parent, absent only for founders.
+    pub parent_id: Option<u64>,
+    /// Founder generation is zero; every child is one greater than its parent.
+    pub generation: u32,
+    /// Inherited developmental program, excluding all acquired lifetime state.
+    pub genome: DevelopmentalGenome,
+    /// Relative path to this individual's exact runtime checkpoint.
+    pub runtime_file: String,
+    /// Durable reproductive reserve after all charged birth costs.
+    #[serde(default = "full_reserve")]
+    pub reproductive_reserve: u16,
+    /// Next observation sequence accepted after body or server restart.
+    #[serde(default)]
+    pub next_sequence: u64,
+    /// Most recent independent reproduction output, retained until consumed or replaced.
+    #[serde(default)]
+    pub reproduction_signal: i16,
+}
+
+const fn full_reserve() -> u16 {
+    255
+}
+
+/// Why a population individual was born.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PopulationBirthKind {
+    /// Capacity and parent state permitted ordinary asexual reproduction.
+    Asexual,
+}
+
+/// Durable population lifecycle audit record.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+pub enum PopulationLifecycleEvent {
+    /// A body slot was released.
+    Death {
+        /// Durable idempotency key supplied by the body.
+        event_id: String,
+        /// Individual that died.
+        individual_id: u64,
+        /// Slot made available.
+        body_slot: u32,
+    },
+    /// A newborn received a fresh runtime.
+    Birth {
+        /// Durable idempotency key supplied by the living parent body.
+        event_id: String,
+        /// Never-reused newborn identity.
+        individual_id: u64,
+        /// Reusable slot assigned to the newborn.
+        body_slot: u32,
+        /// Asexual parent.
+        parent_id: u64,
+        /// Newborn lineage generation.
+        generation: u32,
+        /// Reproduction mechanism.
+        kind: PopulationBirthKind,
+        /// Explicit reserve charged atomically with the birth.
+        reproductive_cost: u16,
+    },
+    /// A queued lifecycle request and its eligibility snapshot before resolution.
+    ReproductionAttempt {
+        /// Durable idempotency key supplied by the body.
+        event_id: String,
+        /// Living individual requesting reproduction.
+        parent_id: u64,
+        /// Body slot claimed by the request.
+        body_slot: u32,
+        /// Decision counter at lifecycle evaluation.
+        decision_tick: u64,
+        /// Independent controller output retained from the triggering transition.
+        signal_0: i16,
+        /// Configured maturity threshold.
+        maturity_decisions: u64,
+        /// Reserve before any successful cost.
+        reproductive_reserve: u16,
+        /// Whether a body slot was free before resolution.
+        slot_available: bool,
+    },
+    /// A reproduction attempt was denied with an auditable reason.
+    ReproductionBlocked {
+        /// Durable idempotency key supplied by the body.
+        event_id: String,
+        /// Individual whose reproduction request was denied.
+        parent_id: u64,
+        /// Configured number of body slots.
+        capacity: u32,
+        /// Why the attempt could not become a birth.
+        reason: PopulationBlockReason,
+    },
+}
+
+/// Stable categories for denied reproductive attempts.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PopulationBlockReason {
+    /// No reusable body slot was empty.
+    NoFreeSlot,
+    /// The parent was dead, immature, depleted, or did not decide to reproduce.
+    BiologicalEligibility,
+    /// The body could not deliver or complete the lifecycle request.
+    Infrastructure,
+}
+
+/// Durable result returned for an idempotent lifecycle command.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "result", rename_all = "snake_case")]
+pub enum PopulationCommandResult {
+    /// Death was committed and the slot became empty.
+    Died {
+        /// Closed individual identity.
+        individual_id: u64,
+        /// Newly empty reusable slot.
+        body_slot: u32,
+    },
+    /// Birth, lineage, cost, and slot assignment were committed together.
+    Born {
+        /// Never-reused newborn identity.
+        individual_id: u64,
+        /// Living parent charged for this birth.
+        parent_id: u64,
+        /// Slot atomically assigned to the child.
+        body_slot: u32,
+        /// Child lineage generation.
+        generation: u32,
+        /// Parent reserve after the explicit cost.
+        reserve_after: u16,
+    },
+    /// The command was accepted and durably recorded but no birth occurred.
+    Blocked {
+        /// Stable denial category.
+        reason: PopulationBlockReason,
+    },
+}
+
+/// Versioned index of independently checkpointed live individuals.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct PopulationManifest {
+    /// Envelope schema version.
+    pub schema_version: u32,
+    /// Population seed used for founders, mutation, and runtime receptor noise.
+    pub seed: u64,
+    /// Next identity to issue; IDs below this value are never reused.
+    pub next_individual_id: u64,
+    /// Maximum simultaneously occupied body slots.
+    pub capacity: u32,
+    /// Whether deterministic mutation is enabled for natural births.
+    #[serde(default = "mutation_enabled")]
+    pub mutation_enabled: bool,
+    /// Minimum accepted decisions before a parent is mature.
+    #[serde(default)]
+    pub maturity_decisions: u64,
+    /// Reserve required before paying the reproductive cost.
+    #[serde(default)]
+    pub minimum_reproductive_reserve: u16,
+    /// Reserve removed in the same transaction as a successful birth.
+    #[serde(default)]
+    pub reproductive_cost: u16,
+    /// Live individuals in canonical identity order.
+    pub individuals: Vec<PopulationIndividual>,
+    /// Ordered lifecycle audit, including denied births.
+    #[serde(default)]
+    pub lifecycle: Vec<PopulationLifecycleEvent>,
+    /// Completed command results keyed by durable event ID for exactly-once retries.
+    #[serde(default)]
+    pub processed_events: BTreeMap<String, PopulationCommandResult>,
+}
+
+const fn mutation_enabled() -> bool {
+    true
+}
+
+impl PopulationManifest {
+    /// Rejects manifests whose format cannot be interpreted by this build.
+    ///
+    /// # Errors
+    ///
+    /// Returns an unsupported-version error for manifests newer than this build.
+    pub fn validate_version(&self) -> Result<(), PersistenceError> {
+        if !matches!(
+            self.schema_version,
+            LEGACY_POPULATION_MANIFEST_SCHEMA_VERSION | POPULATION_MANIFEST_SCHEMA_VERSION
+        ) {
+            return Err(PersistenceError::UnsupportedPopulationManifestVersion(
+                self.schema_version,
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl AgentCheckpoint {
-    /// Captures an exact standalone runtime checkpoint.
+    /// Captures an exact standalone runtime checkpoint in the current schema.
     #[must_use]
-    pub fn v1(runtime: &AgentRuntime) -> Self {
+    pub fn current(runtime: &AgentRuntime) -> Self {
         Self {
             schema_version: AGENT_CHECKPOINT_SCHEMA_VERSION,
             seed: runtime.seed(),
@@ -95,7 +300,9 @@ impl AgentCheckpoint {
     ///
     /// Returns an error when the agent checkpoint schema is unsupported.
     pub fn restore(self) -> Result<AgentRuntime, PersistenceError> {
-        if self.schema_version != AGENT_CHECKPOINT_SCHEMA_VERSION {
+        if !(FIRST_AGENT_CHECKPOINT_SCHEMA_VERSION..=AGENT_CHECKPOINT_SCHEMA_VERSION)
+            .contains(&self.schema_version)
+        {
             return Err(PersistenceError::UnsupportedAgentCheckpointVersion(
                 self.schema_version,
             ));
@@ -123,7 +330,9 @@ impl AgentCheckpoint {
     /// Returns an error for invalid TOML, out-of-range state, or unsupported format versions.
     pub fn from_toml(text: &str) -> Result<Self, PersistenceError> {
         let checkpoint: Self = toml::from_str(text).map_err(PersistenceError::Decode)?;
-        if checkpoint.schema_version != AGENT_CHECKPOINT_SCHEMA_VERSION {
+        if !(FIRST_AGENT_CHECKPOINT_SCHEMA_VERSION..=AGENT_CHECKPOINT_SCHEMA_VERSION)
+            .contains(&checkpoint.schema_version)
+        {
             return Err(PersistenceError::UnsupportedAgentCheckpointVersion(
                 checkpoint.schema_version,
             ));
@@ -369,6 +578,8 @@ pub enum PersistenceError {
     UnsupportedCheckpointVersion(u32),
     /// The standalone agent checkpoint envelope version is not supported.
     UnsupportedAgentCheckpointVersion(u32),
+    /// The population-manifest envelope version is not supported.
+    UnsupportedPopulationManifestVersion(u32),
     /// The snapshot-header version is not supported.
     UnsupportedSnapshotVersion(u32),
     /// The event-log version is not supported.
@@ -397,6 +608,12 @@ impl fmt::Display for PersistenceError {
                     "unsupported agent checkpoint schema version {version}"
                 )
             }
+            Self::UnsupportedPopulationManifestVersion(version) => {
+                write!(
+                    formatter,
+                    "unsupported population manifest schema version {version}"
+                )
+            }
             Self::UnsupportedSnapshotVersion(version) => {
                 write!(formatter, "unsupported snapshot schema version {version}")
             }
@@ -416,7 +633,7 @@ impl Error for PersistenceError {}
 
 #[cfg(test)]
 mod tests {
-    use sim_core::{World, WorldSeed, WorldSettings};
+    use sim_core::{World, WorldSeed, WorldSettings, runtime::AFFORDANCE_ACTIONS};
 
     use super::{AgentCheckpoint, CheckpointFile, EventLog, FounderSpec, PersistenceError};
 
@@ -471,7 +688,7 @@ mod tests {
     #[test]
     fn agent_checkpoint_rejects_unsupported_versions() {
         let runtime = FounderSpec::new(32, 0).runtime();
-        let mut checkpoint = AgentCheckpoint::v1(&runtime);
+        let mut checkpoint = AgentCheckpoint::current(&runtime);
         checkpoint.schema_version += 1;
         let encoded = checkpoint.to_toml().unwrap();
         assert!(matches!(
@@ -479,5 +696,41 @@ mod tests {
             Err(PersistenceError::UnsupportedAgentCheckpointVersion(_))
         ));
         assert!(checkpoint.restore().is_err());
+    }
+
+    #[test]
+    fn version_one_agent_checkpoint_migrates_twelve_action_tables() {
+        let runtime = FounderSpec::new(32, 0).runtime();
+        let mut wire = serde_json::to_value(AgentCheckpoint::current(&runtime)).unwrap();
+        wire["schema_version"] = 1.into();
+        for field in ["visits", "after", "after_spread", "last_tried"] {
+            wire["runtime"]["affordance"][field]
+                .as_array_mut()
+                .unwrap()
+                .truncate(12);
+        }
+        let checkpoint: AgentCheckpoint = serde_json::from_value(wire).unwrap();
+        let restored = checkpoint.restore().unwrap();
+        assert_eq!(restored.state().affordance.visits.len(), AFFORDANCE_ACTIONS);
+        assert!(
+            restored.state().affordance.visits[12..]
+                .iter()
+                .all(|count| *count == 0)
+        );
+    }
+
+    #[test]
+    fn version_three_checkpoint_migrates_to_empty_episodic_memory() {
+        let runtime = FounderSpec::new(32, 0).runtime();
+        let mut wire = serde_json::to_value(AgentCheckpoint::current(&runtime)).unwrap();
+        wire["schema_version"] = 3.into();
+        wire["runtime"]
+            .as_object_mut()
+            .unwrap()
+            .remove("episodic_memory");
+        let checkpoint: AgentCheckpoint = serde_json::from_value(wire).unwrap();
+        let restored = checkpoint.restore().unwrap();
+        assert_eq!(restored.state().episodic_memory.events.len(), 0);
+        assert_eq!(restored.state().episodic_memory.next_event_id, 0);
     }
 }

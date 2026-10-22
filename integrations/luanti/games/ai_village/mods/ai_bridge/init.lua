@@ -1,4 +1,4 @@
--- One physical founder and an intentionally narrow, loopback-only bridge protocol.
+-- Physical founders and an intentionally narrow, loopback-only bridge protocol.
 -- No coordinates, node names, recipes, rewards, or world facts cross into Rust.
 local palette = dofile(minetest.get_modpath("ai_bridge") .. "/palette_generated.lua").colours
 local texture_colours = dofile(minetest.get_modpath("ai_bridge") .. "/texture_colours_generated.lua")
@@ -9,7 +9,7 @@ local open_world = minetest.settings:get("ai_bridge_world") == "open"
 -- privileges). The founder is born beside them, and /founder switches the person between playing
 -- as themselves and observing through the founder's eyes.
 local play = open_world and minetest.settings:get_bool("ai_bridge_play", false)
-local protocol, agent_id = 3, 1
+local protocol = 5
 -- Seconds per decision. Experiments use 0.1; a slower clock makes behaviour easier to watch.
 local step_seconds = math.max(0.05, math.min(2,
   tonumber(minetest.settings:get("ai_bridge_step_seconds") or "") or 0.1))
@@ -105,29 +105,196 @@ minetest.register_node("ai_bridge:observer_light", {
   groups = {not_in_creative_inventory = 1},
 })
 
-local state = { pain = 0, sequence = 0, server_step = 0, pending = false, pending_at = 0, request_token = 0,
-  held = { thrust = 0, turn = 0, strafe = 0, look_pitch = 0, jump = 0, jaw = 0, hand_pulse = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} },
-  applied_step = 0, applied_steps = 0, elapsed = 0, previous_velocity = {x = 0, z = 0}, touch = 0, grounded = 0, hand_contact = 0, eye_pitch = 0, status = "healthy",
-  smoke = mode == "smoke", learn_decisions = 0, learn_phase = nil, learn_cube = nil,
-  decisions = 0, pushes = 0, hits = 0, pushed_at = nil, swallowed = 0, meals = 0,
-  forceloaded = {}, diagnostics = nil, latency_ms = 0, founder = nil, body_parts = {},
-  observer_resets = 0, safety_resets = 0, last_safety_reset = "none" }
+local function fresh_action()
+  return { thrust = 0, turn = 0, strafe = 0, look_pitch = 0, jump = 0, jaw = 0,
+    hand_pulse = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0},
+    use_pulse = 0, next_slot = 0 }
+end
+
+local function fresh_state(individual_id, founder_name, body_slot)
+  return { agent_id = individual_id, founder_name = founder_name, body_slot = body_slot,
+    pain = 0, sequence = 0, server_step = 0, pending = false, pending_at = 0, request_token = 0,
+    held = fresh_action(), applied_step = 0, applied_steps = 0, elapsed = 0,
+    previous_velocity = {x = 0, z = 0}, touch = 0, grounded = 0, hand_contact = 0,
+    eye_pitch = 0, status = "healthy", smoke = mode == "smoke", learn_decisions = 0,
+    learn_phase = nil, learn_cube = nil, decisions = 0, pushes = 0, hits = 0,
+    pushed_at = nil, swallowed = 0, meals = 0, forceloaded = {}, diagnostics = nil,
+    latency_ms = 0, founder = nil, body_parts = {}, observer_resets = 0,
+    safety_resets = 0, last_safety_reset = "none" }
+end
+
+-- An evolving individual's never-reused agent_id is distinct from its reusable physical body
+-- slot. All bodies address one population coordinator; per-body pending/token state keeps late
+-- or failed replies from affecting another body.
+local founder_count = math.max(1, math.floor(
+  tonumber(minetest.settings:get("ai_bridge_founder_count") or "") or 1))
+local population_capacity = math.max(founder_count, math.floor(
+  tonumber(minetest.settings:get("ai_bridge_population_capacity") or "") or founder_count))
+local configured_founder = minetest.settings:get("ai_bridge_founder") or "founder"
+local states, states_by_name = {}, {}
+for slot = 0, population_capacity - 1 do
+  local name = population_capacity == 1 and configured_founder or ("founder-%02d"):format(slot)
+  local body_state = fresh_state(slot + 1, name, slot)
+  body_state.endpoint = endpoint
+  states[#states + 1], states_by_name[name] = body_state, body_state
+  body_state.alive, body_state.lifecycle_pending = slot < founder_count, false
+end
+-- Entity/arena modes intentionally remain one-body fixtures.
+local state = states[1]
+
+-- Lifecycle commands survive server crashes in mod storage. Rust retains the same event IDs in
+-- its manifest, so retrying before or after either process commits is exactly-once.
+local lifecycle_endpoint = endpoint:gsub("/v1/transition$", "/v1/lifecycle")
+local lifecycle_storage = minetest.get_mod_storage()
+local lifecycle_counter = lifecycle_storage:get_int("event_counter")
+local lifecycle_pending = minetest.parse_json(lifecycle_storage:get_string("pending")) or {}
+for _, pending in pairs(lifecycle_pending) do
+  pending.in_flight = false
+  local source = states[(pending.body_slot or -1) + 1]
+  if source then source.lifecycle_pending = true end
+end
+
+local function save_lifecycle_pending()
+  lifecycle_storage:set_string("pending", minetest.write_json(lifecycle_pending))
+end
+
+local function next_event_id(state, kind)
+  lifecycle_counter = lifecycle_counter + 1
+  lifecycle_storage:set_int("event_counter", lifecycle_counter)
+  return ("%s:%s:%d"):format(state.founder_name, kind, lifecycle_counter)
+end
+
+local function queue_lifecycle(state, kind)
+  if state.lifecycle_pending then
+    if kind ~= "death" then return end
+    -- A physical death must not disappear behind an in-flight reproduction request. Keep the
+    -- earlier command durable, but let death become the body-blocking command. Rust will either
+    -- retain an already completed birth or reject reproduction from the now-dead parent.
+    for _, pending in pairs(lifecycle_pending) do
+      if pending.body_slot == state.body_slot then
+        if pending.command.command == "death" then return end
+        pending.blocks_body = false
+      end
+    end
+  end
+  local command
+  if kind == "death" then
+    command = {event_id = next_event_id(state, kind), command = "death",
+      individual_id = state.agent_id, body_slot = state.body_slot}
+  else
+    command = {event_id = next_event_id(state, kind), command = "reproduce",
+      parent_id = state.agent_id, body_slot = state.body_slot, infrastructure_failures = 0}
+  end
+  lifecycle_pending[command.event_id] = {
+    command = command, body_slot = state.body_slot, failures = 0, in_flight = false,
+  }
+  state.lifecycle_pending = true
+  save_lifecycle_pending()
+  minetest.log("action", "AI_BRIDGE_LIFECYCLE " .. minetest.write_json({
+    event = "queued", command = kind, event_id = command.event_id,
+    individual_id = state.agent_id, body_slot = state.body_slot}))
+end
+
+local function bind_individual(slot_state, individual_id, next_sequence)
+  slot_state.agent_id = individual_id
+  slot_state.sequence, slot_state.request_token = next_sequence or 0, slot_state.request_token + 1
+  slot_state.pending, slot_state.lifecycle_pending, slot_state.alive = false, false, true
+  slot_state.held, slot_state.status, slot_state.diagnostics = fresh_action(), "healthy", nil
+  slot_state.applied_steps, slot_state.elapsed = 0, 0
+  local player = slot_state.founder
+  if player and player:get_pos() then
+    if player:get_hp() <= 0 then player:respawn() end
+    player:set_hp(player:get_properties().hp_max or 20)
+  end
+  minetest.log("action", "AI_BRIDGE_LIFECYCLE " .. minetest.write_json({
+    event = "slot_rebound", body_slot = slot_state.body_slot, individual_id = individual_id}))
+end
+
+local function deliver_lifecycle(event_id, pending)
+  if pending.in_flight or not http then return end
+  pending.in_flight = true
+  http.fetch({url = lifecycle_endpoint, post_data = minetest.write_json(pending.command),
+    extra_headers = {["Content-Type"] = "application/json"}}, function(result)
+    local current = lifecycle_pending[event_id]
+    if not current then return end
+    current.in_flight = false
+    local reply = minetest.parse_json(result.data or "")
+    if not result.succeeded or not reply or not reply.result then
+      current.failures = current.failures + 1
+      if current.command.command == "reproduce" then
+        current.command.infrastructure_failures = current.failures
+      end
+      minetest.log("warning", "AI_BRIDGE_LIFECYCLE " .. minetest.write_json({
+        event = "blocked", reason = "infrastructure", event_id = event_id,
+        failures = current.failures}))
+      save_lifecycle_pending()
+      return
+    end
+    local source = states[current.body_slot + 1]
+    if source and current.blocks_body ~= false then source.lifecycle_pending = false end
+    if reply.result == "born" then
+      local newborn = states[reply.body_slot + 1]
+      if newborn then bind_individual(newborn, reply.individual_id, 0) end
+    end
+    minetest.log("action", "AI_BRIDGE_LIFECYCLE " .. minetest.write_json({
+      event = reply.result, reason = reply.reason, event_id = event_id,
+      individual_id = reply.individual_id, body_slot = reply.body_slot}))
+    lifecycle_pending[event_id] = nil
+    save_lifecycle_pending()
+  end)
+end
+
+local function sync_population()
+  if not http then return end
+  http.fetch({url = endpoint:gsub("/v1/transition$", "/v1/population")}, function(result)
+    local manifest = result.succeeded and minetest.parse_json(result.data or "")
+    if not manifest or not manifest.individuals then return end
+    local occupied = {}
+    for _, individual in ipairs(manifest.individuals) do
+      local slot_state = states[individual.body_slot + 1]
+      if slot_state then
+        occupied[individual.body_slot] = true
+        if slot_state.agent_id ~= individual.individual_id
+            or slot_state.sequence ~= individual.next_sequence then
+          bind_individual(slot_state, individual.individual_id, individual.next_sequence)
+        end
+      end
+    end
+    for _, slot_state in ipairs(states) do
+      if not occupied[slot_state.body_slot] then
+        slot_state.alive, slot_state.pending = false, false
+        slot_state.held, slot_state.status = fresh_action(), "disconnected"
+      end
+    end
+  end)
+end
+
+minetest.after(1, sync_population)
+
+minetest.register_globalstep(function()
+  for event_id, pending in pairs(lifecycle_pending) do
+    if not pending.last_try or minetest.get_gametime() - pending.last_try >= 1 then
+      pending.last_try = minetest.get_gametime()
+      deliver_lifecycle(event_id, pending)
+    end
+  end
+end)
 
 -- Automated body tests (integrations/luanti/ci/body-test.sh) may steer the held action and read
 -- the bridge state through this table; it exists only when ai_bridge_test_hooks is set.
 local test_hooks = minetest.settings:get_bool("ai_bridge_test_hooks", false)
 if test_hooks then
-  rawset(_G, "ai_bridge_test", {state = state})
+  rawset(_G, "ai_bridge_test", {state = state, states = states, states_by_name = states_by_name})
 end
 
-local function smoke_log(event)
+local function smoke_log(state, event)
   if state.smoke then minetest.log("action", "AI_BRIDGE_SMOKE " .. minetest.write_json(event)) end
 end
 
-local function zero_action(reason)
-  state.held = { thrust = 0, turn = 0, strafe = 0, look_pitch = 0, jump = 0, jaw = 0, hand_pulse = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} }
+local function zero_action(state, reason)
+  state.held = fresh_action()
   state.status = reason
-  smoke_log({event = "safe_zero", status = reason, thrust = state.held.thrust, turn = state.held.turn})
+  smoke_log(state, {event = "safe_zero", status = reason, thrust = state.held.thrust, turn = state.held.turn})
 end
 
 local function pose(self)
@@ -191,7 +358,7 @@ local function describe(action)
   return #parts > 0 and table.concat(parts, ", ") or "still"
 end
 
-local function update_observer_hud()
+local function update_observer_hud(state)
   -- In play mode the founder's HUD belongs to observing, not to playing as oneself.
   if play and not state.observing then return end
   local player = minetest.get_player_by_name(observer_name)
@@ -200,7 +367,8 @@ local function update_observer_hud()
   local curious = diagnostics.experiment_mode == "AffordanceDiscovery"
   local lines = {
     {"AI VILLAGE  |  OBSERVER", 0xFFE08A},
-    {"Founder 1  |  " .. (curious and "curious explorer" or "baseline brain")
+    {state.founder_name .. "  |  agent " .. tostring(state.agent_id) .. "  |  "
+      .. (curious and "curious explorer" or "baseline brain")
       .. (scripted and "  |  test fixture driving" or ""), 0xD8E2EA},
     {"Doing:  " .. describe(state.held or {})
       .. (curious and ("   (interest " .. tostring(diagnostics.intrinsic_score or 0) .. ")") or ""), 0xFFFFFF},
@@ -271,6 +439,36 @@ local function node_colour(name)
   return colour
 end
 
+-- Physical appearance and inventory condition of the selected stack (body contract version 7).
+-- Item identity, description, groups, recipes and engine names never leave Lua. VoxeLibre has no
+-- item-mass property, so the body does not fabricate a weight channel.
+local function held_item_sense(player)
+  local stack = player:get_wielded_item()
+  if stack:is_empty() then
+    return {occupied = 0, red = 0, green = 0, blue = 0, amount = 0, capacity = 0,
+      durability = 0}
+  end
+  local definition = stack:get_definition() or {}
+  local image = definition.inventory_image
+  if type(image) ~= "string" or image == "" then image = definition.wield_image end
+  local colour = type(image) == "string" and image ~= "" and texture_colour(image) or nil
+  if not colour and minetest.registered_nodes[stack:get_name()] then
+    colour = node_colour(stack:get_name())
+  end
+  colour = colour or {128, 128, 128}
+  local stack_max = tonumber(definition.stack_max) or 1
+  local wear = stack:get_wear()
+  return {
+    occupied = 255,
+    red = byte(colour[1]),
+    green = byte(colour[2]),
+    blue = byte(colour[3]),
+    amount = byte(stack:get_count()),
+    capacity = byte(stack_max),
+    durability = byte(255 * (65535 - wear) / 65535),
+  }
+end
+
 -- Whether opening the jaw on a block feeds the founder: the block, or what it yields, is edible
 -- in the world's own terms (a "food_*" group). This stays inside the body: Rust only feels how
 -- much was swallowed, never what.
@@ -289,7 +487,7 @@ end
 -- Eats the first edible block the mouth reaches: rays from the eyes slanting forward and down,
 -- about one and a half nodes long. The block is consumed as if picked, so it regrows as the
 -- world's own rules say (an apple tree regrows its apple, a bush its berries).
-local function eat_in_front(self)
+local function eat_in_front(state, self)
   local pos = self.object:get_pos()
   local angle = self.object:get_yaw() + math.pi / 2
   local eye = vector.add(pos, {x = 0, y = 1, z = 0})
@@ -411,7 +609,7 @@ local function sniff(eye, v2_angle)
   return amplitudes
 end
 
-local function sense(self, dt)
+local function sense(state, self, dt)
   local senses, pos = empty_senses(), self.object:get_pos()
   local velocity, yaw = self.object:get_velocity(), self.object:get_yaw()
   local v2_angle = yaw + math.pi / 2
@@ -439,7 +637,7 @@ local function sense(self, dt)
 end
 
 -- Returns a pushed hanging cube to its place once enough decisions have passed.
-local function swing_back(cube)
+local function swing_back(state, cube)
   if cube and cube:get_pos() and state.pushed_at
       and state.decisions - state.pushed_at >= learn_cube_return_decisions then
     cube:move_to(learn_cube_spawn, false)
@@ -462,7 +660,7 @@ local function learn_phase_name(decision)
 end
 
 -- Called once per accepted Rust reply, before the reply's action is applied.
-local function learn_step()
+local function learn_step(state)
   state.learn_decisions = state.learn_decisions + 1
   local decision, founder = state.learn_decisions, state.founder
   local phase = learn_phase_name(decision)
@@ -484,7 +682,7 @@ local function learn_step()
     cube:remove()
     state.learn_cube = nil
   end
-  swing_back(state.learn_cube)
+  swing_back(state, state.learn_cube)
   if (decision - 1) % learn_trial == 0 and founder and founder:get_pos() then
     founder:move_to(founder_spawn, false)
     founder:set_velocity({x = 0, y = 0, z = 0})
@@ -502,7 +700,7 @@ end
 
 -- What a player body feels of itself (body contract version 6), from the game's own health,
 -- hunger and breath, and the hurt it took since the previous observation. Never what hurt it.
-local function felt_body(player)
+local function felt_body(state, player)
   local properties = player:get_properties()
   local hp_max, breath_max = properties.hp_max or 20, properties.breath_max or 10
   local hunger = rawget(_G, "mcl_hunger")
@@ -511,20 +709,24 @@ local function felt_body(player)
     air = byte(player:get_breath() * 255 / breath_max), pain = byte((state.pain or 0) * 255 / hp_max)}
 end
 
-local function send_transition(self, dt)
-  if not http then zero_action("disconnected") return end
+local function send_transition(state, self, dt)
+  if not http then zero_action(state, "disconnected") return end
+  local hooks = test_hooks and rawget(_G, "ai_bridge_test")
+  if hooks and hooks.before_observation then hooks.before_observation(state, self) end
   local velocity = self.object:get_velocity()
   -- Sense first: it also fills the forward retina sent beside the legacy rays.
-  local senses = sense(self, dt)
+  local senses = sense(state, self, dt)
   local observation = { sequence = state.sequence, senses = senses,
     body = { eye_pitch = byte(state.eye_pitch + 128), grounded = state.grounded, vertical_motion = signed(velocity.y * 64), hand_contact = state.hand_contact,
       swallowed = state.swallowed },
     retina = state.retina,
-    interoception = self.player and felt_body(self.player) or nil,
-    capabilities = { body_contract_version = self.player and 6 or 5, checkpoint_resume = false, dead = { chemicals = {not open_world, not open_world, true, true}, vibration = true,
+    interoception = self.player and felt_body(state, self.player) or nil,
+    held_item = self.player and held_item_sense(self.player) or nil,
+    capabilities = { body_contract_version = self.player and 7 or 5, checkpoint_resume = false, dead = { chemicals = {not open_world, not open_world, true, true}, vibration = true,
       touch = false, joint_position = false, muscle_tension = false, acceleration = false, orientation = false } },
     transport = transport_name[state.status] or "Disconnected" }
-  local body = minetest.write_json({ protocol = protocol, agent_id = agent_id, observation = observation,
+  local body = minetest.write_json({ protocol = protocol, agent_id = state.agent_id,
+    body_slot = state.body_slot, observation = observation,
     trace = { applied_server_step = state.applied_step, applied_steps = state.applied_steps,
       accumulated_dtime_us = math.floor(state.elapsed * 1000000 + 0.5), applied_action = state.held, pose = pose(self) } })
   -- Hand contact is a bounded event latch: preserve it until the one subsequent observation,
@@ -534,57 +736,65 @@ local function send_transition(self, dt)
   state.pain = 0
   state.last_retinal = observation.senses.retinal
   local ray = observation.senses.retinal[1]
-  smoke_log({event = "observation", sequence = state.sequence, transport = observation.transport, touch = observation.senses.touch,
+  smoke_log(state, {event = "observation", sequence = state.sequence, transport = observation.transport, touch = observation.senses.touch,
     ray0 = {red = ray.red, green = ray.green, blue = ray.blue, occlusion = ray.occlusion}})
   state.pending, state.pending_at, state.request_token = true, minetest.get_us_time(), state.request_token + 1
   local token = state.request_token
-  http.fetch({url = endpoint, post_data = body, extra_headers = {["Content-Type"] = "application/json"}}, function(result)
+  http.fetch({url = state.endpoint, post_data = body, extra_headers = {["Content-Type"] = "application/json"}}, function(result)
     if token ~= state.request_token then return end
     state.pending = false
     local reply = minetest.parse_json(result.data or "")
     if not result.succeeded then
       if reply and type(reply.expected_sequence) == "number" then
         state.sequence = reply.expected_sequence
-        zero_action("rejected")
+        zero_action(state, "rejected")
       else
-        zero_action("disconnected")
+        zero_action(state, "disconnected")
       end
       return
     end
-    if not reply or reply.protocol ~= protocol or reply.agent_id ~= agent_id
+    if not reply or reply.protocol ~= protocol or reply.agent_id ~= state.agent_id
+        or reply.body_slot ~= state.body_slot
         or reply.generated_sequence ~= state.sequence or reply.expected_sequence ~= state.sequence + 1 then
-      zero_action("rejected") return
+      zero_action(state, "rejected") return
     end
     state.held, state.status = reply.action, "healthy"
     state.decisions = state.decisions + 1
     if (state.held.hand_pulse or 0) > 0 then state.pushes = state.pushes + 1 end
     state.diagnostics = reply.diagnostics
+    -- Reproduction is an independent living policy decision. Death callbacks never call this
+    -- path, and Rust rechecks maturity, reserve, occupancy, and the recorded decision.
+    if play and state.alive and not state.lifecycle_pending
+        and state.held.signals and (state.held.signals[1] or 0) > 0 then
+      queue_lifecycle(state, "reproduce")
+    end
     state.latency_ms = math.floor((minetest.get_us_time() - state.pending_at) / 1000 + 0.5)
     if scripted then
       -- The bridge remains live; this deterministic actuator fixture makes collision and yaw
       -- evidence independent of the founder's learned motor output.
       local sequence = state.sequence
       state.held = { thrust = 0, turn = 0, strafe = 0, look_pitch = 0, jump = 0,
-        hand_pulse = 0, jaw = 0, acoustic = 0, chemical = 0, visual = 0, signals = {0,0,0,0,0,0,0} }
+        hand_pulse = 0, jaw = 0, acoustic = 0, chemical = 0, visual = 0,
+        signals = {0,0,0,0,0,0,0}, use_pulse = 0, next_slot = 0 }
       if sequence == 0 then state.held.hand_pulse = 255
       elseif sequence < 8 then state.held.turn = 255
       elseif sequence < 55 then state.held.thrust, state.held.jump = 255, 255
       elseif sequence < 102 then state.held.strafe, state.held.jump = -255, 255
       elseif sequence < 149 then state.held.strafe, state.held.jump = 255, 255
       else state.held.thrust, state.held.hand_pulse = -255, 255 end
-      smoke_log({event = "override_action", sequence = sequence, thrust = state.held.thrust,
+      smoke_log(state, {event = "override_action", sequence = sequence, thrust = state.held.thrust,
         strafe = state.held.strafe, jump = state.held.jump, turn = state.held.turn,
         hand_pulse = state.held.hand_pulse})
     end
     local hooks = test_hooks and rawget(_G, "ai_bridge_test")
-    if hooks and hooks.override then
-      for field, value in pairs(hooks.override(state.sequence) or {}) do state.held[field] = value end
+    if hooks and hooks.override and state == (hooks.override_state or hooks.state) then
+      for field, value in pairs(hooks.override(state.sequence, state) or {}) do state.held[field] = value end
     end
-    if learn then learn_step() end
-    if mode == "observe" then swing_back(state.observe_cube) end
+    if learn then learn_step(state) end
+    if mode == "observe" then swing_back(state, state.observe_cube) end
     state.sequence = state.sequence + 1
     state.applied_step, state.applied_steps, state.elapsed = state.server_step, 0, 0
-    update_observer_hud()
+    update_observer_hud(state)
   end)
 end
 
@@ -593,7 +803,7 @@ local function cube_textures(texture)
   return {texture, texture, texture, texture, texture, texture}
 end
 
-local function update_humanoid_pose(object, action)
+local function update_humanoid_pose(state, object, action)
   -- This mesh can show one native animation at a time.  Locomotion therefore wins over
   -- the mine frame: a nonzero movement command (or residual physical movement) is always
   -- visibly walking, while hand is shown only for a nonzero pulse while stationary.
@@ -618,13 +828,13 @@ local function update_humanoid_pose(object, action)
     .. " thrust=" .. tostring(action.thrust or 0)
     .. " strafe=" .. tostring(action.strafe or 0)
     .. " hand=" .. tostring(action.hand_pulse or 0))
-  smoke_log({event = "animation", name = name, thrust = action.thrust or 0,
+  smoke_log(state, {event = "animation", name = name, thrust = action.thrust or 0,
     strafe = action.strafe or 0, hand_pulse = action.hand_pulse or 0})
 end
 
 -- An open world unloads blocks far from players, which would remove the unsaved founder. Keep
 -- the founder's block and its horizontal neighbours loaded wherever it goes.
-local function keep_loaded_around(position)
+local function keep_loaded_around(state, position)
   local block = vector.floor(vector.divide(position, 16))
   local key = minetest.pos_to_string(block)
   if state.forceloaded_key == key then return end
@@ -643,8 +853,6 @@ end
 -- through the same senses and primitive actions as the entity body. Its hand punches what it
 -- reaches or digs the block it looks at, taking the time the block needs; its jaw, held, eats
 -- the food in its hand, taking VoxeLibre's eating time.
-local founder_name = minetest.settings:get("ai_bridge_founder") or "founder"
-
 -- The founder player, wrapped so the shared sensing and bridge code can treat it like the
 -- entity body: position, velocity and facing (yaw).
 local function player_body(player)
@@ -667,7 +875,7 @@ local function held(player)
   return stack
 end
 
-local function use_hand(player, body)
+local function use_hand(state, player, body)
   local eye = vector.offset(player:get_pos(), 0, body.eye_height, 0)
   local look = player:get_look_dir()
   for pointed in minetest.raycast(eye, vector.add(eye, vector.multiply(look, 4)), true, false) do
@@ -747,7 +955,7 @@ local function next_item(player)
   end
 end
 
-local function chew(player, jaw)
+local function chew(state, player, jaw)
   local hunger = rawget(_G, "mcl_hunger")
   local stack = player:get_wielded_item()
   local points = minetest.get_item_group(stack:get_name(), "eatable")
@@ -771,13 +979,13 @@ local function grounded(player, velocity)
 end
 
 -- One server step of driving the founder player with the held action.
-local function drive_founder(player, dtime)
+local function drive_founder(state, player, dtime)
   local body = state.founder_body
   state.server_step, state.applied_steps, state.elapsed = state.server_step + 1, state.applied_steps + 1, state.elapsed + dtime
   if state.pending and (minetest.get_us_time() - state.pending_at) / 1000000 > request_timeout then
     state.request_token = state.request_token + 1 -- late reply cannot replace the safety action
     state.pending = false
-    zero_action("timeout")
+    zero_action(state, "timeout")
   end
   if player:get_hp() <= 0 then return end
   local velocity = player:get_velocity()
@@ -803,31 +1011,40 @@ local function drive_founder(player, dtime)
     if (action.jump or 0) > 0 and state.grounded > 0 then
       player:add_velocity({x = 0, y = 6.5, z = 0})
       local hunger = rawget(_G, "mcl_hunger")
-      if hunger and hunger.exhaust then hunger.exhaust(founder_name, hunger.EXHAUST_JUMP or 50) end
+      if hunger and hunger.exhaust then hunger.exhaust(state.founder_name, hunger.EXHAUST_JUMP or 50) end
     end
-    if (action.hand_pulse or 0) > 0 then use_hand(player, body) else state.dig = nil end
+    if (action.hand_pulse or 0) > 0 then use_hand(state, player, body) else state.dig = nil end
     if (action.use_pulse or 0) > 0 then use_other_hand(player, body) end
     if (action.next_slot or 0) > 0 then next_item(player) end
-    chew(player, action.jaw or 0)
+    chew(state, player, action.jaw or 0)
   end
-  if not state.pending and state.elapsed >= step_seconds then send_transition(body, state.elapsed) end
+  if not state.pending and state.elapsed >= step_seconds then send_transition(state, body, state.elapsed) end
 end
 
 if play then
   minetest.register_globalstep(function(dtime)
-    local player = state.founder
-    if player and player:get_pos() and state.founder_body then drive_founder(player, dtime) end
+    for _, body_state in ipairs(states) do
+      local player = body_state.founder
+      if body_state.alive and player and player:get_pos() and body_state.founder_body then
+        drive_founder(body_state, player, dtime)
+      end
+    end
   end)
   minetest.register_on_player_hpchange(function(player, change)
-    if change < 0 and player:get_player_name() == founder_name then state.pain = (state.pain or 0) - change end
+    local body_state = states_by_name[player:get_player_name()]
+    if change < 0 and body_state then body_state.pain = (body_state.pain or 0) - change end
   end)
   minetest.register_on_dieplayer(function(player)
-    if player:get_player_name() ~= founder_name then return end
-    state.deaths = (state.deaths or 0) + 1
-    -- Its client has no one to press Respawn: the founder is born again after a moment.
-    minetest.after(3, function()
-      if player:get_pos() and player:get_hp() <= 0 then player:respawn() end
-    end)
+    local body_state = states_by_name[player:get_player_name()]
+    if not body_state then return end
+    body_state.deaths = (body_state.deaths or 0) + 1
+    body_state.alive = false
+    body_state.request_token = body_state.request_token + 1
+    body_state.pending = false
+    zero_action(body_state, "disconnected")
+    -- Death only closes this life and frees its slot. A different living parent must later make
+    -- an eligible reproduction decision before a newborn can be assigned here.
+    queue_lifecycle(body_state, "death")
   end)
 end
 
@@ -838,24 +1055,26 @@ minetest.register_entity("ai_bridge:founder", {
     nametag = "FOUNDER — Rust-controlled humanoid", nametag_color = "#ffe08a",
     static_save = false},
   on_activate = function(self)
+    self.state = state
     -- V2 heading zero is +X while Luanti yaw -pi/2 faces +X.
     self.object:set_yaw(-math.pi / 2)
-    self.label = "Founder " .. tostring(agent_id)
+    self.label = "Founder " .. tostring(state.agent_id)
     state.founder = self.object
     state.founder_animation = nil
-    update_humanoid_pose(self.object, state.held)
+    update_humanoid_pose(state, self.object, state.held)
     local properties = self.object:get_properties()
     minetest.log("action", "AI_BRIDGE_FOUNDER_VISUAL mesh=" .. tostring(properties.mesh)
       .. " texture=" .. tostring(properties.textures and properties.textures[1]))
   end,
   on_step = function(self, dtime, moveresult)
+    local state = self.state
     state.server_step, state.applied_steps, state.elapsed = state.server_step + 1, state.applied_steps + 1, state.elapsed + dtime
     state.touch, state.grounded = 0, 0
     if state.smoke and state.server_step == 1 then
       local pos, velocity = self.object:get_pos(), self.object:get_velocity()
-      smoke_log({event = "spawn", x = pos.x, y = pos.y, z = pos.z, yaw = self.object:get_yaw(), vy = velocity.y})
+      smoke_log(state, {event = "spawn", x = pos.x, y = pos.y, z = pos.z, yaw = self.object:get_yaw(), vy = velocity.y})
     elseif state.smoke and state.server_step == 2 then
-      smoke_log({event = "gravity", vy = self.object:get_velocity().y})
+      smoke_log(state, {event = "gravity", vy = self.object:get_velocity().y})
     end
     if moveresult and moveresult.collisions then
       for _, collision in ipairs(moveresult.collisions) do
@@ -866,11 +1085,11 @@ minetest.register_entity("ai_bridge:founder", {
     if state.pending and (minetest.get_us_time() - state.pending_at) / 1000000 > request_timeout then
       state.request_token = state.request_token + 1 -- late reply cannot replace the safety action
       state.pending = false
-      zero_action("timeout")
-      update_observer_hud()
+      zero_action(state, "timeout")
+      update_observer_hud(state)
     end
     local position = self.object:get_pos()
-    if open_world then keep_loaded_around(position) end
+    if open_world then keep_loaded_around(state, position) end
     local escaped = open_world and position.y < founder_spawn.y - open_world_fall_limit
       or not open_world and (math.abs(position.x) > arena_safety_limit.horizontal
         or math.abs(position.z) > arena_safety_limit.horizontal
@@ -880,18 +1099,18 @@ minetest.register_entity("ai_bridge:founder", {
       -- physics containment failure but preserves held action, sequence, and Rust state.
       local reason = string.format("out_of_bounds x=%.3f y=%.3f z=%.3f", position.x, position.y, position.z)
       minetest.log("warning", "AI_BRIDGE_SAFETY_RESET " .. reason)
-      smoke_log({event = "safety_reset", reason = reason, x = position.x, y = position.y, z = position.z})
+      smoke_log(state, {event = "safety_reset", reason = reason, x = position.x, y = position.y, z = position.z})
       self.object:move_to(founder_spawn, false)
       self.object:set_velocity({x = 0, y = 0, z = 0})
       self.object:set_acceleration({x = 0, y = -9.81, z = 0})
       self.object:set_yaw(-math.pi / 2)
       state.previous_velocity, state.touch, state.grounded = {x = 0, z = 0}, 0, 255
       state.safety_resets, state.last_safety_reset = state.safety_resets + 1, reason
-      update_observer_hud()
+      update_observer_hud(state)
       return
     end
     local action, yaw = state.held, self.object:get_yaw()
-    update_humanoid_pose(self.object, action)
+    update_humanoid_pose(state, self.object, action)
     local v2_angle = yaw + math.pi / 2
     local forward = {x = math.cos(v2_angle), z = math.sin(v2_angle)}
     local right = {x = -forward.z, z = forward.x}
@@ -908,7 +1127,7 @@ minetest.register_entity("ai_bridge:founder", {
       self.object:set_yaw(yaw + turn * (2 * math.pi / 256))
       state.eye_pitch = clamp(state.eye_pitch + trunc_toward_zero((action.look_pitch or 0) / 32), -128, 127)
       if (action.jump or 0) > 0 and state.grounded > 0 then self.object:set_velocity({x = velocity.x, y = 5, z = velocity.z}) end
-      if (action.jaw or 0) > 0 then eat_in_front(self) end
+      if (action.jaw or 0) > 0 then eat_in_front(state, self) end
       if (action.hand_pulse or 0) > 0 then
         local origin = vector.add(self.object:get_pos(), {x = forward.x * 0.8, y = 0.8, z = forward.z * 0.8})
         -- Deliberately bounded reach around the visible forward hand; this is contact feedback,
@@ -918,12 +1137,12 @@ minetest.register_entity("ai_bridge:founder", {
           if entity and entity.name == "ai_bridge:test_object" and not learn_inert then
             object:add_velocity({x = forward.x * 3, y = 1, z = forward.z * 3}); state.hand_contact = 255
             state.pushed_at, state.hits = state.decisions, state.hits + 1
-            smoke_log({event = "hand_contact", impulse = 3}); break
+            smoke_log(state, {event = "hand_contact", impulse = 3}); break
           end
         end
       end
     end
-    if not state.pending and state.elapsed >= step_seconds then send_transition(self, state.elapsed) end
+    if not state.pending and state.elapsed >= step_seconds then send_transition(state, self, state.elapsed) end
   end,
 })
 
@@ -1032,7 +1251,7 @@ end
 local function place_founder(spawn)
   founder_spawn = spawn
   minetest.log("action", "AI_BRIDGE_OPEN_WORLD spawn " .. minetest.pos_to_string(founder_spawn))
-  keep_loaded_around(founder_spawn)
+  keep_loaded_around(state, founder_spawn)
   local corner = vector.new(32, 32, 32)
   minetest.emerge_area(vector.subtract(founder_spawn, corner), vector.add(founder_spawn, corner),
     function(_, _, remaining)
@@ -1130,7 +1349,7 @@ minetest.register_on_mods_loaded(function()
       if state.smoke then
         local floor = minetest.get_node({x=0, y=0, z=0})
         local wall = minetest.get_node({x=4, y=2, z=0})
-        smoke_log({event = "room", floor = floor.name, wall = wall.name,
+        smoke_log(state, {event = "room", floor = floor.name, wall = wall.name,
           floor_light = minetest.get_node_light({x=0, y=0, z=0}, 0.5) or -1,
           wall_light = minetest.get_node_light({x=4, y=2, z=0}, 0.5) or -1})
       end
@@ -1149,7 +1368,7 @@ minetest.register_on_mods_loaded(function()
       else
         minetest.add_entity(generic_spawn, "ai_bridge:test_object")
       end
-      smoke_log({event = "generic_spawn", x = generic_spawn.x, y = generic_spawn.y, z = generic_spawn.z,
+      smoke_log(state, {event = "generic_spawn", x = generic_spawn.x, y = generic_spawn.y, z = generic_spawn.z,
         visual_size = generic_visual_scale, collision_height = 0.4})
       if mode == "smoke" then
         minetest.after(18, function() minetest.request_shutdown("ai_bridge smoke completed", true) end)
@@ -1163,11 +1382,23 @@ end)
 local pov = {target = nil, rows = 0}
 local POV_FORM = "ai_bridge:founders"
 
+local function state_for_object(object)
+  if not object then return nil end
+  for _, body_state in ipairs(states) do
+    if body_state.founder == object then return body_state end
+  end
+end
+
 local function founders()
   local list = {}
   if play then
     -- In a shared game the founder is a player.
-    if state.founder and state.founder:get_pos() then list[1] = {object = state.founder, label = "Founder 1"} end
+    for _, body_state in ipairs(states) do
+      if body_state.founder and body_state.founder:get_pos() then
+        list[#list + 1] = {object = body_state.founder,
+          label = body_state.founder_name .. " (agent " .. body_state.agent_id .. ")"}
+      end
+    end
     return list
   end
   for _, entity in pairs(minetest.luaentities) do
@@ -1257,7 +1488,8 @@ end
 local EYE_STRIP_ORDER = {8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9}
 
 local function update_eye_strip(player)
-  local retinal = state.last_retinal
+  local watched = state_for_object(pov.target) or state
+  local retinal = watched.last_retinal
   if not retinal then return end
   hud_set(player, "eye_panel", {type = "image", position = {x = 0.5, y = 0},
     offset = {x = 0, y = 16}, alignment = {x = 0, y = 1},
@@ -1330,7 +1562,8 @@ local function update_pov(player)
   if not founder:get_pos() then
     -- In play mode the observer keeps watching through the death and follows the reborn founder.
     if play then
-      if state.founder and state.founder:get_pos() then enter_pov(player, state.founder) end
+      local watched = state_for_object(founder)
+      if watched and watched.founder and watched.founder:get_pos() then enter_pov(player, watched.founder) end
     else
       leave_pov(player)
     end
@@ -1344,7 +1577,8 @@ local function update_pov(player)
   end
   -- Look exactly where the founder's eyes point: its yaw, and its eye pitch (positive is up).
   player:set_look_horizontal(founder:is_player() and founder:get_look_horizontal() or founder:get_yaw())
-  player:set_look_vertical(-state.eye_pitch * math.pi / 512)
+  local watched = state_for_object(founder) or state
+  player:set_look_vertical(-watched.eye_pitch * math.pi / 512)
   update_eye_strip(player)
 end
 
@@ -1432,7 +1666,8 @@ local function become_observer(player)
   local privs = minetest.get_player_privs(name)
   saved_self = {pos = player:get_pos(), privs = table.copy(privs), armor = player:get_armor_groups()}
   saved_self.hud = hide_own_hud(player)
-  state.observing = true
+  local watched = state_for_object(pov.target) or state
+  watched.observing = true
   -- Kept in the person's own data too, so a crash while observing cannot cost them privileges.
   player:get_meta():set_string("ai_bridge:privs", minetest.privs_to_string(saved_self.privs))
   -- An observer only watches: no building or breaking, no damage, and no visible body.
@@ -1445,14 +1680,15 @@ local function become_observer(player)
   if mobs and mobs.invis then mobs.invis[name] = true end
   -- Invisible rather than shrunk: VoxeLibre divides by the body's size (to fit flames to it).
   player:set_properties({is_visible = false})
-  enter_pov(player, state.founder)
+  enter_pov(player, watched.founder)
 end
 
 local function become_self(player)
   if not saved_self then return end
   local back = saved_self
   saved_self = nil
-  state.observing = false
+  local watched = state_for_object(pov.target) or state
+  watched.observing = false
   leave_pov(player)
   clear_hud(player)
   minetest.set_player_privs(player:get_player_name(), back.privs)
@@ -1480,13 +1716,21 @@ end, true)
 
 minetest.register_chatcommand("founder", {
   description = "Switch between playing as yourself and observing through the founder's eyes; "
-    .. "'/founder here' brings him to open ground near you.",
-  params = "[here]",
+    .. "'/founder here' brings the selected founder near you; '/founder founder-01' selects one.",
+  params = "[here|founder-name]",
   func = function(name, param)
     if not play then return false, "/founder is for play mode; observers use /founders." end
     if name ~= observer_name then return false, "Only " .. observer_name .. " may observe the founder." end
     local player = minetest.get_player_by_name(name)
     if not player then return false end
+    if param ~= "" and param ~= "here" then
+      if saved_self then return false, "Return to yourself first: /founder" end
+      local selected = states_by_name[param]
+      if not selected or not selected.founder or not selected.founder:get_pos() then
+        return false, "That founder is not connected."
+      end
+      pov.target = selected.founder
+    end
     if param == "here" then
       if saved_self then return false, "Return to yourself first: /founder" end
       surface_near(player:get_pos(), function(feet)
@@ -1496,11 +1740,12 @@ minetest.register_chatcommand("founder", {
         end
         -- His birthplace moves too, so he is born again here if he dies.
         founder_spawn = feet
-        if not (state.founder and state.founder:get_pos()) then
+        local watched = state_for_object(pov.target) or state
+        if not (watched.founder and watched.founder:get_pos()) then
           minetest.chat_send_player(name, "The founder is not connected.")
           return
         end
-        state.founder:set_pos(feet)
+        watched.founder:set_pos(feet)
         minetest.chat_send_player(name, "The founder is beside you, at " .. minetest.pos_to_string(feet) .. ".")
       end)
       return true, "Bringing the founder to open ground near you..."
@@ -1509,18 +1754,23 @@ minetest.register_chatcommand("founder", {
       become_self(player)
       return true, "You are yourself again."
     end
-    if not state.founder or not state.founder:get_pos() then
+    local watched = state_for_object(pov.target) or state
+    if not watched.founder or not watched.founder:get_pos() then
       return false, "The founder is not connected yet."
     end
+    pov.target = watched.founder
     become_observer(player)
     return true, "Observing through the founder's eyes. Type /founder to return to yourself."
   end,
 })
 
 minetest.register_on_leaveplayer(function(player)
-  if play and player:get_player_name() == founder_name then
-    state.founder, state.founder_body = nil, nil
-    zero_action("disconnected")
+  local body_state = states_by_name[player:get_player_name()]
+  if play and body_state then
+    body_state.founder, body_state.founder_body = nil, nil
+    body_state.request_token = body_state.request_token + 1
+    body_state.pending = false
+    zero_action(body_state, "disconnected")
     return
   end
   if play then
@@ -1571,10 +1821,12 @@ end
 
 minetest.register_on_joinplayer(function(player)
   if play then
-    if player:get_player_name() == founder_name then
-      state.founder, state.founder_body = player, player_body(player)
-      state.eye_pitch = 0
-      minetest.log("action", "AI_BRIDGE_FOUNDER_PLAYER joined")
+    local body_state = states_by_name[player:get_player_name()]
+    if body_state then
+      body_state.founder, body_state.founder_body = player, player_body(player)
+      body_state.eye_pitch = 0
+      minetest.log("action", "AI_BRIDGE_FOUNDER_PLAYER joined name=" .. body_state.founder_name
+        .. " agent_id=" .. body_state.agent_id)
       -- The first time ever, the founder is born on open ground near the person playing.
       local meta = player:get_meta()
       if meta:get_string("ai_bridge:born") == "" then
@@ -1585,7 +1837,14 @@ minetest.register_on_joinplayer(function(player)
           local near = person and person:get_pos() or spawn_api and spawn_api.get_world_spawn_pos()
             or {x = 0, y = 20, z = 0}
           surface_near(near, function(feet)
-            if feet and player:get_pos() then player:set_pos(feet) end
+            if feet and player:get_pos() then
+              -- Keep simultaneously born bodies from occupying the same collision volume.
+              player:set_pos(vector.add(feet, {
+                x = (body_state.body_slot % 2) * 1.5,
+                y = 0,
+                z = math.floor(body_state.body_slot / 2) * 1.5,
+              }))
+            end
           end)
         end)
       else
@@ -1624,14 +1883,15 @@ minetest.register_on_joinplayer(function(player)
     state.founder:set_acceleration({x = 0, y = -9.81, z = 0})
     state.founder:set_yaw(-math.pi / 2)
   end
-  update_observer_hud()
+  update_observer_hud(state_for_object(pov.target) or state)
 end)
 
 minetest.register_chatcommand("founder_reset", {
   description = "Observer-only: return the founder to the arena centre without changing its brain or action.",
   func = function(name)
     if name ~= observer_name then return false, "Only the configured observer may reset the founder." end
-    local founder = state.founder
+    local body_state = state_for_object(pov.target) or state
+    local founder = body_state.founder
     if not founder or not founder:get_pos() then return false, "The founder is not available yet." end
     -- This changes only scene placement. The held Rust action, next observation, sequence, and
     -- runtime state remain untouched: it is intentionally not collision avoidance or steering.
@@ -1639,9 +1899,9 @@ minetest.register_chatcommand("founder_reset", {
     founder:set_velocity({x = 0, y = 0, z = 0})
     founder:set_acceleration({x = 0, y = -9.81, z = 0})
     founder:set_yaw(-math.pi / 2)
-    state.previous_velocity, state.touch = {x = 0, z = 0}, 0
-    state.observer_resets = state.observer_resets + 1
-    update_observer_hud()
+    body_state.previous_velocity, body_state.touch = {x = 0, z = 0}, 0
+    body_state.observer_resets = body_state.observer_resets + 1
+    update_observer_hud(body_state)
     return true, "Founder returned to centre. This is an observer scene reset; Rust action and learning were not changed."
   end,
 })
@@ -1651,12 +1911,12 @@ minetest.register_globalstep(function()
     -- Only the person observing sees the founder's HUD.
     local watcher = saved_self and pov.target and minetest.get_player_by_name(observer_name)
     if watcher then
-      update_observer_hud()
+      update_observer_hud(state_for_object(pov.target) or state)
       update_pov(watcher)
     end
     return
   end
-  update_observer_hud()
+  update_observer_hud(state_for_object(pov.target) or state)
   local player = minetest.get_player_by_name(observer_name)
   if player then update_pov(player) end
 end)
