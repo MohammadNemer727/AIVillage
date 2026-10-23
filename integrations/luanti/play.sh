@@ -54,10 +54,11 @@ default_privs = interact, shout, home
 server_announce = false
 EOF
 # The founder's mod joins the world as a world mod; its brain runs in the Rust bridge.
+# Protocol drivers pin both to snapshots with PLAY_AI_BRIDGE_MOD and PLAY_BRIDGE_BIN.
 rm -f "$world/worldmods/ai_bridge"
 if [ "$founder" = 1 ]; then
   mkdir -p "$world/worldmods"
-  ln -s "$root/games/ai_village/mods/ai_bridge" "$world/worldmods/ai_bridge"
+  ln -s "${PLAY_AI_BRIDGE_MOD:-$root/games/ai_village/mods/ai_bridge}" "$world/worldmods/ai_bridge"
   cat >>"$world/minetest.conf" <<EOF
 secure.http_mods = ai_bridge
 ai_bridge_world = open
@@ -79,21 +80,25 @@ server_log="$world/server.log"
 bridge_pids=
 founder_client_pids=
 if [ "$founder" = 1 ]; then
-  cargo build --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml"
+  bridge_bin=${PLAY_BRIDGE_BIN:-}
+  if [ -z "$bridge_bin" ]; then
+    cargo build --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml"
+    bridge_bin="$repo/target/debug/sim-luanti"
+  fi
   bridge_log="$world/bridge.log"
   : >"$bridge_log"
   if [ "$founder_count" -eq 1 ]; then
     SIM_LUANTI_PORT="$bridge_port" SIM_LUANTI_AGENT_ID=1 \
       SIM_LUANTI_MODE="${SIM_LUANTI_MODE:-affordance}" \
       SIM_LUANTI_STATE="$world/founder-brain.json" \
-      "$repo/target/debug/sim-luanti" >"$bridge_log" 2>&1 &
+      "$bridge_bin" >"$bridge_log" 2>&1 &
   else
     SIM_LUANTI_PORT="$bridge_port" SIM_LUANTI_AGENT_ID=1 \
       SIM_LUANTI_MODE="${SIM_LUANTI_MODE:-affordance}" \
       SIM_LUANTI_FOUNDER_COUNT="$founder_count" \
       SIM_LUANTI_POPULATION_CAPACITY="$population_capacity" \
       SIM_LUANTI_POPULATION="$world/population" \
-      "$repo/target/debug/sim-luanti" >"$bridge_log" 2>&1 &
+      "$bridge_bin" >"$bridge_log" 2>&1 &
   fi
   bridge_pids=$!
   ready=0

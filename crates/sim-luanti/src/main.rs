@@ -502,7 +502,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     .map(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes))
                     .transpose()?;
                 let report = serde_json::json!({
-                    "experiment": "001-autonomous-generational-turnover",
+                    "experiment": std::env::var("SIM_LUANTI_EXPERIMENT_NAME")
+                        .unwrap_or_else(|_| "001-autonomous-generational-turnover".to_owned()),
+                    "founder_genome_rotation": std::env::var("SIM_LUANTI_FOUNDER_GENOME_ROTATION")
+                        .ok()
+                        .and_then(|value| value.parse::<u32>().ok())
+                        .unwrap_or(0),
                     "stop_reason": stop_reason,
                     "birth_target": experiment_target,
                     "births": births,

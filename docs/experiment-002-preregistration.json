@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "protocol": "experiment-002-heritable-behavioral-variation",
+  "status": "preregistered_before_outcome_generation",
+  "frozen_on": "2026-10-23",
+  "question": "Do inherited developmental genomes produce repeatable behavioural or reproductive differences, and do their lineage frequencies respond consistently across independent populations? Adaptation, fitness increase, and mutation advantage are not tested and will not be claimed.",
+  "known_conditions_declared_in_advance": [
+    "Only two of sixteen loci are expressed in the live brain: locus 6 sets connection stride (1 + l6 mod 15) and locus 13 sets plasticity scale (1 + l13 / 16).",
+    "Mutation changes each locus with probability 0.012 per birth by -2..+2, so an expressed change is expected in only about 2 percent of births. Heritable variation is therefore expected to come almost entirely from standing variation among founders; mutation's contribution is reported but cannot be established without expressed mutants.",
+    "In Experiment 001 every individual was killed by zombies at the first VoxeLibre nightfall (about 11.4 minutes), and newborns reusing a dead body's slot spawned among the zombies and died within 15 seconds. This authentic survival pressure is kept; it is expected to limit generation depth and statistical power."
+  ],
+  "genetics": {
+    "population_seed": 103,
+    "seed_rule": "first seed >= 101 not used by any earlier experiment whose four founders have pairwise distinct expressed (connection_stride, plasticity_scale)",
+    "founder_genotypes": {
+      "0": {"connection_stride": 5, "plasticity_scale": 1},
+      "1": {"connection_stride": 8, "plasticity_scale": 4},
+      "2": {"connection_stride": 6, "plasticity_scale": 3},
+      "3": {"connection_stride": 1, "plasticity_scale": 4}
+    },
+    "genome_rotation": "body slot s of a run with rotation r develops from founder ordinal (s + r) mod 4; identities 1..4 and slots 0..3 stay fixed, so genotype is crossed with slot and identity-keyed receptor noise"
+  },
+  "world": {
+    "engine": "Luanti",
+    "game": "VoxeLibre survival with mobs and day-night cycle",
+    "mapgen": "v7",
+    "map_seed": 424242,
+    "decision_seconds": 0.25,
+    "policy": "predictive baseline (SIM_LUANTI_MODE=baseline), as in Experiment 001",
+    "bodies": 4,
+    "capacity": 4
+  },
+  "phases": {
+    "evolution": {
+      "replicates": 8,
+      "rotations": [0, 1, 2, 3, 0, 1, 2, 3],
+      "mutation": "enabled",
+      "maturity_decisions": 100,
+      "minimum_reproductive_reserve": 160,
+      "reproductive_cost": 80,
+      "stop": "natural extinction, 100 births, or 1800 seconds",
+      "outcome_per_replicate": "lineage births per founder genotype: births whose founder ancestor carries that genotype, from exact lineage reconstruction"
+    },
+    "common_garden": {
+      "blocks": 4,
+      "rotations": [0, 1, 2, 3],
+      "acquired_state": "every individual is a newborn with empty acquired state",
+      "mutation": "disabled",
+      "maturity_decisions": 1000000000000,
+      "note": "no birth can occur, so each block measures the four genotypes side by side; the rotation places each genotype once in each slot (a Latin square)",
+      "stop": "natural extinction or 1800 seconds",
+      "phenotypes": {
+        "P1_lifespan_decisions": "transitions recorded for the individual",
+        "P2_reproductive_signal_rate": "fraction of transitions with reproduction signal_0 > 0",
+        "P3_locomotor_activity": "fraction of transitions whose action has nonzero thrust or strafe, or jump > 0"
+      }
+    }
+  },
+  "decision_rules": {
+    "H1_repeatable_behavioural_difference": "for at least one of P1, P2, P3: exact within-block permutation test (all 24^4 relabelings of genotype within each block), statistic = sum over genotypes of the squared mean of block-centred values, p <= 0.05 / 3",
+    "H2_consistent_lineage_response": "Kendall's W of genotype ranks by lineage births (average ranks for ties) over informative replicates (total births > 0); requires at least 6 informative replicates; permutation p <= 0.05 from 20000 within-replicate shuffles with RNG seed 20261023",
+    "conclusion": "selectable heritable behavioural variation is demonstrated only if H1 and H2 both pass; otherwise the result is reported as not demonstrated, with each part stated separately",
+    "secondary_report_only": [
+      "Spearman correlation between genotype mean P2 in the garden and total lineage births in evolution",
+      "expressed mutations, maximum generation, births, deaths, stop reasons",
+      "mob attacks on founder bodies from the server log, and the time of the first death in each run",
+      "blocked reproduction by reason; infrastructure blocks separated from biological outcomes"
+    ]
+  },
+  "validity": [
+    "every run writes a population report and its lineage reconstruction agrees with every live manifest genome",
+    "infrastructure-blocked reproduction is reported separately and never counted as a biological outcome"
+  ],
+  "exclusions_and_stopping": {
+    "runs": "all 12 runs exactly once in the fixed order evolution 0..7 then garden 0..3; no additional replicates",
+    "infrastructure_failure": "a run whose processes fail before writing a report is rerun once before any result is inspected; a second failure stops the experiment as incomplete",
+    "frozen_build": "the driver refuses a dirty tracked tree and runs every phase from a snapshot binary, bridge mod, and analysis script copied into the run directory",
+    "after_outcomes": "this file is not revised after any Experiment 002 outcome is generated"
+  },
+  "outputs": {
+    "runs": "integrations/luanti/experiment-002-runs/<date>/",
+    "machine_report": "experiment-002-result.json in the run directory",
+    "written_report": "docs/experiment-002-result.md"
+  }
+}
