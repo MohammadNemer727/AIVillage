@@ -1,0 +1,2930 @@
+{
+  "schema_version": 1,
+  "protocol": "experiment-003-episodic-integration",
+  "preregistration": "docs/experiment-003-preregistration.json",
+  "preregistration_sha256": "35bc628e1e99a0ccca0e8c75f1736b899b064283fd3b6a3cb1baad4fc8ff1132",
+  "amendment": "docs/experiment-003-amendment-1.json",
+  "amendment_sha256": "fad843147632e04ab9d79f4ecf4019bce0062b8e0bb447eeabbdedbda43c0485",
+  "git_revision_of_snapshot": "5df34b9ac4f06cef6ede0fb37a7533367bd4dab0",
+  "git_revision": "a73a711c1af066a48e5cdee3836f7017a2e635e3",
+  "seeds": [
+    653,
+    659,
+    661,
+    673,
+    677,
+    683,
+    691,
+    701
+  ],
+  "infrastructure_reruns": [],
+  "validity": {
+    "fixture_valid": true,
+    "all_traces_replay_exactly": true,
+    "frozen_policy_switch_invariant": true,
+    "valid": true
+  },
+  "live": {
+    "B_vs_A": {
+      "A_resource_losses": 152,
+      "A_resource_returns": 168,
+      "B_resource_losses": 4,
+      "B_resource_returns": 316,
+      "return_deltas": [
+        22,
+        16,
+        21,
+        19,
+        20,
+        12,
+        19,
+        19
+      ],
+      "positive_pairs": 8,
+      "negative_pairs": 0,
+      "mediation": {
+        "positive_outcome_writes": 40,
+        "retrievals_with_body_evidence": 747,
+        "action_changes": 478,
+        "changed_followed_by_nonnegative_outcome": 471,
+        "changed_followed_by_negative_outcome": 0
+      },
+      "aggregate_valid": true,
+      "paired_valid": true,
+      "mediation_valid": true,
+      "passes": true
+    },
+    "C_vs_A_diagnostic": {
+      "A_resource_losses": 152,
+      "A_resource_returns": 168,
+      "C_resource_losses": 147,
+      "C_resource_returns": 173,
+      "return_deltas": [
+        0,
+        -3,
+        6,
+        1,
+        1,
+        -3,
+        6,
+        -3
+      ],
+      "positive_pairs": 4,
+      "negative_pairs": 3,
+      "mediation": {
+        "positive_outcome_writes": 245,
+        "retrievals_with_body_evidence": 3359,
+        "action_changes": 0,
+        "changed_followed_by_nonnegative_outcome": 0,
+        "changed_followed_by_negative_outcome": 0
+      },
+      "aggregate_valid": false,
+      "paired_valid": false,
+      "mediation_valid": false,
+      "passes": false
+    },
+    "D_vs_A": {
+      "A_resource_losses": 152,
+      "A_resource_returns": 168,
+      "D_resource_losses": 0,
+      "D_resource_returns": 320,
+      "return_deltas": [
+        22,
+        16,
+        21,
+        19,
+        20,
+        16,
+        19,
+        19
+      ],
+      "positive_pairs": 8,
+      "negative_pairs": 0,
+      "mediation": {
+        "positive_outcome_writes": 51,
+        "retrievals_with_body_evidence": 912,
+        "action_changes": 586,
+        "changed_followed_by_nonnegative_outcome": 576,
+        "changed_followed_by_negative_outcome": 2
+      },
+      "aggregate_valid": true,
+      "paired_valid": true,
+      "mediation_valid": true,
+      "passes": true
+    }
+  },
+  "frozen_replay": {
+    "C_vs_A": {
+      "comparison": "C_vs_A",
+      "pooled": {
+        "vision": {
+          "C": {
+            "absolute_error_total": 188778,
+            "feature_samples": 8616,
+            "mae": 21.91016713091922
+          },
+          "A": {
+            "absolute_error_total": 188778,
+            "feature_samples": 8616,
+            "mae": 21.91016713091922
+          }
+        },
+        "body": {
+          "C": {
+            "absolute_error_total": 21170,
+            "feature_samples": 4308,
+            "mae": 4.914113277623027
+          },
+          "A": {
+            "absolute_error_total": 14899,
+            "feature_samples": 4308,
+            "mae": 3.4584493964716807
+          }
+        },
+        "held_item": {
+          "C": {
+            "absolute_error_total": 0,
+            "feature_samples": 4308,
+            "mae": 0.0
+          },
+          "A": {
+            "absolute_error_total": 0,
+            "feature_samples": 4308,
+            "mae": 0.0
+          }
+        }
+      },
+      "paired_transitions": {
+        "vision": {
+          "treatment_wins": 0,
+          "ties": 718,
+          "treatment_losses": 0
+        },
+        "body": {
+          "treatment_wins": 48,
+          "ties": 591,
+          "treatment_losses": 79
+        },
+        "held_item": {
+          "treatment_wins": 0,
+          "ties": 718,
+          "treatment_losses": 0
+        }
+      },
+      "no_regression": false,
+      "improved_modalities": [],
+      "passes": false
+    },
+    "D_vs_B": {
+      "comparison": "D_vs_B",
+      "pooled": {
+        "vision": {
+          "D": {
+            "absolute_error_total": 188778,
+            "feature_samples": 8616,
+            "mae": 21.91016713091922
+          },
+          "B": {
+            "absolute_error_total": 188778,
+            "feature_samples": 8616,
+            "mae": 21.91016713091922
+          }
+        },
+        "body": {
+          "D": {
+            "absolute_error_total": 21170,
+            "feature_samples": 4308,
+            "mae": 4.914113277623027
+          },
+          "B": {
+            "absolute_error_total": 14899,
+            "feature_samples": 4308,
+            "mae": 3.4584493964716807
+          }
+        },
+        "held_item": {
+          "D": {
+            "absolute_error_total": 0,
+            "feature_samples": 4308,
+            "mae": 0.0
+          },
+          "B": {
+            "absolute_error_total": 0,
+            "feature_samples": 4308,
+            "mae": 0.0
+          }
+        }
+      },
+      "paired_transitions": {
+        "vision": {
+          "treatment_wins": 0,
+          "ties": 718,
+          "treatment_losses": 0
+        },
+        "body": {
+          "treatment_wins": 48,
+          "ties": 591,
+          "treatment_losses": 79
+        },
+        "held_item": {
+          "treatment_wins": 0,
+          "ties": 718,
+          "treatment_losses": 0
+        }
+      },
+      "no_regression": false,
+      "improved_modalities": [],
+      "passes": false
+    },
+    "B_equals_A_exactly": true
+  },
+  "decisions": {
+    "policy_only_episodic_retrieval": "accepted",
+    "prediction_integrated_episodic_retrieval": "rejected"
+  },
+  "pairs": [
+    {
+      "seed": 653,
+      "A": {
+        "action_distribution": {
+          "-256": 27,
+          "0": 372,
+          "256": 37
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 25,
+        "observed_fullness_increases": 22,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 22,
+        "resource_returns": 18,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 653,
+        "warmup_backward": 9,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 15,
+        "replayed_exactly": true,
+        "trace_sha256": "3180a03929fce7ef8496f013acc03f7e7c0e191fc698fa9ac79c2cc8dedc319e",
+        "mediation": {
+          "transitions": 481,
+          "episode_insertions": 266,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 29,
+          "negative_outcome_writes": 28,
+          "retrievals_with_body_evidence": 440,
+          "retrievals_with_positive_delta": 387,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 230,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2880,
+            "absolute_error_total": 9576,
+            "mae_milli": 3325
+          },
+          "held_item": {
+            "feature_samples": 2880,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5760,
+            "absolute_error_total": 116857,
+            "mae_milli": 20287
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 11
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 653,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "58d054e37e11ee929f4e2cae84be420e397bcc02cf517ec4b27c67ce61c4832e",
+        "mediation": {
+          "transitions": 118,
+          "episode_insertions": 38,
+          "episode_reinforcements": 1,
+          "positive_outcome_writes": 3,
+          "negative_outcome_writes": 1,
+          "retrievals_with_body_evidence": 79,
+          "retrievals_with_positive_delta": 64,
+          "action_changes": 64,
+          "changed_followed_by_nonnegative_outcome": 63,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 702,
+            "absolute_error_total": 683,
+            "mae_milli": 972
+          },
+          "held_item": {
+            "feature_samples": 702,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1404,
+            "absolute_error_total": 13308,
+            "mae_milli": 9478
+          }
+        }
+      },
+      "C": {
+        "action_distribution": {
+          "-256": 30,
+          "0": 348,
+          "256": 34
+        },
+        "arm": "prediction",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 27,
+        "observed_fullness_increases": 29,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 22,
+        "resource_returns": 18,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 653,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "6dbd2dcbed371740cc06a87fac404f975b78564a5fbe89e2821f64de199ae174",
+        "mediation": {
+          "transitions": 457,
+          "episode_insertions": 256,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 32,
+          "negative_outcome_writes": 26,
+          "retrievals_with_body_evidence": 416,
+          "retrievals_with_positive_delta": 308,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 230,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2736,
+            "absolute_error_total": 13179,
+            "mae_milli": 4816
+          },
+          "held_item": {
+            "feature_samples": 2736,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5472,
+            "absolute_error_total": 101569,
+            "mae_milli": 18561
+          }
+        }
+      },
+      "D": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 16
+        },
+        "arm": "both",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 653,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "24bae07f6a78a7af9e9da5c54a7857dc3edd2f2c0ef07da37f5172f1556e0cd7",
+        "mediation": {
+          "transitions": 124,
+          "episode_insertions": 43,
+          "episode_reinforcements": 5,
+          "positive_outcome_writes": 3,
+          "negative_outcome_writes": 1,
+          "retrievals_with_body_evidence": 84,
+          "retrievals_with_positive_delta": 64,
+          "action_changes": 64,
+          "changed_followed_by_nonnegative_outcome": 63,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 738,
+            "absolute_error_total": 1496,
+            "mae_milli": 2027
+          },
+          "held_item": {
+            "feature_samples": 738,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1476,
+            "absolute_error_total": 23280,
+            "mae_milli": 15772
+          }
+        }
+      }
+    },
+    {
+      "seed": 659,
+      "A": {
+        "action_distribution": {
+          "-256": 36,
+          "0": 355,
+          "256": 28
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 27,
+        "observed_fullness_increases": 28,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 16,
+        "resource_returns": 24,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 659,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "afe6e37d35fe2f119cf11a940df9e81ba835c8ee52c9fa324229204882bf91c5",
+        "mediation": {
+          "transitions": 459,
+          "episode_insertions": 255,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 34,
+          "negative_outcome_writes": 28,
+          "retrievals_with_body_evidence": 422,
+          "retrievals_with_positive_delta": 353,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 230,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2748,
+            "absolute_error_total": 9167,
+            "mae_milli": 3335
+          },
+          "held_item": {
+            "feature_samples": 2748,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5496,
+            "absolute_error_total": 112668,
+            "mae_milli": 20500
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 14
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 659,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "fa240f5cd2b527d13f12936c8ce4c9ec4ed50d15bb065e881fe364593c1b5a56",
+        "mediation": {
+          "transitions": 123,
+          "episode_insertions": 38,
+          "episode_reinforcements": 2,
+          "positive_outcome_writes": 3,
+          "negative_outcome_writes": 1,
+          "retrievals_with_body_evidence": 81,
+          "retrievals_with_positive_delta": 63,
+          "action_changes": 63,
+          "changed_followed_by_nonnegative_outcome": 62,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 732,
+            "absolute_error_total": 937,
+            "mae_milli": 1280
+          },
+          "held_item": {
+            "feature_samples": 732,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1464,
+            "absolute_error_total": 19372,
+            "mae_milli": 13232
+          }
+        }
+      },
+      "C": {
+        "action_distribution": {
+          "-256": 33,
+          "0": 393,
+          "256": 31
+        },
+        "arm": "prediction",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 30,
+        "observed_fullness_increases": 32,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 19,
+        "resource_returns": 21,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 659,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "4a1ff35f3b00f16e410eda89b4a064a9cb6767e92cce1f9268314847db39ba20",
+        "mediation": {
+          "transitions": 502,
+          "episode_insertions": 283,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 32,
+          "negative_outcome_writes": 28,
+          "retrievals_with_body_evidence": 461,
+          "retrievals_with_positive_delta": 400,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 3006,
+            "absolute_error_total": 14823,
+            "mae_milli": 4931
+          },
+          "held_item": {
+            "feature_samples": 3006,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 6012,
+            "absolute_error_total": 142774,
+            "mae_milli": 23748
+          }
+        }
+      },
+      "D": {
+        "action_distribution": {
+          "-256": 61,
+          "0": 30,
+          "256": 3
+        },
+        "arm": "both",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 5,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 659,
+        "warmup_backward": 21,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 3,
+        "replayed_exactly": true,
+        "trace_sha256": "7990c1673a6c5c901b0343fd4ee149487c54bbaec6630f77c8aac26cb3661064",
+        "mediation": {
+          "transitions": 136,
+          "episode_insertions": 60,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 7,
+          "negative_outcome_writes": 5,
+          "retrievals_with_body_evidence": 98,
+          "retrievals_with_positive_delta": 58,
+          "action_changes": 58,
+          "changed_followed_by_nonnegative_outcome": 57,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 242,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 810,
+            "absolute_error_total": 3001,
+            "mae_milli": 3704
+          },
+          "held_item": {
+            "feature_samples": 810,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1620,
+            "absolute_error_total": 23183,
+            "mae_milli": 14310
+          }
+        }
+      }
+    },
+    {
+      "seed": 661,
+      "A": {
+        "action_distribution": {
+          "-256": 31,
+          "0": 339,
+          "256": 33
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 29,
+        "observed_fullness_increases": 28,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 21,
+        "resource_returns": 19,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 661,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "ad00d4212c5e1412e44adcc76e9358780abcbd31843c4b573a9fe1ed325ce43e",
+        "mediation": {
+          "transitions": 447,
+          "episode_insertions": 266,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 32,
+          "negative_outcome_writes": 31,
+          "retrievals_with_body_evidence": 406,
+          "retrievals_with_positive_delta": 363,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 191,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2676,
+            "absolute_error_total": 10460,
+            "mae_milli": 3908
+          },
+          "held_item": {
+            "feature_samples": 2676,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5352,
+            "absolute_error_total": 128834,
+            "mae_milli": 24072
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 61,
+          "0": 24,
+          "256": 3
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 5,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 661,
+        "warmup_backward": 21,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 3,
+        "replayed_exactly": true,
+        "trace_sha256": "67dfeb5b5ef04724a57b3fcf63ab147bb007ea14a8af8ea2bf4b461e38669be5",
+        "mediation": {
+          "transitions": 130,
+          "episode_insertions": 43,
+          "episode_reinforcements": 2,
+          "positive_outcome_writes": 5,
+          "negative_outcome_writes": 4,
+          "retrievals_with_body_evidence": 92,
+          "retrievals_with_positive_delta": 61,
+          "action_changes": 61,
+          "changed_followed_by_nonnegative_outcome": 60,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 774,
+            "absolute_error_total": 1217,
+            "mae_milli": 1572
+          },
+          "held_item": {
+            "feature_samples": 774,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1548,
+            "absolute_error_total": 24907,
+            "mae_milli": 16089
+          }
+        }
+      },
+      "C": {
+        "action_distribution": {
+          "-256": 40,
+          "0": 316,
+          "256": 24
+        },
+        "arm": "prediction",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 24,
+        "observed_fullness_increases": 26,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 15,
+        "resource_returns": 25,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 661,
+        "warmup_backward": 15,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 9,
+        "replayed_exactly": true,
+        "trace_sha256": "66e79c60389d8a0c811ba4541e09c4a64551fb19f26f77ff7ae44361f6da28c9",
+        "mediation": {
+          "transitions": 427,
+          "episode_insertions": 243,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 28,
+          "negative_outcome_writes": 25,
+          "retrievals_with_body_evidence": 384,
+          "retrievals_with_positive_delta": 315,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 242,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2556,
+            "absolute_error_total": 13243,
+            "mae_milli": 5181
+          },
+          "held_item": {
+            "feature_samples": 2556,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5112,
+            "absolute_error_total": 96066,
+            "mae_milli": 18792
+          }
+        }
+      },
+      "D": {
+        "action_distribution": {
+          "-256": 58,
+          "0": 42,
+          "256": 6
+        },
+        "arm": "both",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 5,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 661,
+        "warmup_backward": 18,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 6,
+        "replayed_exactly": true,
+        "trace_sha256": "a0c9b096b7eaaafb11220e5a62a0cc173e083a6b6878320c84d4a2b953b42a17",
+        "mediation": {
+          "transitions": 151,
+          "episode_insertions": 54,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 7,
+          "negative_outcome_writes": 4,
+          "retrievals_with_body_evidence": 110,
+          "retrievals_with_positive_delta": 58,
+          "action_changes": 58,
+          "changed_followed_by_nonnegative_outcome": 57,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 242,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 900,
+            "absolute_error_total": 2101,
+            "mae_milli": 2334
+          },
+          "held_item": {
+            "feature_samples": 900,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1800,
+            "absolute_error_total": 21629,
+            "mae_milli": 12016
+          }
+        }
+      }
+    },
+    {
+      "seed": 673,
+      "A": {
+        "action_distribution": {
+          "-256": 30,
+          "0": 366,
+          "256": 34
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 29,
+        "observed_fullness_increases": 28,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 19,
+        "resource_returns": 21,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 673,
+        "warmup_backward": 9,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 15,
+        "replayed_exactly": true,
+        "trace_sha256": "071c89fb89e3e2ba2fc5fed4d41c06f3eb6d8436129e0fb78a0d6f6955f99d17",
+        "mediation": {
+          "transitions": 475,
+          "episode_insertions": 278,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 30,
+          "negative_outcome_writes": 28,
+          "retrievals_with_body_evidence": 434,
+          "retrievals_with_positive_delta": 375,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 242,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2844,
+            "absolute_error_total": 10841,
+            "mae_milli": 3811
+          },
+          "held_item": {
+            "feature_samples": 2844,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5688,
+            "absolute_error_total": 117642,
+            "mae_milli": 20682
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 8
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 673,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "b0bc280195c91051bf6f4c501e5b8444d8392e6d2b252ecb1be685fb7d6872a1",
+        "mediation": {
+          "transitions": 115,
+          "episode_insertions": 33,
+          "episode_reinforcements": 5,
+          "positive_outcome_writes": 3,
+          "negative_outcome_writes": 1,
+          "retrievals_with_body_evidence": 76,
+          "retrievals_with_positive_delta": 61,
+          "action_changes": 61,
+          "changed_followed_by_nonnegative_outcome": 60,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 684,
+            "absolute_error_total": 937,
+            "mae_milli": 1369
+          },
+          "held_item": {
+            "feature_samples": 684,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1368,
+            "absolute_error_total": 19732,
+            "mae_milli": 14423
+          }
+        }
+      },
+      "C": {
+        "action_distribution": {
+          "-256": 31,
+          "0": 342,
+          "256": 33
+        },
+        "arm": "prediction",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 25,
+        "observed_fullness_increases": 27,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 18,
+        "resource_returns": 22,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 673,
+        "warmup_backward": 9,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 15,
+        "replayed_exactly": true,
+        "trace_sha256": "5e7d78a05754c6c02237e54730717a267727779505674e39a458d6af5eed8f11",
+        "mediation": {
+          "transitions": 451,
+          "episode_insertions": 263,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 33,
+          "negative_outcome_writes": 24,
+          "retrievals_with_body_evidence": 410,
+          "retrievals_with_positive_delta": 340,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 230,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2700,
+            "absolute_error_total": 11858,
+            "mae_milli": 4391
+          },
+          "held_item": {
+            "feature_samples": 2700,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5400,
+            "absolute_error_total": 102591,
+            "mae_milli": 18998
+          }
+        }
+      },
+      "D": {
+        "action_distribution": {
+          "-256": 55,
+          "0": 191,
+          "256": 9
+        },
+        "arm": "both",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 5,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 673,
+        "warmup_backward": 15,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 9,
+        "replayed_exactly": true,
+        "trace_sha256": "1dc60576ae934404f4bc5d68ee6fd8cea954db055a16f8b1472b6d7a20118217",
+        "mediation": {
+          "transitions": 298,
+          "episode_insertions": 97,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 15,
+          "negative_outcome_writes": 8,
+          "retrievals_with_body_evidence": 259,
+          "retrievals_with_positive_delta": 160,
+          "action_changes": 160,
+          "changed_followed_by_nonnegative_outcome": 157,
+          "changed_followed_by_negative_outcome": 2,
+          "minimum_felt_health": 191,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1782,
+            "absolute_error_total": 3107,
+            "mae_milli": 1743
+          },
+          "held_item": {
+            "feature_samples": 1782,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 3564,
+            "absolute_error_total": 45497,
+            "mae_milli": 12765
+          }
+        }
+      }
+    },
+    {
+      "seed": 677,
+      "A": {
+        "action_distribution": {
+          "-256": 29,
+          "0": 342,
+          "256": 35
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 29,
+        "observed_fullness_increases": 28,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 20,
+        "resource_returns": 20,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 677,
+        "warmup_backward": 9,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 15,
+        "replayed_exactly": true,
+        "trace_sha256": "a0a86d556416909807a8b3e799a1016b30059728a4db511eb526a4695dc62738",
+        "mediation": {
+          "transitions": 449,
+          "episode_insertions": 261,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 33,
+          "negative_outcome_writes": 30,
+          "retrievals_with_body_evidence": 410,
+          "retrievals_with_positive_delta": 353,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 191,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2688,
+            "absolute_error_total": 9919,
+            "mae_milli": 3690
+          },
+          "held_item": {
+            "feature_samples": 2688,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5376,
+            "absolute_error_total": 116448,
+            "mae_milli": 21660
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 60,
+          "0": 24,
+          "256": 4
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 5,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 677,
+        "warmup_backward": 20,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 4,
+        "replayed_exactly": true,
+        "trace_sha256": "8c8a869ffeb5b48b50547010cdae663b525124cc46737c2153d4e7033975f4f1",
+        "mediation": {
+          "transitions": 131,
+          "episode_insertions": 61,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 6,
+          "negative_outcome_writes": 2,
+          "retrievals_with_body_evidence": 91,
+          "retrievals_with_positive_delta": 57,
+          "action_changes": 57,
+          "changed_followed_by_nonnegative_outcome": 57,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 242,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 780,
+            "absolute_error_total": 991,
+            "mae_milli": 1270
+          },
+          "held_item": {
+            "feature_samples": 780,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1560,
+            "absolute_error_total": 27225,
+            "mae_milli": 17451
+          }
+        }
+      },
+      "C": {
+        "action_distribution": {
+          "-256": 33,
+          "0": 452,
+          "256": 31
+        },
+        "arm": "prediction",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 28,
+        "observed_fullness_increases": 29,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 19,
+        "resource_returns": 21,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 677,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "5cfb38b369ebc4cf3e07f45780c853b2e0a29b0a0d5888dc9f60914edc95fb19",
+        "mediation": {
+          "transitions": 556,
+          "episode_insertions": 336,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 36,
+          "negative_outcome_writes": 31,
+          "retrievals_with_body_evidence": 520,
+          "retrievals_with_positive_delta": 459,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 204,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 3330,
+            "absolute_error_total": 16116,
+            "mae_milli": 4839
+          },
+          "held_item": {
+            "feature_samples": 3330,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 6660,
+            "absolute_error_total": 146064,
+            "mae_milli": 21931
+          }
+        }
+      },
+      "D": {
+        "action_distribution": {
+          "-256": 60,
+          "0": 24,
+          "256": 4
+        },
+        "arm": "both",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 5,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 677,
+        "warmup_backward": 20,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 4,
+        "replayed_exactly": true,
+        "trace_sha256": "245aafdcca4cd859b570a6654c113454bde3c438130a713575660a29ab53e7fa",
+        "mediation": {
+          "transitions": 132,
+          "episode_insertions": 58,
+          "episode_reinforcements": 4,
+          "positive_outcome_writes": 6,
+          "negative_outcome_writes": 4,
+          "retrievals_with_body_evidence": 92,
+          "retrievals_with_positive_delta": 60,
+          "action_changes": 60,
+          "changed_followed_by_nonnegative_outcome": 59,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 242,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 786,
+            "absolute_error_total": 2736,
+            "mae_milli": 3480
+          },
+          "held_item": {
+            "feature_samples": 786,
+            "absolute_error_total": 1318,
+            "mae_milli": 1676
+          },
+          "vision": {
+            "feature_samples": 1572,
+            "absolute_error_total": 25668,
+            "mae_milli": 16328
+          }
+        }
+      }
+    },
+    {
+      "seed": 683,
+      "A": {
+        "action_distribution": {
+          "-256": 39,
+          "0": 279,
+          "256": 25
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 24,
+        "observed_fullness_increases": 26,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 16,
+        "resource_returns": 24,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 683,
+        "warmup_backward": 15,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 9,
+        "replayed_exactly": true,
+        "trace_sha256": "b1cc38b8a9298ca2117291968d8023f771e597cd58ecdec21b229e87f6c46125",
+        "mediation": {
+          "transitions": 387,
+          "episode_insertions": 232,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 26,
+          "negative_outcome_writes": 23,
+          "retrievals_with_body_evidence": 346,
+          "retrievals_with_positive_delta": 238,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 242,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2316,
+            "absolute_error_total": 7870,
+            "mae_milli": 3398
+          },
+          "held_item": {
+            "feature_samples": 2316,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 4632,
+            "absolute_error_total": 89657,
+            "mae_milli": 19356
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 52,
+          "0": 97,
+          "256": 12
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 12,
+        "observed_fullness_increases": 15,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 4,
+        "resource_returns": 36,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 683,
+        "warmup_backward": 16,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 8,
+        "replayed_exactly": true,
+        "trace_sha256": "6e5d23b34098865724695a67f3e5239d44d4f610d4039ded2b2c55a5d0de6d79",
+        "mediation": {
+          "transitions": 207,
+          "episode_insertions": 112,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 14,
+          "negative_outcome_writes": 11,
+          "retrievals_with_body_evidence": 165,
+          "retrievals_with_positive_delta": 44,
+          "action_changes": 44,
+          "changed_followed_by_nonnegative_outcome": 43,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1236,
+            "absolute_error_total": 3860,
+            "mae_milli": 3122
+          },
+          "held_item": {
+            "feature_samples": 1236,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2472,
+            "absolute_error_total": 59102,
+            "mae_milli": 23908
+          }
+        }
+      },
+      "C": {
+        "action_distribution": {
+          "-256": 32,
+          "0": 315,
+          "256": 32
+        },
+        "arm": "prediction",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 30,
+        "observed_fullness_increases": 27,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 19,
+        "resource_returns": 21,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 683,
+        "warmup_backward": 11,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 13,
+        "replayed_exactly": true,
+        "trace_sha256": "3a664b90b6957b27a3cb0ab2bb118dd8034cbab1bd5d282ddead2687064742c2",
+        "mediation": {
+          "transitions": 425,
+          "episode_insertions": 261,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 30,
+          "negative_outcome_writes": 30,
+          "retrievals_with_body_evidence": 414,
+          "retrievals_with_positive_delta": 361,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 230,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2544,
+            "absolute_error_total": 15631,
+            "mae_milli": 6144
+          },
+          "held_item": {
+            "feature_samples": 2544,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5088,
+            "absolute_error_total": 104858,
+            "mae_milli": 20608
+          }
+        }
+      },
+      "D": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 4
+        },
+        "arm": "both",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 683,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "da3d2ebe33b60f3f333d190419b31f6be3a1de3d18ec07d90e5e11959c5a5aa5",
+        "mediation": {
+          "transitions": 109,
+          "episode_insertions": 40,
+          "episode_reinforcements": 3,
+          "positive_outcome_writes": 3,
+          "negative_outcome_writes": 1,
+          "retrievals_with_body_evidence": 72,
+          "retrievals_with_positive_delta": 64,
+          "action_changes": 64,
+          "changed_followed_by_nonnegative_outcome": 63,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 648,
+            "absolute_error_total": 855,
+            "mae_milli": 1319
+          },
+          "held_item": {
+            "feature_samples": 648,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1296,
+            "absolute_error_total": 23843,
+            "mae_milli": 18397
+          }
+        }
+      }
+    },
+    {
+      "seed": 691,
+      "A": {
+        "action_distribution": {
+          "-256": 39,
+          "0": 308,
+          "256": 25
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 24,
+        "observed_fullness_increases": 22,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 19,
+        "resource_returns": 21,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 691,
+        "warmup_backward": 18,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 6,
+        "replayed_exactly": true,
+        "trace_sha256": "f7f992e78fd217e4d8af1d3149e500cad05357502ed850ddc85b67983c356249",
+        "mediation": {
+          "transitions": 411,
+          "episode_insertions": 244,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 26,
+          "negative_outcome_writes": 26,
+          "retrievals_with_body_evidence": 375,
+          "retrievals_with_positive_delta": 308,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 242,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2460,
+            "absolute_error_total": 8575,
+            "mae_milli": 3485
+          },
+          "held_item": {
+            "feature_samples": 2460,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 4920,
+            "absolute_error_total": 94397,
+            "mae_milli": 19186
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 7
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 691,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "2d0d524a758ae648b73ad8981db7760c65cd2394ed896b8a9bcf9e63c3096adf",
+        "mediation": {
+          "transitions": 118,
+          "episode_insertions": 39,
+          "episode_reinforcements": 1,
+          "positive_outcome_writes": 3,
+          "negative_outcome_writes": 1,
+          "retrievals_with_body_evidence": 75,
+          "retrievals_with_positive_delta": 64,
+          "action_changes": 64,
+          "changed_followed_by_nonnegative_outcome": 63,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 702,
+            "absolute_error_total": 939,
+            "mae_milli": 1337
+          },
+          "held_item": {
+            "feature_samples": 702,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1404,
+            "absolute_error_total": 17231,
+            "mae_milli": 12272
+          }
+        }
+      },
+      "C": {
+        "action_distribution": {
+          "-256": 42,
+          "0": 300,
+          "256": 22
+        },
+        "arm": "prediction",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 21,
+        "observed_fullness_increases": 23,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 13,
+        "resource_returns": 27,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 691,
+        "warmup_backward": 15,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 9,
+        "replayed_exactly": true,
+        "trace_sha256": "9a3de960e5b0aa11657df34092913f62ae019c2eaf7750996ce0e373ad7c8ee4",
+        "mediation": {
+          "transitions": 406,
+          "episode_insertions": 239,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 23,
+          "negative_outcome_writes": 21,
+          "retrievals_with_body_evidence": 368,
+          "retrievals_with_positive_delta": 301,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2430,
+            "absolute_error_total": 11092,
+            "mae_milli": 4564
+          },
+          "held_item": {
+            "feature_samples": 2430,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 4860,
+            "absolute_error_total": 94432,
+            "mae_milli": 19430
+          }
+        }
+      },
+      "D": {
+        "action_distribution": {
+          "-256": 61,
+          "0": 22,
+          "256": 3
+        },
+        "arm": "both",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 5,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 691,
+        "warmup_backward": 21,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 3,
+        "replayed_exactly": true,
+        "trace_sha256": "3ec17f206d516282f0a9719618a7d34a6b9d39ef2a2460964fd7aa06d497f2ef",
+        "mediation": {
+          "transitions": 130,
+          "episode_insertions": 56,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 5,
+          "negative_outcome_writes": 4,
+          "retrievals_with_body_evidence": 90,
+          "retrievals_with_positive_delta": 61,
+          "action_changes": 61,
+          "changed_followed_by_nonnegative_outcome": 60,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 774,
+            "absolute_error_total": 1175,
+            "mae_milli": 1518
+          },
+          "held_item": {
+            "feature_samples": 774,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1548,
+            "absolute_error_total": 23386,
+            "mae_milli": 15107
+          }
+        }
+      }
+    },
+    {
+      "seed": 701,
+      "A": {
+        "action_distribution": {
+          "-256": 33,
+          "0": 354,
+          "256": 31
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 26,
+        "observed_fullness_increases": 28,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 19,
+        "resource_returns": 21,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 701,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "c7b46cc42a3d1fadbb72257933d9497b8bdfc2117d2f90b26b38f21f67fc4e5c",
+        "mediation": {
+          "transitions": 462,
+          "episode_insertions": 261,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 32,
+          "negative_outcome_writes": 26,
+          "retrievals_with_body_evidence": 422,
+          "retrievals_with_positive_delta": 369,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 230,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2766,
+            "absolute_error_total": 11043,
+            "mae_milli": 3992
+          },
+          "held_item": {
+            "feature_samples": 2766,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5532,
+            "absolute_error_total": 112138,
+            "mae_milli": 20270
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 20
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 701,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "986f3de16cdf565d8f772c823288e6670b2c469beb6c0135ed73665acabadbe6",
+        "mediation": {
+          "transitions": 130,
+          "episode_insertions": 36,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 3,
+          "negative_outcome_writes": 1,
+          "retrievals_with_body_evidence": 88,
+          "retrievals_with_positive_delta": 64,
+          "action_changes": 64,
+          "changed_followed_by_nonnegative_outcome": 63,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 774,
+            "absolute_error_total": 1191,
+            "mae_milli": 1538
+          },
+          "held_item": {
+            "feature_samples": 774,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1548,
+            "absolute_error_total": 14657,
+            "mae_milli": 9468
+          }
+        }
+      },
+      "C": {
+        "action_distribution": {
+          "-256": 30,
+          "0": 318,
+          "256": 34
+        },
+        "arm": "prediction",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 24,
+        "observed_fullness_increases": 25,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 22,
+        "resource_returns": 18,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 701,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "92d9df6fbfb10ddfc32fa6c6dab761764708c9c5bc2e31960b9354cf5a25fcd9",
+        "mediation": {
+          "transitions": 427,
+          "episode_insertions": 254,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 31,
+          "negative_outcome_writes": 25,
+          "retrievals_with_body_evidence": 386,
+          "retrievals_with_positive_delta": 316,
+          "action_changes": 0,
+          "changed_followed_by_nonnegative_outcome": 0,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 217,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2556,
+            "absolute_error_total": 12386,
+            "mae_milli": 4845
+          },
+          "held_item": {
+            "feature_samples": 2556,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5112,
+            "absolute_error_total": 107481,
+            "mae_milli": 21025
+          }
+        }
+      },
+      "D": {
+        "action_distribution": {
+          "-256": 61,
+          "0": 39,
+          "256": 3
+        },
+        "arm": "both",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 5,
+        "protocol": "experiment-003-episodic-integration",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 701,
+        "warmup_backward": 21,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 3,
+        "replayed_exactly": true,
+        "trace_sha256": "5ee66d8008218a1aadc2ff803c326a0a864409bc62a315af54f4e79e5e489bd9",
+        "mediation": {
+          "transitions": 148,
+          "episode_insertions": 67,
+          "episode_reinforcements": 0,
+          "positive_outcome_writes": 5,
+          "negative_outcome_writes": 4,
+          "retrievals_with_body_evidence": 107,
+          "retrievals_with_positive_delta": 61,
+          "action_changes": 61,
+          "changed_followed_by_nonnegative_outcome": 60,
+          "changed_followed_by_negative_outcome": 0,
+          "minimum_felt_health": 255,
+          "deaths": 0
+        },
+        "online_prediction": {
+          "body": {
+            "feature_samples": 882,
+            "absolute_error_total": 2559,
+            "mae_milli": 2901
+          },
+          "held_item": {
+            "feature_samples": 882,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1764,
+            "absolute_error_total": 29270,
+            "mae_milli": 16592
+          }
+        }
+      }
+    }
+  ],
+  "frozen_by_seed": [
+    {
+      "seed": 653,
+      "agent_id": 1,
+      "train_transitions": 384,
+      "held_out_transitions": 97,
+      "conditions": {
+        "A": {
+          "body": {
+            "feature_samples": 582,
+            "absolute_error_total": 1534,
+            "mae_milli": 2635
+          },
+          "held_item": {
+            "feature_samples": 582,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1164,
+            "absolute_error_total": 20784,
+            "mae_milli": 17855
+          }
+        },
+        "B": {
+          "body": {
+            "feature_samples": 582,
+            "absolute_error_total": 1534,
+            "mae_milli": 2635
+          },
+          "held_item": {
+            "feature_samples": 582,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1164,
+            "absolute_error_total": 20784,
+            "mae_milli": 17855
+          }
+        },
+        "C": {
+          "body": {
+            "feature_samples": 582,
+            "absolute_error_total": 2869,
+            "mae_milli": 4929
+          },
+          "held_item": {
+            "feature_samples": 582,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1164,
+            "absolute_error_total": 20784,
+            "mae_milli": 17855
+          }
+        },
+        "D": {
+          "body": {
+            "feature_samples": 582,
+            "absolute_error_total": 2869,
+            "mae_milli": 4929
+          },
+          "held_item": {
+            "feature_samples": 582,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1164,
+            "absolute_error_total": 20784,
+            "mae_milli": 17855
+          }
+        }
+      },
+      "comparisons": [
+        {
+          "treatment": "C",
+          "control": "A",
+          "modalities": {
+            "body": {
+              "treatment_wins": 8,
+              "ties": 76,
+              "treatment_losses": 13
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 97,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 97,
+              "treatment_losses": 0
+            }
+          }
+        },
+        {
+          "treatment": "D",
+          "control": "B",
+          "modalities": {
+            "body": {
+              "treatment_wins": 8,
+              "ties": 76,
+              "treatment_losses": 13
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 97,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 97,
+              "treatment_losses": 0
+            }
+          }
+        }
+      ],
+      "policy_switch_invariant": true
+    },
+    {
+      "seed": 659,
+      "agent_id": 1,
+      "train_transitions": 367,
+      "held_out_transitions": 92,
+      "conditions": {
+        "A": {
+          "body": {
+            "feature_samples": 552,
+            "absolute_error_total": 1270,
+            "mae_milli": 2300
+          },
+          "held_item": {
+            "feature_samples": 552,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1104,
+            "absolute_error_total": 22429,
+            "mae_milli": 20316
+          }
+        },
+        "B": {
+          "body": {
+            "feature_samples": 552,
+            "absolute_error_total": 1270,
+            "mae_milli": 2300
+          },
+          "held_item": {
+            "feature_samples": 552,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1104,
+            "absolute_error_total": 22429,
+            "mae_milli": 20316
+          }
+        },
+        "C": {
+          "body": {
+            "feature_samples": 552,
+            "absolute_error_total": 2684,
+            "mae_milli": 4862
+          },
+          "held_item": {
+            "feature_samples": 552,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1104,
+            "absolute_error_total": 22429,
+            "mae_milli": 20316
+          }
+        },
+        "D": {
+          "body": {
+            "feature_samples": 552,
+            "absolute_error_total": 2684,
+            "mae_milli": 4862
+          },
+          "held_item": {
+            "feature_samples": 552,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1104,
+            "absolute_error_total": 22429,
+            "mae_milli": 20316
+          }
+        }
+      },
+      "comparisons": [
+        {
+          "treatment": "C",
+          "control": "A",
+          "modalities": {
+            "body": {
+              "treatment_wins": 4,
+              "ties": 75,
+              "treatment_losses": 13
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 92,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 92,
+              "treatment_losses": 0
+            }
+          }
+        },
+        {
+          "treatment": "D",
+          "control": "B",
+          "modalities": {
+            "body": {
+              "treatment_wins": 4,
+              "ties": 75,
+              "treatment_losses": 13
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 92,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 92,
+              "treatment_losses": 0
+            }
+          }
+        }
+      ],
+      "policy_switch_invariant": true
+    },
+    {
+      "seed": 661,
+      "agent_id": 1,
+      "train_transitions": 357,
+      "held_out_transitions": 90,
+      "conditions": {
+        "A": {
+          "body": {
+            "feature_samples": 540,
+            "absolute_error_total": 1960,
+            "mae_milli": 3629
+          },
+          "held_item": {
+            "feature_samples": 540,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1080,
+            "absolute_error_total": 29342,
+            "mae_milli": 27168
+          }
+        },
+        "B": {
+          "body": {
+            "feature_samples": 540,
+            "absolute_error_total": 1960,
+            "mae_milli": 3629
+          },
+          "held_item": {
+            "feature_samples": 540,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1080,
+            "absolute_error_total": 29342,
+            "mae_milli": 27168
+          }
+        },
+        "C": {
+          "body": {
+            "feature_samples": 540,
+            "absolute_error_total": 2990,
+            "mae_milli": 5537
+          },
+          "held_item": {
+            "feature_samples": 540,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1080,
+            "absolute_error_total": 29342,
+            "mae_milli": 27168
+          }
+        },
+        "D": {
+          "body": {
+            "feature_samples": 540,
+            "absolute_error_total": 2990,
+            "mae_milli": 5537
+          },
+          "held_item": {
+            "feature_samples": 540,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1080,
+            "absolute_error_total": 29342,
+            "mae_milli": 27168
+          }
+        }
+      },
+      "comparisons": [
+        {
+          "treatment": "C",
+          "control": "A",
+          "modalities": {
+            "body": {
+              "treatment_wins": 8,
+              "ties": 66,
+              "treatment_losses": 16
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 90,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 90,
+              "treatment_losses": 0
+            }
+          }
+        },
+        {
+          "treatment": "D",
+          "control": "B",
+          "modalities": {
+            "body": {
+              "treatment_wins": 8,
+              "ties": 66,
+              "treatment_losses": 16
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 90,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 90,
+              "treatment_losses": 0
+            }
+          }
+        }
+      ],
+      "policy_switch_invariant": true
+    },
+    {
+      "seed": 673,
+      "agent_id": 1,
+      "train_transitions": 380,
+      "held_out_transitions": 95,
+      "conditions": {
+        "A": {
+          "body": {
+            "feature_samples": 570,
+            "absolute_error_total": 1734,
+            "mae_milli": 3042
+          },
+          "held_item": {
+            "feature_samples": 570,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1140,
+            "absolute_error_total": 28814,
+            "mae_milli": 25275
+          }
+        },
+        "B": {
+          "body": {
+            "feature_samples": 570,
+            "absolute_error_total": 1734,
+            "mae_milli": 3042
+          },
+          "held_item": {
+            "feature_samples": 570,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1140,
+            "absolute_error_total": 28814,
+            "mae_milli": 25275
+          }
+        },
+        "C": {
+          "body": {
+            "feature_samples": 570,
+            "absolute_error_total": 2599,
+            "mae_milli": 4559
+          },
+          "held_item": {
+            "feature_samples": 570,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1140,
+            "absolute_error_total": 28814,
+            "mae_milli": 25275
+          }
+        },
+        "D": {
+          "body": {
+            "feature_samples": 570,
+            "absolute_error_total": 2599,
+            "mae_milli": 4559
+          },
+          "held_item": {
+            "feature_samples": 570,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1140,
+            "absolute_error_total": 28814,
+            "mae_milli": 25275
+          }
+        }
+      },
+      "comparisons": [
+        {
+          "treatment": "C",
+          "control": "A",
+          "modalities": {
+            "body": {
+              "treatment_wins": 4,
+              "ties": 83,
+              "treatment_losses": 8
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 95,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 95,
+              "treatment_losses": 0
+            }
+          }
+        },
+        {
+          "treatment": "D",
+          "control": "B",
+          "modalities": {
+            "body": {
+              "treatment_wins": 4,
+              "ties": 83,
+              "treatment_losses": 8
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 95,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 95,
+              "treatment_losses": 0
+            }
+          }
+        }
+      ],
+      "policy_switch_invariant": true
+    },
+    {
+      "seed": 677,
+      "agent_id": 1,
+      "train_transitions": 359,
+      "held_out_transitions": 90,
+      "conditions": {
+        "A": {
+          "body": {
+            "feature_samples": 540,
+            "absolute_error_total": 2673,
+            "mae_milli": 4950
+          },
+          "held_item": {
+            "feature_samples": 540,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1080,
+            "absolute_error_total": 21143,
+            "mae_milli": 19576
+          }
+        },
+        "B": {
+          "body": {
+            "feature_samples": 540,
+            "absolute_error_total": 2673,
+            "mae_milli": 4950
+          },
+          "held_item": {
+            "feature_samples": 540,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1080,
+            "absolute_error_total": 21143,
+            "mae_milli": 19576
+          }
+        },
+        "C": {
+          "body": {
+            "feature_samples": 540,
+            "absolute_error_total": 3423,
+            "mae_milli": 6338
+          },
+          "held_item": {
+            "feature_samples": 540,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1080,
+            "absolute_error_total": 21143,
+            "mae_milli": 19576
+          }
+        },
+        "D": {
+          "body": {
+            "feature_samples": 540,
+            "absolute_error_total": 3423,
+            "mae_milli": 6338
+          },
+          "held_item": {
+            "feature_samples": 540,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1080,
+            "absolute_error_total": 21143,
+            "mae_milli": 19576
+          }
+        }
+      },
+      "comparisons": [
+        {
+          "treatment": "C",
+          "control": "A",
+          "modalities": {
+            "body": {
+              "treatment_wins": 1,
+              "ties": 80,
+              "treatment_losses": 9
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 90,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 90,
+              "treatment_losses": 0
+            }
+          }
+        },
+        {
+          "treatment": "D",
+          "control": "B",
+          "modalities": {
+            "body": {
+              "treatment_wins": 1,
+              "ties": 80,
+              "treatment_losses": 9
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 90,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 90,
+              "treatment_losses": 0
+            }
+          }
+        }
+      ],
+      "policy_switch_invariant": true
+    },
+    {
+      "seed": 683,
+      "agent_id": 1,
+      "train_transitions": 309,
+      "held_out_transitions": 78,
+      "conditions": {
+        "A": {
+          "body": {
+            "feature_samples": 468,
+            "absolute_error_total": 1686,
+            "mae_milli": 3602
+          },
+          "held_item": {
+            "feature_samples": 468,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 936,
+            "absolute_error_total": 19621,
+            "mae_milli": 20962
+          }
+        },
+        "B": {
+          "body": {
+            "feature_samples": 468,
+            "absolute_error_total": 1686,
+            "mae_milli": 3602
+          },
+          "held_item": {
+            "feature_samples": 468,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 936,
+            "absolute_error_total": 19621,
+            "mae_milli": 20962
+          }
+        },
+        "C": {
+          "body": {
+            "feature_samples": 468,
+            "absolute_error_total": 2168,
+            "mae_milli": 4632
+          },
+          "held_item": {
+            "feature_samples": 468,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 936,
+            "absolute_error_total": 19621,
+            "mae_milli": 20962
+          }
+        },
+        "D": {
+          "body": {
+            "feature_samples": 468,
+            "absolute_error_total": 2168,
+            "mae_milli": 4632
+          },
+          "held_item": {
+            "feature_samples": 468,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 936,
+            "absolute_error_total": 19621,
+            "mae_milli": 20962
+          }
+        }
+      },
+      "comparisons": [
+        {
+          "treatment": "C",
+          "control": "A",
+          "modalities": {
+            "body": {
+              "treatment_wins": 5,
+              "ties": 66,
+              "treatment_losses": 7
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 78,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 78,
+              "treatment_losses": 0
+            }
+          }
+        },
+        {
+          "treatment": "D",
+          "control": "B",
+          "modalities": {
+            "body": {
+              "treatment_wins": 5,
+              "ties": 66,
+              "treatment_losses": 7
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 78,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 78,
+              "treatment_losses": 0
+            }
+          }
+        }
+      ],
+      "policy_switch_invariant": true
+    },
+    {
+      "seed": 691,
+      "agent_id": 1,
+      "train_transitions": 328,
+      "held_out_transitions": 83,
+      "conditions": {
+        "A": {
+          "body": {
+            "feature_samples": 498,
+            "absolute_error_total": 2031,
+            "mae_milli": 4078
+          },
+          "held_item": {
+            "feature_samples": 498,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 996,
+            "absolute_error_total": 20448,
+            "mae_milli": 20530
+          }
+        },
+        "B": {
+          "body": {
+            "feature_samples": 498,
+            "absolute_error_total": 2031,
+            "mae_milli": 4078
+          },
+          "held_item": {
+            "feature_samples": 498,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 996,
+            "absolute_error_total": 20448,
+            "mae_milli": 20530
+          }
+        },
+        "C": {
+          "body": {
+            "feature_samples": 498,
+            "absolute_error_total": 1728,
+            "mae_milli": 3469
+          },
+          "held_item": {
+            "feature_samples": 498,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 996,
+            "absolute_error_total": 20448,
+            "mae_milli": 20530
+          }
+        },
+        "D": {
+          "body": {
+            "feature_samples": 498,
+            "absolute_error_total": 1728,
+            "mae_milli": 3469
+          },
+          "held_item": {
+            "feature_samples": 498,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 996,
+            "absolute_error_total": 20448,
+            "mae_milli": 20530
+          }
+        }
+      },
+      "comparisons": [
+        {
+          "treatment": "C",
+          "control": "A",
+          "modalities": {
+            "body": {
+              "treatment_wins": 12,
+              "ties": 70,
+              "treatment_losses": 1
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 83,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 83,
+              "treatment_losses": 0
+            }
+          }
+        },
+        {
+          "treatment": "D",
+          "control": "B",
+          "modalities": {
+            "body": {
+              "treatment_wins": 12,
+              "ties": 70,
+              "treatment_losses": 1
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 83,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 83,
+              "treatment_losses": 0
+            }
+          }
+        }
+      ],
+      "policy_switch_invariant": true
+    },
+    {
+      "seed": 701,
+      "agent_id": 1,
+      "train_transitions": 369,
+      "held_out_transitions": 93,
+      "conditions": {
+        "A": {
+          "body": {
+            "feature_samples": 558,
+            "absolute_error_total": 2011,
+            "mae_milli": 3603
+          },
+          "held_item": {
+            "feature_samples": 558,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1116,
+            "absolute_error_total": 26197,
+            "mae_milli": 23474
+          }
+        },
+        "B": {
+          "body": {
+            "feature_samples": 558,
+            "absolute_error_total": 2011,
+            "mae_milli": 3603
+          },
+          "held_item": {
+            "feature_samples": 558,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1116,
+            "absolute_error_total": 26197,
+            "mae_milli": 23474
+          }
+        },
+        "C": {
+          "body": {
+            "feature_samples": 558,
+            "absolute_error_total": 2709,
+            "mae_milli": 4854
+          },
+          "held_item": {
+            "feature_samples": 558,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1116,
+            "absolute_error_total": 26197,
+            "mae_milli": 23474
+          }
+        },
+        "D": {
+          "body": {
+            "feature_samples": 558,
+            "absolute_error_total": 2709,
+            "mae_milli": 4854
+          },
+          "held_item": {
+            "feature_samples": 558,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1116,
+            "absolute_error_total": 26197,
+            "mae_milli": 23474
+          }
+        }
+      },
+      "comparisons": [
+        {
+          "treatment": "C",
+          "control": "A",
+          "modalities": {
+            "body": {
+              "treatment_wins": 6,
+              "ties": 75,
+              "treatment_losses": 12
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 93,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 93,
+              "treatment_losses": 0
+            }
+          }
+        },
+        {
+          "treatment": "D",
+          "control": "B",
+          "modalities": {
+            "body": {
+              "treatment_wins": 6,
+              "ties": 75,
+              "treatment_losses": 12
+            },
+            "held_item": {
+              "treatment_wins": 0,
+              "ties": 93,
+              "treatment_losses": 0
+            },
+            "vision": {
+              "treatment_wins": 0,
+              "ties": 93,
+              "treatment_losses": 0
+            }
+          }
+        }
+      ],
+      "policy_switch_invariant": true
+    }
+  ]
+}
