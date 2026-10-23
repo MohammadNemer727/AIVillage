@@ -1,0 +1,420 @@
+{
+  "schema_version": 1,
+  "protocol": "experiment-005-embodied-survival-reliability",
+  "preregistration_sha256": "8916ef657b57f4ac1e150ba902cef0ebde68d235e4767f4b29ae8968b28b36db",
+  "git_revision_of_snapshot": "8db3c688d9fedaff551fc9d00a45e0469d85bd43",
+  "infrastructure_reruns": [],
+  "all_arena_traces_replay_exactly": true,
+  "part_B_movement_initiation": {
+    "pairs": [
+      {
+        "seed": 7201,
+        "low": 2.602590902793166,
+        "high": 70.60312901579644
+      },
+      {
+        "seed": 7203,
+        "low": 2.493256481050767,
+        "high": 71.12688971539434
+      },
+      {
+        "seed": 7207,
+        "low": 2.6245696655621504,
+        "high": 70.1701144149198
+      },
+      {
+        "seed": 7209,
+        "low": 2.4701569176739704,
+        "high": 70.55814729369713
+      },
+      {
+        "seed": 7213,
+        "low": 2.4986676089822963,
+        "high": 70.20004228141623
+      },
+      {
+        "seed": 7217,
+        "low": 2.4825855511395396,
+        "high": 70.14593265595985
+      },
+      {
+        "seed": 7219,
+        "low": 2.641405324046251,
+        "high": 67.15533317576914
+      },
+      {
+        "seed": 7223,
+        "low": 2.4026976000844207,
+        "high": 62.17694950818951
+      }
+    ],
+    "median_path_low": 2.4959620450165314,
+    "median_path_high": 70.18507834816802,
+    "ratio": 28.119449367549645,
+    "pairs_high_farther": 8,
+    "passes": true
+  },
+  "part_C_hostile_encounter": {
+    "by_seed": {
+      "7301": {
+        "still": {
+          "survived_decisions": 449,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "tone": {
+          "survived_decisions": 119,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "flight": {
+          "survived_decisions": 259,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "runner": {
+          "survived_decisions": 123,
+          "alive_at_end": false,
+          "damage": 19
+        }
+      },
+      "7303": {
+        "still": {
+          "survived_decisions": 589,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "tone": {
+          "survived_decisions": 117,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "flight": {
+          "survived_decisions": 339,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "runner": {
+          "survived_decisions": 118,
+          "alive_at_end": false,
+          "damage": 19
+        }
+      },
+      "7307": {
+        "still": {
+          "survived_decisions": 441,
+          "alive_at_end": false,
+          "damage": 18
+        },
+        "tone": {
+          "survived_decisions": 780,
+          "alive_at_end": false,
+          "damage": 0
+        },
+        "flight": {
+          "survived_decisions": 716,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "runner": {
+          "survived_decisions": 612,
+          "alive_at_end": false,
+          "damage": 18
+        }
+      },
+      "7309": {
+        "still": {
+          "survived_decisions": 117,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "tone": {
+          "survived_decisions": 300,
+          "alive_at_end": false,
+          "damage": 18
+        },
+        "flight": {
+          "survived_decisions": 121,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "runner": {
+          "survived_decisions": 824,
+          "alive_at_end": false,
+          "damage": 19
+        }
+      },
+      "7313": {
+        "still": {
+          "survived_decisions": 866,
+          "alive_at_end": false,
+          "damage": 18
+        },
+        "tone": {
+          "survived_decisions": 118,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "flight": {
+          "survived_decisions": 267,
+          "alive_at_end": false,
+          "damage": 5
+        },
+        "runner": {
+          "survived_decisions": 724,
+          "alive_at_end": false,
+          "damage": 18
+        }
+      },
+      "7317": {
+        "still": {
+          "survived_decisions": 238,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "tone": {
+          "survived_decisions": 227,
+          "alive_at_end": false,
+          "damage": 16
+        },
+        "flight": {
+          "survived_decisions": 126,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "runner": {
+          "survived_decisions": 298,
+          "alive_at_end": false,
+          "damage": 16
+        }
+      },
+      "7319": {
+        "still": {
+          "survived_decisions": 128,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "tone": {
+          "survived_decisions": 130,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "flight": {
+          "survived_decisions": 131,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "runner": {
+          "survived_decisions": 122,
+          "alive_at_end": false,
+          "damage": 19
+        }
+      },
+      "7323": {
+        "still": {
+          "survived_decisions": 999,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "tone": {
+          "survived_decisions": 435,
+          "alive_at_end": false,
+          "damage": 17
+        },
+        "flight": {
+          "survived_decisions": 139,
+          "alive_at_end": false,
+          "damage": 19
+        },
+        "runner": {
+          "survived_decisions": 452,
+          "alive_at_end": false,
+          "damage": 12
+        }
+      }
+    },
+    "summary": {
+      "still": {
+        "mean_survived_decisions": 478.375,
+        "alive_at_end": 0,
+        "seeds_surviving_longer_than_still": 0,
+        "gain_over_still": 0.0,
+        "mean_damage": 18.75
+      },
+      "tone": {
+        "mean_survived_decisions": 278.25,
+        "alive_at_end": 0,
+        "seeds_surviving_longer_than_still": 3,
+        "gain_over_still": -0.41834334988241445,
+        "mean_damage": 15.875
+      },
+      "flight": {
+        "mean_survived_decisions": 262.25,
+        "alive_at_end": 0,
+        "seeds_surviving_longer_than_still": 3,
+        "gain_over_still": -0.4517899137705775,
+        "mean_damage": 17.25
+      },
+      "runner": {
+        "mean_survived_decisions": 409.125,
+        "alive_at_end": 0,
+        "seeds_surviving_longer_than_still": 3,
+        "gain_over_still": -0.1447609093284557,
+        "mean_damage": 17.5
+      }
+    },
+    "genotypes_that_help": [],
+    "passes": false
+  },
+  "part_D_first_night_populations": {
+    "populations": [
+      {
+        "name": "D-7401-still",
+        "seed": 7401,
+        "genotype": "still",
+        "stop_reason": "natural_extinction",
+        "elapsed_seconds": 794,
+        "births": 10,
+        "alive_at_end": 0,
+        "first_death": "2026-10-23 11:51:49",
+        "server_started": "2026-10-23 11:40:05",
+        "deaths": 14,
+        "opportunity_windows_per_individual": [
+          9,
+          9,
+          9,
+          23,
+          8,
+          8,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "median_opportunity_windows": 1.0,
+        "max_opportunity_windows": 23,
+        "individuals_with_two_or_more": 6,
+        "suitable": false
+      },
+      {
+        "name": "D-7401-runner",
+        "seed": 7401,
+        "genotype": "runner",
+        "stop_reason": "natural_extinction",
+        "elapsed_seconds": 904,
+        "births": 30,
+        "alive_at_end": 0,
+        "first_death": "2026-10-23 12:04:48",
+        "server_started": "2026-10-23 11:53:21",
+        "deaths": 34,
+        "opportunity_windows_per_individual": [
+          11,
+          11,
+          21,
+          25,
+          10,
+          10,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          2,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "median_opportunity_windows": 0.0,
+        "max_opportunity_windows": 25,
+        "individuals_with_two_or_more": 7,
+        "suitable": false
+      },
+      {
+        "name": "D-7403-still",
+        "seed": 7403,
+        "genotype": "still",
+        "stop_reason": "natural_extinction",
+        "elapsed_seconds": 706,
+        "births": 2,
+        "alive_at_end": 0,
+        "first_death": "2026-10-23 12:19:23",
+        "server_started": "2026-10-23 12:08:26",
+        "deaths": 6,
+        "opportunity_windows_per_individual": [
+          10,
+          10,
+          10,
+          10,
+          9,
+          9
+        ],
+        "median_opportunity_windows": 10.0,
+        "max_opportunity_windows": 10,
+        "individuals_with_two_or_more": 6,
+        "suitable": false
+      },
+      {
+        "name": "D-7403-runner",
+        "seed": 7403,
+        "genotype": "runner",
+        "stop_reason": "natural_extinction",
+        "elapsed_seconds": 921,
+        "births": 2,
+        "alive_at_end": 0,
+        "first_death": "2026-10-23 12:31:15",
+        "server_started": "2026-10-23 12:20:14",
+        "deaths": 6,
+        "opportunity_windows_per_individual": [
+          17,
+          17,
+          17,
+          17,
+          16,
+          10
+        ],
+        "median_opportunity_windows": 17.0,
+        "max_opportunity_windows": 17,
+        "individuals_with_two_or_more": 6,
+        "suitable": false
+      }
+    ],
+    "by_genotype": {
+      "still": {
+        "suitable_replicates": 0,
+        "suitable_for_selection": false
+      },
+      "runner": {
+        "suitable_replicates": 0,
+        "suitable_for_selection": false
+      }
+    }
+  },
+  "conclusions": {
+    "movement_without_a_driver": true,
+    "survival_depends_on_inheritance": false,
+    "runner_populations_suitable_for_selection": false
+  }
+}
