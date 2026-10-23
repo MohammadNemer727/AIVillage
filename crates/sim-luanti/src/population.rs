@@ -129,7 +129,6 @@ struct Individual {
     generation: u32,
     genome: DevelopmentalGenome,
     runtime: AgentRuntime,
-    trace: Vec<TraceRecord>,
     reproductive_reserve: u16,
     reproduction_signal: i16,
 }
@@ -329,7 +328,6 @@ impl PopulationCoordinator {
                     generation: 0,
                     genome,
                     runtime,
-                    trace: Vec::new(),
                     reproductive_reserve: 255,
                     reproduction_signal: 0,
                 },
@@ -369,7 +367,6 @@ impl PopulationCoordinator {
             generation: 0,
             genome,
             runtime,
-            trace: Vec::new(),
             reproductive_reserve: 255,
             reproduction_signal: 0,
         };
@@ -568,7 +565,6 @@ impl PopulationCoordinator {
                 slot_available,
             }),
         };
-        individual.trace.push(record.clone());
         self.trace.push(record);
         Ok(response)
     }
@@ -578,6 +574,7 @@ impl PopulationCoordinator {
     /// # Errors
     ///
     /// Returns [`LifecycleError::UnknownIndividual`] if the identity is not live.
+    #[cfg(test)]
     pub fn die(&mut self, individual_id: u64) -> Result<BodySlotId, LifecycleError> {
         let Some(individual) = self.individuals.remove(&individual_id) else {
             return Err(LifecycleError::UnknownIndividual(individual_id));
@@ -595,10 +592,12 @@ impl PopulationCoordinator {
     /// # Errors
     ///
     /// Returns an error for an unknown parent, full capacity, or exhausted identity space.
+    #[cfg(test)]
     pub fn reproduce(&mut self, parent_id: u64) -> Result<u64, LifecycleError> {
         self.birth(parent_id, BirthKind::Asexual)
     }
 
+    #[cfg(test)]
     fn birth(&mut self, parent_id: u64, kind: BirthKind) -> Result<u64, LifecycleError> {
         let Some(parent) = self.individuals.get(&parent_id) else {
             return Err(LifecycleError::UnknownIndividual(parent_id));
@@ -639,7 +638,6 @@ impl PopulationCoordinator {
                 generation,
                 genome,
                 runtime,
-                trace: Vec::new(),
                 reproductive_reserve: 255,
                 reproduction_signal: 0,
             },
@@ -828,7 +826,6 @@ impl PopulationCoordinator {
                 generation,
                 genome,
                 runtime,
-                trace: Vec::new(),
                 reproductive_reserve: 255,
                 reproduction_signal: 0,
             },
@@ -875,18 +872,7 @@ impl PopulationCoordinator {
     /// Drains all accepted transitions in arrival order.
     #[must_use]
     pub fn drain_trace(&mut self) -> Vec<TraceRecord> {
-        for individual in self.individuals.values_mut() {
-            individual.trace.clear();
-        }
         core::mem::take(&mut self.trace)
-    }
-
-    /// Drains one individual's trace without disturbing another's trace state.
-    #[must_use]
-    pub fn drain_trace_for(&mut self, individual_id: u64) -> Option<Vec<TraceRecord>> {
-        self.individuals
-            .get_mut(&individual_id)
-            .map(|individual| core::mem::take(&mut individual.trace))
     }
 
     /// Atomically replaces every live runtime checkpoint, then the manifest index.
@@ -970,7 +956,6 @@ impl PopulationCoordinator {
                     generation: entry.generation,
                     genome: entry.genome.clone(),
                     runtime: checkpoint.restore()?,
-                    trace: Vec::new(),
                     reproductive_reserve: entry.reproductive_reserve,
                     reproduction_signal: entry.reproduction_signal,
                 },
@@ -1161,8 +1146,13 @@ mod tests {
                 isolated.runtime_for(individual_id)
             );
         }
-        assert_eq!(interleaved.drain_trace_for(10).unwrap().len(), 8);
-        assert_eq!(interleaved.drain_trace_for(child).unwrap().len(), 8);
+        let trace = interleaved.drain_trace();
+        for individual_id in [10, child] {
+            let own = trace
+                .iter()
+                .filter(|record| record.request.agent_id == individual_id);
+            assert_eq!(own.count(), 8);
+        }
     }
 
     #[test]
