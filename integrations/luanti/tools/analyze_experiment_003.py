@@ -175,6 +175,10 @@ def main():
         "protocol": "experiment-003-episodic-integration",
         "preregistration": "docs/experiment-003-preregistration.json",
         "preregistration_sha256": hashlib.sha256(preregistration.read_bytes()).hexdigest(),
+        "amendment": "docs/experiment-003-amendment-1.json",
+        "amendment_sha256": hashlib.sha256(
+            (repo / "docs/experiment-003-amendment-1.json").read_bytes()).hexdigest(),
+        "git_revision_of_snapshot": (root / "frozen/git-revision").read_text().strip(),
         "git_revision": subprocess.check_output(
             ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip(),
         "seeds": seeds,

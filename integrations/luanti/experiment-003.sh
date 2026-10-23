@@ -1,20 +1,28 @@
 #!/usr/bin/env sh
-# Runs preregistered Experiment 003 (docs/experiment-003-preregistration.json) exactly once:
-# a four-way episodic ablation in real VoxeLibre plus a frozen-replay prediction ablation.
+# Runs preregistered Experiment 003 (docs/experiment-003-preregistration.json, seeds from
+# docs/experiment-003-amendment-1.json) exactly once: a four-way episodic ablation in real
+# VoxeLibre plus a frozen-replay prediction ablation.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo=$(CDPATH= cd -- "$root/../.." && pwd)
 output=${1:-"$root/experiment-003-runs/$(date -u +%Y-%m-%d)"}
 runner="$root/ci/episodic-choice-run.sh"
-seeds="601 607 613 617 631 641 643 647"
+seeds="653 659 661 673 677 683 691 701"
 export EPISODIC_CHOICE_PROTOCOL=experiment-003-episodic-integration
-[ ! -e "$output/experiment-003-result.json" ] || {
-  echo "$output already holds a result; Experiment 003 seeds are consumed" >&2; exit 2;
+[ ! -e "$output" ] || { echo "$output exists; Experiment 003 seeds are consumed" >&2; exit 2; }
+[ -z "$(git -C "$repo" status --porcelain --untracked-files=no)" ] || {
+  echo "commit the tree first: the run must use exactly the frozen revision" >&2; exit 2;
 }
-mkdir -p "$output"
+
+# Snapshot the frozen build and analysis once; later source edits cannot reach this run.
+mkdir -p "$output/frozen"
 cargo build --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml"
-bridge="$repo/target/debug/sim-luanti"
+cp "$repo/target/debug/sim-luanti" "$output/frozen/sim-luanti"
+cp "$root/tools/analyze_experiment_003.py" "$output/frozen/"
+git -C "$repo" rev-parse HEAD >"$output/frozen/git-revision"
+export SIM_LUANTI_BIN="$output/frozen/sim-luanti"
+bridge=$SIM_LUANTI_BIN
 
 # An arm that crashed or timed out before writing a result is rerun once; anything else that
 # fails (replay mismatch) is an integrity failure and is never rerun.
@@ -46,4 +54,4 @@ for seed in $seeds; do
     "$output/seed-$seed-off/bridge.ndjson" "$output/seed-$seed-frozen-replay.json"
 done
 
-python3 "$root/tools/analyze_experiment_003.py" "$repo" "$output" $seeds
+python3 "$output/frozen/analyze_experiment_003.py" "$repo" "$output" $seeds

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "amends": "docs/experiment-003-preregistration.json",
+  "date": "2026-10-23",
+  "status": "made before any Experiment 003 outcome was inspected",
+  "attempt_1": {
+    "seeds": [601, 607, 613, 617, 631, 641, 643, 647],
+    "outcome": "incomplete under the frozen infrastructure rule; no conclusion",
+    "cause": "operator error: the harness rebuilt the bridge before every arm while the operator was editing unrelated population code; a transient compile error failed the seed 607 prediction arm and its single permitted rerun",
+    "arms_completed": ["601 A", "601 B", "601 C", "601 D", "607 A", "607 B"],
+    "inspection": "no arm result, trace, or frozen-replay report was opened or analysed",
+    "seeds_status": "consumed and retired, as the frozen rule requires"
+  },
+  "changes": {
+    "paired_runtime_seeds": [653, 659, 661, 673, 677, 683, 691, 701],
+    "seed_provenance": "none of these appears in any earlier preregistration, harness, test, or run directory",
+    "harness": "the driver refuses a dirty tracked tree, builds once, and runs every arm and analysis from a snapshot binary and script copied into the run directory"
+  },
+  "unchanged": "conditions, fixture, metrics, thresholds, tolerance, decision rules, exclusions, and stopping rules",
+  "code_since_freeze": "population founder-genome rotation (default 0 reproduces the original cohort exactly; single-founder episodic arms never use it), lineage reconstruction, and a founders listing command; no episodic, predictor, policy, or fixture logic changed"
+}

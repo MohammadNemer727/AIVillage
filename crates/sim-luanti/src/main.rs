@@ -15,11 +15,11 @@ use sim_core::runtime::{AffordanceConfig, EpisodicConfig, ExperimentMode};
 use sim_format::{PopulationBlockReason, PopulationLifecycleEvent};
 use sim_luanti::{
     Bridge, LifecycleConfig, PopulationCoordinator, TraceRecord, ablation, benchmark,
-    bind_loopback, contingency, episodic_eval, foraging, load_state, prediction_eval, reaching,
-    replay_trace, save_state, serve_once_concurrent,
+    bind_loopback, contingency, episodic_eval, foraging, lineage, load_state, prediction_eval,
+    reaching, replay_trace, save_state, serve_once_concurrent,
 };
 
-const USAGE: &str = "usage: sim-luanti [replay <trace.ndjson>|prediction-eval|episodic-eval|prediction-ablation <trace.ndjson> [report.json]|online-prediction off|policy|prediction|both <trace.ndjson> [report.json]|benchmark|contingency|foraging|reaching [report.json] [report.md]]";
+const USAGE: &str = "usage: sim-luanti [replay <trace.ndjson>|prediction-eval|episodic-eval|prediction-ablation <trace.ndjson> [report.json]|online-prediction off|policy|prediction|both <trace.ndjson> [report.json]|founders|lineage <genome-rotation> <population-report.json>|benchmark|contingency|foraging|reaching [report.json] [report.md]]";
 
 /// Decisions between saves of the founder's brain (about ten seconds of watched play).
 const SAVE_EVERY_DECISIONS: u64 = 40;
@@ -94,6 +94,22 @@ fn emit(
     Ok(())
 }
 
+/// The expressed developmental parameters of each founder ordinal in a seeded cohort.
+fn founder_genotypes(seed: u64, first_id: u64, count: u32) -> Vec<serde_json::Value> {
+    (0..u64::from(count))
+        .map(|ordinal| {
+            let genome = sim_format::FounderSpec::new(seed, first_id + ordinal).genome;
+            let config = genome.default_brain_config();
+            serde_json::json!({
+                "ordinal": ordinal,
+                "genome": genome,
+                "connection_stride": config.connection_stride,
+                "plasticity_scale": config.plasticity_scale,
+            })
+        })
+        .collect()
+}
+
 /// The founder the bridge serves: the one saved at `state_path` (`SIM_LUANTI_STATE`, where its brain
 /// is kept between sessions) if there is one, continuing with everything it learned in the mode
 /// it was saved in; otherwise a newborn in the mode `SIM_LUANTI_MODE` selects.
@@ -153,12 +169,15 @@ fn founder_bridge(
             }
         }
         Ok(_) => return Err("SIM_LUANTI_AFFORDANCE requires SIM_LUANTI_MODE=affordance".into()),
-        Err(_) if population_mode => Bridge::new_population_with_mode(
+        Err(_) if population_mode => Bridge::new_rotated_population_with_mode(
             seed,
             agent_id,
             founder_count,
             population_capacity,
             mode,
+            std::env::var("SIM_LUANTI_FOUNDER_GENOME_ROTATION")
+                .map_or(Ok(0), |value| value.parse())
+                .map_err(|_| "SIM_LUANTI_FOUNDER_GENOME_ROTATION must be a non-negative integer")?,
         )?,
         Err(_) => Bridge::new_with_mode(seed, agent_id, mode),
     };
@@ -317,6 +336,23 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ),
                 (_, None) => unreachable!("online-prediction always parses an arm"),
             };
+        }
+        if command == "lineage" {
+            let (Some(rotation), Some(path), None) = (args.next(), args.next(), args.next()) else {
+                return Err(USAGE.into());
+            };
+            let report: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+            let manifest = serde_json::from_value(report["manifest"].clone())?;
+            return emit(
+                &lineage::reconstruct(&manifest, agent_id, founder_count, rotation.parse()?)?,
+                None,
+            );
+        }
+        if command == "founders" {
+            if args.next().is_some() {
+                return Err(USAGE.into());
+            }
+            return emit(&founder_genotypes(seed, agent_id, founder_count), None);
         }
         if command == "benchmark" {
             let report = benchmark::run();

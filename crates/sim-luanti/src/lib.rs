@@ -13,6 +13,7 @@ pub mod contingency;
 pub mod episodic_eval;
 pub mod foraging;
 pub mod harness;
+pub mod lineage;
 pub mod population;
 pub mod prediction_eval;
 pub mod reaching;

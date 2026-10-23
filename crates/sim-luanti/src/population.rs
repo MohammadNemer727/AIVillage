@@ -26,6 +26,12 @@ pub use sim_format::{
     PopulationBirthKind as BirthKind, PopulationLifecycleEvent as LifecycleEvent,
 };
 
+/// Founder ordinal whose genome develops in `slot` under a replicate's genome rotation.
+#[must_use]
+pub const fn founder_ordinal(slot: u32, founder_count: u32, genome_rotation: u32) -> u32 {
+    (slot + genome_rotation % founder_count) % founder_count
+}
+
 /// Runtime eligibility and inheritance settings for natural reproduction.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LifecycleConfig {
@@ -192,11 +198,39 @@ impl PopulationCoordinator {
         capacity: u32,
         mode: ExperimentMode,
     ) -> Result<Self, &'static str> {
+        Self::new_rotated_population_with_mode(
+            seed,
+            first_individual_id,
+            founder_count,
+            capacity,
+            mode,
+            0,
+        )
+    }
+
+    /// Creates a cohort in which slot `s` develops from the genome of founder ordinal
+    /// `(s + genome_rotation) % founder_count`.
+    ///
+    /// Identities and body slots stay fixed, so rotating across replicate populations separates
+    /// a founder genotype from its body slot and from identity-keyed receptor noise.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an empty cohort, insufficient capacity, or identity overflow.
+    pub fn new_rotated_population_with_mode(
+        seed: u64,
+        first_individual_id: u64,
+        founder_count: u32,
+        capacity: u32,
+        mode: ExperimentMode,
+        genome_rotation: u32,
+    ) -> Result<Self, &'static str> {
         Self::new_population(
             seed,
             first_individual_id,
             founder_count,
             capacity,
+            genome_rotation,
             |id, genome| AgentRuntime::new_with_mode(seed, id, genome.default_brain_config(), mode),
         )
     }
@@ -249,6 +283,7 @@ impl PopulationCoordinator {
             first_individual_id,
             founder_count,
             capacity,
+            0,
             |id, genome| {
                 AgentRuntime::new_with_affordance(
                     seed,
@@ -267,6 +302,7 @@ impl PopulationCoordinator {
         first_individual_id: u64,
         founder_count: u32,
         capacity: u32,
+        genome_rotation: u32,
         mut runtime_for: impl FnMut(u64, &DevelopmentalGenome) -> AgentRuntime,
     ) -> Result<Self, &'static str> {
         if founder_count == 0 {
@@ -281,7 +317,8 @@ impl PopulationCoordinator {
         let mut individuals = BTreeMap::new();
         for slot in 0..founder_count {
             let individual_id = first_individual_id + u64::from(slot);
-            let genome = FounderSpec::new(seed, individual_id).genome;
+            let ordinal = founder_ordinal(slot, founder_count, genome_rotation);
+            let genome = FounderSpec::new(seed, first_individual_id + u64::from(ordinal)).genome;
             let runtime = runtime_for(individual_id, &genome);
             individuals.insert(
                 individual_id,
@@ -1341,6 +1378,23 @@ mod tests {
         assert_eq!(entry.parent_id, Some(7));
         assert_eq!(entry.generation, 1);
         assert_eq!(entry.genome, first);
+    }
+
+    #[test]
+    fn founder_genome_rotation_moves_genotypes_but_not_identities_or_slots() {
+        let mode = ExperimentMode::PredictiveBaseline;
+        let plain = PopulationCoordinator::new_population_with_mode(5, 1, 4, 4, mode).unwrap();
+        let rotated =
+            PopulationCoordinator::new_rotated_population_with_mode(5, 1, 4, 4, mode, 1).unwrap();
+        let wrapped =
+            PopulationCoordinator::new_rotated_population_with_mode(5, 1, 4, 4, mode, 5).unwrap();
+        let (plain, rotated) = (plain.manifest().individuals, rotated.manifest().individuals);
+        for (slot, entry) in rotated.iter().enumerate() {
+            assert_eq!(entry.individual_id, plain[slot].individual_id);
+            assert_eq!(entry.body_slot, plain[slot].body_slot);
+            assert_eq!(entry.genome, plain[(slot + 1) % 4].genome);
+        }
+        assert_eq!(wrapped.manifest().individuals, rotated);
     }
 
     #[test]

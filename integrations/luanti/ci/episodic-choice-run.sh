@@ -61,8 +61,12 @@ enable_shaders = false
 enable_minimap = false
 EOF
 
-cargo build --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml"
-bridge="$repo/target/debug/sim-luanti"
+# A protocol driver passes a snapshot binary so edits to the source tree cannot reach a run.
+bridge=${SIM_LUANTI_BIN:-}
+if [ -z "$bridge" ]; then
+  cargo build --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml"
+  bridge="$repo/target/debug/sim-luanti"
+fi
 bridge_pid=
 server_pid=
 client_pid=
