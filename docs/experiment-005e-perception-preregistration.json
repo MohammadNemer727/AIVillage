@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "protocol": "experiment-005e-perception",
+  "status": "preregistered_before_outcome_generation",
+  "frozen_on": "2026-10-23",
+  "milestone": "Experiment 005E, grounded threat perception and avoidance: step 1 of 4 (perception is verified before any avoidance is built)",
+  "question": "Does the founder's existing forward retina (24 x 5 rays, 7.5 and 20 degree spacing, range 6 blocks; colour, light, nearness, closing speed per ray, no names) physically report an approaching entity repeatably, distinguish approach from retreat, and lose the cue behind an obstruction?",
+  "scope": "Sensing only. No controller, learning or genome is involved: the body is held in place facing straight ahead (position, yaw and pitch reset each decision) so the retina frames change only because of the entity. No label, hostility flag or world coordinate is exposed.",
+  "development_history_not_results": [
+    "Pilot seed 7900 (consumed) in all five modes found: (1) a real zombie was invisible to the founder's eye because a mob's textures are layered and the first layer is an empty armour texture, so only textures[1] was read; the body now composites all layers (a fix to ai_bridge/init.lua, committed with this protocol); (2) a small puppet cube is missed by the 7.5 degree rays beyond about 3 blocks, so the puppet is body-sized with a zombie's skin; (3) the body's own pitch and yaw moved with pain and learning, so the fixture holds them; (4) the first 10 decisions show placement transients, so they are discarded; (5) a non-physical puppet vanished, so it is physical without object collision.",
+    "These are fixed before the seeds below are run; no threshold was chosen from the seeds below."
+  ],
+  "arms": {
+    "approach": "a body-sized harmless puppet with a zombie's skin starts 7 blocks away at a seeded bearing within +/-25 degrees of straight ahead, waits 10 decisions, then walks toward the body at 1 block/s to 1.2 blocks",
+    "retreat": "the same puppet starts at 1.2 blocks and walks away at 1 block/s to 7 blocks",
+    "occluded": "as approach, but a stone wall 5 blocks wide each side and 4 high stands 2 blocks away across the line of sight and the puppet stops 3 blocks away, behind it",
+    "zombie": "a real VoxeLibre zombie at night starting 7 blocks away at the same seeded bearing, walking at the body under its own game AI; the body's health is reset each decision so the encounter lasts",
+    "blank": "no entity; the retina reports the empty arena",
+    "repeat": "approach with the same seed run a second time for the first two seeds"
+  },
+  "seeds": [7911, 7913, 7917, 7919, 7923, 7927, 7929, 7931],
+  "decisions": 100,
+  "discarded": "first 10 decisions of every arm (placement transients)",
+  "cue_definition": "for each of the 120 rays, the cue is the absolute difference between its occlusion (nearness) value and that ray's baseline, the median over frames in which the entity is farther than 6.5 blocks (every frame for blank); a ray is 'changed' when the cue is at least 25 of 255. This is used by the analysis only; the founder is given the raw ray values, never this flag.",
+  "in_range_frame": "entity within 4.0 blocks and within 86 degrees of the gaze",
+  "gates": {
+    "per_arm_pass": {
+      "approach_retreat_zombie": [
+        "detection: at least 90 percent of in-range frames have a changed ray",
+        "false alarms: at most 2 percent of frames with the entity farther than 6.5 blocks have a changed ray",
+        "azimuth: median |mean changed-column bearing - true bearing| at most 10 degrees",
+        "motion: in at least 80 percent of in-range frames with |true closing speed| above 0.3 blocks/s, the mean motion value over the changed rays has the sign of the true closing speed (positive when approaching, negative when retreating)"
+      ],
+      "approach_retreat_additional": "Spearman correlation between the strongest cue and the negative of the true distance, over in-range changed frames, at least 0.80",
+      "occluded": "at most 5 percent of in-range frames have a changed ray, with at most 2 percent false alarms",
+      "blank": "at most 2 percent of frames have a changed ray"
+    },
+    "per_mode_pass": "the arm gate holds in at least 7 of the 8 seeds",
+    "repeatability": "for each of the two repeated seeds, the Pearson correlation between the two runs' strongest-cue time series is at least 0.95",
+    "perception_gate": "approach, retreat, occluded and zombie modes pass, blank passes in at least 7 of 8 seeds, and the repeat runs agree"
+  },
+  "infrastructure": {
+    "frozen_build": "driver refuses a dirty tracked tree and runs from snapshot copies of the binary, the bridge mod, the fixture and the analysis",
+    "failure_rule": "an arm that fails to write its result is rerun once; a second failure stops the experiment as incomplete",
+    "after_outcomes": "this file, the seeds and the thresholds are not revised after any outcome is generated"
+  },
+  "outputs": {
+    "runs": "integrations/luanti/experiment-005e-perception-runs/<date>/",
+    "machine_report": "experiment-005e-perception-result.json",
+    "written_report": "docs/experiment-005e-perception-result.md"
+  },
+  "next_if_pass": "step 2: a learned association between these cues and injury, and action selection that evaluates movements by expected harm, with genes tuning sensory gain, pain sensitivity, locomotor response, exploration and plasticity",
+  "next_if_fail": "report which gate failed and fix the sensing, not the thresholds, in a new protocol"
+}

@@ -555,8 +555,13 @@ local function cast_eye_ray(self, eye, direction, velocity, sample, vertical)
     -- hidden one are not seen.
     if not colour and play and pointed.ref ~= self.player then
       local properties = pointed.ref:get_properties()
-      local texture = properties.is_visible ~= false and properties.textures and properties.textures[1]
-      local average = type(texture) == "string" and texture ~= "" and texture_colour(texture)
+      -- A mob's skin is layered (an armour layer, often empty, and then the body), so all the
+      -- layers are composited, as the eye sees them stacked.
+      local layers = {}
+      for _, texture in ipairs(properties.is_visible ~= false and properties.textures or {}) do
+        if type(texture) == "string" and texture ~= "" then layers[#layers + 1] = texture end
+      end
+      local average = #layers > 0 and texture_colour(table.concat(layers, "^"))
       colour = average and {math.floor(average[1] + 0.5), math.floor(average[2] + 0.5), math.floor(average[3] + 0.5)}
     end
     if colour then

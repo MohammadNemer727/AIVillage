@@ -32,3 +32,4 @@ integrations/luanti/.body-test-world/
 /integrations/luanti/**/*.sqlite-wal
 /integrations/luanti/**/*trace*.ndjson
 __pycache__/
+/integrations/luanti/experiment-005e-perception-runs/
