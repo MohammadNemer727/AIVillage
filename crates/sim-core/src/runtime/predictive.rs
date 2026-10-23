@@ -79,6 +79,12 @@ pub struct RecurrentPredictor {
     pub updates: u64,
     /// Most recently scored absolute error per feature.
     pub last_absolute_error: Vec<u16>,
+    /// Divisor of the decoder gradient step; developmentally expressed, smaller learns faster.
+    pub learning_divisor: i32,
+    /// Decisions between online decoder updates; developmentally expressed.
+    pub update_period: u64,
+    /// Replay samples rehearsed per update; developmentally expressed.
+    pub rehearsal_batch: usize,
 }
 
 impl Default for RecurrentPredictor {
@@ -106,6 +112,9 @@ impl RecurrentPredictor {
             replay_cursor: 0,
             updates: 0,
             last_absolute_error: vec![0; SENSE_FEATURES],
+            learning_divisor: LEARNING_DIVISOR,
+            update_period: UPDATE_CADENCE,
+            rehearsal_batch: UPDATE_BATCH,
         }
     }
 
@@ -118,6 +127,10 @@ impl RecurrentPredictor {
             || self.previous_senses.len() != SENSE_FEATURES
             || self.last_absolute_error.len() != SENSE_FEATURES
             || self.replay.len() > REPLAY_CAPACITY
+            || self.learning_divisor < 1
+            || self.update_period < 1
+            || self.rehearsal_batch < 1
+            || self.rehearsal_batch > REPLAY_CAPACITY
             || self.replay_cursor >= REPLAY_CAPACITY
             || self.sequence_step >= TRUNCATED_SEQUENCE
             || self.replay.iter().any(|sample| {
@@ -146,7 +159,7 @@ impl RecurrentPredictor {
             self.remember(core::array::from_fn(|feature| {
                 target[feature].saturating_sub(self.previous_senses[feature])
             }));
-            if decision_tick > 0 && decision_tick.is_multiple_of(UPDATE_CADENCE) {
+            if decision_tick > 0 && decision_tick.is_multiple_of(self.update_period) {
                 self.train_replay();
             }
         }
@@ -193,9 +206,9 @@ impl RecurrentPredictor {
             return;
         }
         // Evenly spaced deterministic rehearsal covers old and recent entries without RNG state.
-        for batch in 0..UPDATE_BATCH {
-            let index =
-                (self.replay_cursor + batch * self.replay.len() / UPDATE_BATCH) % self.replay.len();
+        for batch in 0..self.rehearsal_batch {
+            let index = (self.replay_cursor + batch * self.replay.len() / self.rehearsal_batch)
+                % self.replay.len();
             let sample = self.replay[index].clone();
             self.train_sample(&sample);
         }
@@ -213,7 +226,7 @@ impl RecurrentPredictor {
                     i32::from(sample.latent[input])
                 };
                 let index = output * (LATENT_FEATURES + 1) + input;
-                let gradient = (error * activation / LEARNING_DIVISOR).clamp(-16, 16);
+                let gradient = (error * activation / self.learning_divisor).clamp(-16, 16);
                 let velocity = (i32::from(self.momentum[index]) * 3 / 4 + gradient).clamp(-64, 64);
                 self.momentum[index] = velocity as i16;
                 self.decoder_delta[index] =
@@ -375,7 +388,32 @@ impl RecurrentPredictor {
                 0x4C49_4645,
             );
         }
+        // Tuning that differs from the legacy constants is part of the individual; the legacy
+        // tuning leaves every fingerprint exactly as it was.
+        if self.learning_divisor != LEARNING_DIVISOR
+            || self.update_period != UPDATE_CADENCE
+            || self.rehearsal_batch != UPDATE_BATCH
+        {
+            result = derive(
+                result,
+                self.learning_divisor.cast_unsigned().into(),
+                (self.update_period << 32) | self.rehearsal_batch as u64,
+                0x5455_4E45,
+            );
+        }
         result
+    }
+
+    /// Applies the developmentally expressed update tuning. Acquired state is untouched.
+    pub fn set_tuning(
+        &mut self,
+        learning_divisor: i32,
+        update_period: u64,
+        rehearsal_batch: usize,
+    ) {
+        self.learning_divisor = learning_divisor.max(1);
+        self.update_period = update_period.max(1);
+        self.rehearsal_batch = rehearsal_batch.clamp(1, REPLAY_CAPACITY);
     }
 }
 

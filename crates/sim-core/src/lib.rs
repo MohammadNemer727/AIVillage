@@ -25,6 +25,7 @@ use sim_kernels::{
 mod backend;
 mod checkpoint;
 pub mod environment;
+pub mod phenotype;
 pub mod runtime;
 
 pub use backend::{

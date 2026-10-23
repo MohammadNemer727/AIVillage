@@ -11,7 +11,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use sim_core::runtime::{AffordanceConfig, EpisodicConfig, ExperimentMode, SpatialConfig};
+use sim_core::{
+    phenotype::ExpressionVersion,
+    runtime::{AffordanceConfig, EpisodicConfig, ExperimentMode, SpatialConfig},
+};
 use sim_format::{PopulationBlockReason, PopulationLifecycleEvent};
 use sim_luanti::{
     Bridge, LifecycleConfig, PopulationCoordinator, TraceRecord, ablation, benchmark,
@@ -139,6 +142,9 @@ fn founder_bridge(
         if let Some(config) = spatial_config()? {
             population.set_spatial_config(config);
         }
+        if let Some(version) = expression_config()? {
+            population.set_expression(version);
+        }
         eprintln!(
             "sim-luanti: continuing {} independently saved individuals from {}",
             population.manifest().individuals.len(),
@@ -146,18 +152,7 @@ fn founder_bridge(
         );
         return Ok(population);
     }
-    let mode = match std::env::var("SIM_LUANTI_MODE").as_deref() {
-        Ok("affordance") => ExperimentMode::AffordanceDiscovery,
-        Ok("homeostatic") => ExperimentMode::Homeostatic,
-        Ok("wander") => ExperimentMode::Wander,
-        Ok("baseline") | Err(_) => ExperimentMode::PredictiveBaseline,
-        Ok(value) => {
-            return Err(format!(
-                "SIM_LUANTI_MODE must be baseline, affordance, homeostatic or wander, got {value}"
-            )
-            .into());
-        }
-    };
+    let mode = experiment_mode()?;
     eprintln!("sim-luanti mode: {mode:?}");
     // Optional affordance learner settings as JSON; omitted fields keep their defaults, e.g.
     // SIM_LUANTI_AFFORDANCE='{"rule":"LearningProgress","action_horizon":16}'.
@@ -214,6 +209,9 @@ fn founder_bridge(
     if let Some(config) = spatial_config()? {
         bridge.set_spatial_config(config);
     }
+    if let Some(version) = expression_config()? {
+        bridge.set_expression(version);
+    }
     if let Some(path) = population_path {
         bridge.set_lifecycle_config(lifecycle_config)?;
         bridge.bind_storage(path)?;
@@ -230,6 +228,35 @@ fn episodic_config() -> Result<Option<EpisodicConfig>, Box<dyn std::error::Error
             )
         })?)),
     }
+}
+
+/// The action-selection policy from `SIM_LUANTI_MODE`.
+fn experiment_mode() -> Result<ExperimentMode, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(match std::env::var("SIM_LUANTI_MODE").as_deref() {
+        Ok("affordance") => ExperimentMode::AffordanceDiscovery,
+        Ok("homeostatic") => ExperimentMode::Homeostatic,
+        Ok("wander") => ExperimentMode::Wander,
+        Ok("baseline") | Err(_) => ExperimentMode::PredictiveBaseline,
+        Ok(value) => {
+            return Err(format!(
+                "SIM_LUANTI_MODE must be baseline, affordance, homeostatic or wander, got {value}"
+            )
+            .into());
+        }
+    })
+}
+
+/// Genotype-to-phenotype map from `SIM_LUANTI_EXPRESSION`: `legacy` (the default) or `v2`.
+fn expression_config() -> Result<Option<ExpressionVersion>, Box<dyn std::error::Error + Send + Sync>>
+{
+    Ok(match std::env::var("SIM_LUANTI_EXPRESSION").as_deref() {
+        Err(_) => None,
+        Ok("legacy") => Some(ExpressionVersion::Legacy),
+        Ok("v2") => Some(ExpressionVersion::V2),
+        Ok(value) => {
+            return Err(format!("SIM_LUANTI_EXPRESSION must be legacy or v2; got {value}").into());
+        }
+    })
 }
 
 /// Spatial memory from `SIM_LUANTI_SPATIAL`: `off`, `on`, or the sham `scrambled`.

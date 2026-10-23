@@ -13,6 +13,7 @@ use crate::{
         DeadChannels, EnvironmentAdapter, EnvironmentCapabilities, EnvironmentObservation,
         EnvironmentTransition, PrimitiveAction, TransportStatus,
     },
+    phenotype::{DevelopmentalPhenotype, ExpressionVersion},
     scale_v2_orientation_turn,
 };
 
@@ -603,6 +604,9 @@ pub struct AgentRuntimeState {
     /// Private bounded dead-reckoned place memory and its ablation switches.
     #[serde(default)]
     pub spatial_memory: SpatialMemory,
+    /// The developmentally expressed parameters this individual was built with.
+    #[serde(default)]
+    pub phenotype: DevelopmentalPhenotype,
 }
 
 /// Rejected observation; the runtime state is unchanged.
@@ -660,6 +664,10 @@ impl AgentRuntime {
                 )),
                 episodic_memory: EpisodicMemory::default(),
                 spatial_memory: SpatialMemory::default(),
+                phenotype: DevelopmentalPhenotype::legacy_constants(
+                    developmental_config.connection_stride,
+                    developmental_config.plasticity_scale,
+                ),
             },
         )
     }
@@ -737,6 +745,29 @@ impl AgentRuntime {
     /// changing the experience available to either arm.
     pub const fn set_episodic_config(&mut self, config: EpisodicConfig) {
         self.state.episodic_memory.config = config;
+    }
+
+    /// Builds this individual's learning machinery from its expressed phenotype: predictor update
+    /// tuning and episodic salience and retention. Acquired state is untouched, and under
+    /// [`ExpressionVersion::Legacy`] every value is the legacy constant.
+    pub fn set_phenotype(&mut self, phenotype: DevelopmentalPhenotype) {
+        self.state.recurrent_predictor.set_tuning(
+            i32::from(phenotype.predictor_learning_divisor),
+            u64::from(phenotype.predictor_update_period),
+            usize::from(phenotype.predictor_rehearsal_batch),
+        );
+        let legacy = phenotype.version == ExpressionVersion::Legacy;
+        self.state.episodic_memory.surprise_write = if legacy {
+            0
+        } else {
+            phenotype.episodic_surprise_write
+        };
+        self.state.episodic_memory.initial_retention = if legacy {
+            0
+        } else {
+            phenotype.episodic_retention
+        };
+        self.state.phenotype = phenotype;
     }
 
     /// Sets the spatial-memory ablations; remembered places are retained.
@@ -838,6 +869,12 @@ impl AgentRuntime {
                 baseline_action,
             ),
         };
+        // The body carries the action out with its own developmentally expressed strength,
+        // movement threshold and drives. Legacy expression leaves the action untouched.
+        action = self
+            .state
+            .phenotype
+            .shape_action(action, observation.interoception);
         let pre_episodic_action = action;
         let (recommended_action, mut episodic_policy) =
             EpisodicMemory::policy_decision(&policy_summaries, action);
@@ -1077,6 +1114,8 @@ struct StateRepr {
     episodic_memory: EpisodicMemory,
     #[serde(default)]
     spatial_memory: SpatialMemory,
+    #[serde(default)]
+    phenotype: DevelopmentalPhenotype,
 }
 
 impl From<AgentRuntimeState> for StateRepr {
@@ -1100,6 +1139,7 @@ impl From<AgentRuntimeState> for StateRepr {
             recurrent_predictor: state.recurrent_predictor,
             episodic_memory: state.episodic_memory,
             spatial_memory: state.spatial_memory,
+            phenotype: state.phenotype,
         }
     }
 }
@@ -1140,6 +1180,9 @@ impl TryFrom<StateRepr> for AgentRuntimeState {
         repr.recurrent_predictor.validate()?;
         repr.episodic_memory.migrate_and_validate()?;
         repr.spatial_memory.migrate_and_validate()?;
+        if !repr.phenotype.is_in_range() {
+            return Err("developmental phenotype is out of range".to_owned());
+        }
         if (repr.experiment_mode == ExperimentMode::Homeostatic) != repr.homeostasis.active() {
             return Err("homeostatic state does not match the experiment mode".to_owned());
         }
@@ -1163,6 +1206,7 @@ impl TryFrom<StateRepr> for AgentRuntimeState {
             recurrent_predictor: repr.recurrent_predictor,
             episodic_memory: repr.episodic_memory,
             spatial_memory: repr.spatial_memory,
+            phenotype: repr.phenotype,
         })
     }
 }

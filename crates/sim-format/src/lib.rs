@@ -15,6 +15,7 @@ use std::{collections::BTreeMap, error::Error, fmt};
 use serde::{Deserialize, Serialize};
 use sim_core::{
     CheckpointError, DevelopmentalGenome, World, WorldCheckpoint,
+    phenotype::ExpressionVersion,
     runtime::{AgentRuntime, AgentRuntimeState},
 };
 
@@ -249,6 +250,9 @@ pub struct PopulationManifest {
     /// Reserve removed in the same transaction as a successful birth.
     #[serde(default)]
     pub reproductive_cost: u16,
+    /// Which genotype-to-phenotype map the population's individuals are expressed with.
+    #[serde(default)]
+    pub expression: ExpressionVersion,
     /// Live individuals in canonical identity order.
     pub individuals: Vec<PopulationIndividual>,
     /// Ordered lifecycle audit, including denied births.

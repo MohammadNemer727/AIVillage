@@ -10,6 +10,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sim_core::{
     DevelopmentalGenome,
+    phenotype::ExpressionVersion,
     runtime::{AffordanceConfig, AgentRuntime, ExperimentMode},
 };
 use sim_format::{
@@ -143,6 +144,7 @@ pub struct PopulationCoordinator {
     trace: Vec<TraceRecord>,
     lifecycle: Vec<LifecycleEvent>,
     lifecycle_config: LifecycleConfig,
+    expression: ExpressionVersion,
     processed_events: BTreeMap<String, PopulationCommandResult>,
     storage_directory: Option<PathBuf>,
 }
@@ -348,6 +350,7 @@ impl PopulationCoordinator {
             trace: Vec::new(),
             lifecycle: Vec::new(),
             lifecycle_config: LifecycleConfig::default(),
+            expression: ExpressionVersion::Legacy,
             processed_events: BTreeMap::new(),
             storage_directory: None,
         })
@@ -391,9 +394,42 @@ impl PopulationCoordinator {
                 reproductive_cost: 0,
                 mutation_enabled: true,
             },
+            expression: ExpressionVersion::Legacy,
             processed_events: BTreeMap::new(),
             storage_directory: None,
         }
+    }
+
+    /// Expresses every living individual, and every future birth, with `version`.
+    ///
+    /// Acquired state is untouched; only the developmental parameters are (re)built from each
+    /// genome. Under [`ExpressionVersion::Legacy`] nothing observable changes.
+    pub fn set_expression(&mut self, version: ExpressionVersion) {
+        self.expression = version;
+        for individual in self.individuals.values_mut() {
+            individual
+                .runtime
+                .set_phenotype(individual.genome.phenotype(version));
+        }
+    }
+
+    /// Reproductive maturity, reserve threshold and birth cost for an individual with `genome`:
+    /// the configured values under legacy expression, the individual's own under v2.
+    fn life_history(&self, genome: &DevelopmentalGenome) -> (u64, u16, u16) {
+        let config = self.lifecycle_config;
+        if self.expression == ExpressionVersion::Legacy {
+            return (
+                config.maturity_decisions,
+                config.minimum_reproductive_reserve,
+                config.reproductive_cost,
+            );
+        }
+        let phenotype = genome.phenotype(self.expression);
+        (
+            config.maturity_decisions * u64::from(phenotype.maturity_percent) / 100,
+            phenotype.reserve_threshold,
+            phenotype.reproductive_cost,
+        )
     }
 
     /// Applies lifecycle eligibility and mutation settings.
@@ -490,6 +526,7 @@ impl PopulationCoordinator {
             maturity_decisions: self.lifecycle_config.maturity_decisions,
             minimum_reproductive_reserve: self.lifecycle_config.minimum_reproductive_reserve,
             reproductive_cost: self.lifecycle_config.reproductive_cost,
+            expression: self.expression,
             individuals: self
                 .individuals
                 .iter()
@@ -524,6 +561,12 @@ impl PopulationCoordinator {
         }
         let slot_available =
             self.individuals.len() < usize::try_from(self.capacity).unwrap_or(usize::MAX);
+        let maturity = self
+            .individuals
+            .get(&request.agent_id)
+            .map_or(self.lifecycle_config.maturity_decisions, |individual| {
+                self.life_history(&individual.genome).0
+            });
         let Some(individual) = self.individuals.get_mut(&request.agent_id) else {
             return Err(BridgeError::UnknownIndividual(request.agent_id));
         };
@@ -561,9 +604,8 @@ impl PopulationCoordinator {
             reproduction: Some(ReproductionTransitionAudit {
                 signal_0: transition.action.signals[0],
                 decision_tick: transition.decision_tick,
-                maturity_decisions: self.lifecycle_config.maturity_decisions,
-                mature: individual.runtime.state().decision_tick
-                    >= self.lifecycle_config.maturity_decisions,
+                maturity_decisions: maturity,
+                mature: individual.runtime.state().decision_tick >= maturity,
                 reproductive_reserve: individual.reproductive_reserve,
                 fullness: transition
                     .observation
@@ -636,7 +678,13 @@ impl PopulationCoordinator {
             generation,
             self.lifecycle_config.mutation_enabled,
         );
-        let runtime = newborn_runtime(self.seed, child_id, &genome, &parent.runtime);
+        let runtime = newborn_runtime(
+            self.seed,
+            child_id,
+            &genome,
+            &parent.runtime,
+            self.expression,
+        );
         self.individuals.insert(
             child_id,
             Individual {
@@ -767,21 +815,22 @@ impl PopulationCoordinator {
                 PopulationBlockReason::BiologicalEligibility,
             ));
         };
+        let (maturity, minimum_reserve, cost) = self.life_history(&snapshot.genome);
         self.lifecycle.push(LifecycleEvent::ReproductionAttempt {
             event_id: command.event_id.clone(),
             parent_id,
             body_slot,
             decision_tick: snapshot.runtime.state().decision_tick,
             signal_0: snapshot.reproduction_signal,
-            maturity_decisions: self.lifecycle_config.maturity_decisions,
+            maturity_decisions: maturity,
             reproductive_reserve: snapshot.reproductive_reserve,
             slot_available,
         });
         let eligible = self.individuals.get(&parent_id).is_some_and(|parent| {
             parent.body_slot.0 == body_slot
-                && parent.runtime.state().decision_tick >= self.lifecycle_config.maturity_decisions
-                && parent.reproductive_reserve >= self.lifecycle_config.minimum_reproductive_reserve
-                && parent.reproductive_reserve >= self.lifecycle_config.reproductive_cost
+                && parent.runtime.state().decision_tick >= maturity
+                && parent.reproductive_reserve >= minimum_reserve
+                && parent.reproductive_reserve >= cost
                 && parent.reproduction_signal > 0
         });
         if !eligible {
@@ -819,10 +868,14 @@ impl PopulationCoordinator {
             generation,
             self.lifecycle_config.mutation_enabled,
         );
-        let runtime = newborn_runtime(self.seed, child_id, &genome, &parent.runtime);
-        parent.reproductive_reserve = parent
-            .reproductive_reserve
-            .saturating_sub(self.lifecycle_config.reproductive_cost);
+        let runtime = newborn_runtime(
+            self.seed,
+            child_id,
+            &genome,
+            &parent.runtime,
+            self.expression,
+        );
+        parent.reproductive_reserve = parent.reproductive_reserve.saturating_sub(cost);
         parent.reproduction_signal = 0;
         let reserve_after = parent.reproductive_reserve;
         self.individuals.insert(
@@ -844,7 +897,7 @@ impl PopulationCoordinator {
             parent_id,
             generation,
             kind: BirthKind::Asexual,
-            reproductive_cost: self.lifecycle_config.reproductive_cost,
+            reproductive_cost: cost,
         });
         Ok(PopulationCommandResult::Born {
             individual_id: child_id,
@@ -981,6 +1034,7 @@ impl PopulationCoordinator {
                 reproductive_cost: manifest.reproductive_cost,
                 mutation_enabled: manifest.mutation_enabled,
             },
+            expression: manifest.expression,
             processed_events: manifest.processed_events,
             storage_directory: Some(directory.to_path_buf()),
         })
@@ -992,6 +1046,7 @@ fn newborn_runtime(
     child_id: u64,
     genome: &DevelopmentalGenome,
     parent: &AgentRuntime,
+    expression: ExpressionVersion,
 ) -> AgentRuntime {
     let mode = parent.state().experiment_mode;
     let mut newborn = if mode == ExperimentMode::AffordanceDiscovery {
@@ -1006,6 +1061,7 @@ fn newborn_runtime(
         AgentRuntime::new_with_mode(seed, child_id, genome.default_brain_config(), mode)
     };
     newborn.set_episodic_config(parent.state().episodic_memory.config);
+    newborn.set_phenotype(genome.phenotype(expression));
     newborn
 }
 
@@ -1315,6 +1371,7 @@ mod tests {
             child,
             &population.individuals[&child].genome,
             population.runtime_for(20).unwrap(),
+            ExpressionVersion::Legacy,
         );
         let child_runtime = population.runtime_for(child).unwrap();
         let child_state = child_runtime.state();

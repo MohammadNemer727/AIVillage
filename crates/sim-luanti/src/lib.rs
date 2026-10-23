@@ -39,6 +39,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sim_core::{
     environment::{EnvironmentObservation, EnvironmentTransition, PrimitiveAction},
+    phenotype::ExpressionVersion,
     runtime::{
         AffordanceConfig, AgentRuntime, EpisodicConfig, EpisodicPolicyDecision, EpisodicWrite,
         ExperimentMode, FrozenPhysiology, RuntimeError, SpatialConfig, SpatialDecision,
@@ -114,6 +115,9 @@ pub struct Diagnostics {
     /// Independent episodic prediction and action-selection ablations.
     #[serde(default)]
     pub episodic_config: EpisodicConfig,
+    /// Which genotype-to-phenotype map built this individual.
+    #[serde(default)]
+    pub expression: ExpressionVersion,
     /// Spatial-memory ablations.
     #[serde(default)]
     pub spatial_config: SpatialConfig,
@@ -308,6 +312,7 @@ fn response_for(
             episodic_fingerprint: runtime.state().episodic_memory.fingerprint(),
             episodic_events: runtime.state().episodic_memory.events.len(),
             episodic_config: runtime.state().episodic_memory.config,
+            expression: runtime.state().phenotype.version,
             spatial_config: runtime.state().spatial_memory.config,
             spatial_fingerprint: runtime.state().spatial_memory.fingerprint(),
             spatial: transition.spatial,
@@ -364,12 +369,13 @@ pub fn replay_trace(
             received: record.request.protocol,
         });
     }
-    let (mode, affordance, episodic, spatial) = records.first().map_or(
+    let (mode, affordance, episodic, spatial, expression) = records.first().map_or(
         (
             ExperimentMode::PredictiveBaseline,
             None,
             EpisodicConfig::default(),
             SpatialConfig::default(),
+            ExpressionVersion::Legacy,
         ),
         |record| {
             let diagnostics = &record.response.diagnostics;
@@ -378,6 +384,7 @@ pub fn replay_trace(
                 diagnostics.affordance_config,
                 diagnostics.episodic_config,
                 diagnostics.spatial_config,
+                diagnostics.expression,
             )
         },
     );
@@ -386,6 +393,7 @@ pub fn replay_trace(
             || record.response.diagnostics.affordance_config != affordance
             || record.response.diagnostics.episodic_config != episodic
             || record.response.diagnostics.spatial_config != spatial
+            || record.response.diagnostics.expression != expression
     }) {
         return Err(BridgeError::Replay);
     }
@@ -400,6 +408,7 @@ pub fn replay_trace(
     };
     runtime.set_episodic_config(episodic);
     runtime.set_spatial_config(spatial);
+    runtime.set_phenotype(founder.genome.phenotype(expression));
     for record in records {
         let transition = runtime
             .step(with_body_clock(&record.request))
@@ -717,6 +726,48 @@ mod tests {
             pain: u16::try_from(sequence % 2 * 40).expect("small"),
         });
         felt
+    }
+
+    fn hungry_and_hurt(sequence: u64) -> BridgeRequest {
+        let mut body = felt(sequence);
+        if let Some(felt) = body.observation.interoception.as_mut() {
+            felt.fullness = if sequence.is_multiple_of(3) { 40 } else { 200 };
+            felt.pain = if sequence.is_multiple_of(5) { 60 } else { 0 };
+        }
+        body
+    }
+
+    fn actions(expression: ExpressionVersion) -> (Vec<PrimitiveAction>, Vec<TraceRecord>) {
+        let mut bridge = Bridge::new_with_mode(4, 9, ExperimentMode::Wander);
+        bridge.set_expression(expression);
+        let actions = (0..120)
+            .map(|sequence| {
+                bridge
+                    .handle(hungry_and_hurt(sequence))
+                    .expect("in sequence")
+                    .action
+            })
+            .collect();
+        (actions, bridge.drain_trace())
+    }
+
+    #[test]
+    fn expression_changes_what_the_body_does_and_both_versions_replay_exactly() {
+        let (legacy, legacy_trace) = actions(ExpressionVersion::Legacy);
+        let (v2, v2_trace) = actions(ExpressionVersion::V2);
+        assert_ne!(
+            legacy, v2,
+            "an expressed genome acts differently from the legacy constants"
+        );
+        replay_trace(4, 9, &legacy_trace).expect("legacy replays");
+        replay_trace(4, 9, &v2_trace).expect("v2 replays, so the expression round-trips");
+        assert_eq!(
+            v2_trace[0].response.diagnostics.expression,
+            ExpressionVersion::V2
+        );
+        let mut tampered = v2_trace;
+        tampered[0].response.diagnostics.expression = ExpressionVersion::Legacy;
+        assert_eq!(replay_trace(4, 9, &tampered), Err(BridgeError::Replay));
     }
 
     #[test]
