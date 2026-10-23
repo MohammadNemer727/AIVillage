@@ -1,0 +1,1844 @@
+{
+  "schema_version": 1,
+  "protocol": "spatial-8c-navigation",
+  "preregistration_sha256": "493e2a8b55c99f41c106ff1be4a8f4c81630205006636b894ea42a6cf303a061",
+  "git_revision_of_snapshot": "77b857b0339bf4ea3b7b1f95b075fb2894a81ba3",
+  "open_seeds": [
+    9201,
+    9203,
+    9207,
+    9209,
+    9213,
+    9217,
+    9219,
+    9223,
+    9229,
+    9231,
+    9233,
+    9239
+  ],
+  "wall_seeds": [
+    9241,
+    9243,
+    9247,
+    9249,
+    9251,
+    9253,
+    9257,
+    9259
+  ],
+  "infrastructure_reruns": [],
+  "validity": {
+    "all_traces_replay_exactly": true,
+    "all_runs_complete": true,
+    "median_dead_reckoning_error_blocks": 7.945061996756678,
+    "valid": true
+  },
+  "primary_S_vs_B": {
+    "fed_decisions": {
+      "B": 2848,
+      "S": 3890,
+      "X": 3038
+    },
+    "relief_entries": {
+      "B": 12,
+      "S": 24,
+      "X": 14
+    },
+    "harm_entries": {
+      "B": 0,
+      "S": 2,
+      "X": 0
+    },
+    "fed_deltas_S_minus_B": [
+      49,
+      64,
+      170,
+      180,
+      56,
+      6,
+      40,
+      129,
+      0,
+      139,
+      156,
+      53
+    ],
+    "positive_pairs": 11,
+    "negative_pairs": 0,
+    "median_dead_reckoning_error_blocks": 7.945061996756678,
+    "steering_decisions": 3035,
+    "passes": false
+  },
+  "sham_S_vs_X": {
+    "fed_deltas_S_minus_X": [
+      -122,
+      84,
+      190,
+      180,
+      56,
+      6,
+      40,
+      129,
+      0,
+      139,
+      156,
+      -6
+    ],
+    "positive_pairs": 9,
+    "negative_pairs": 2,
+    "passes": false
+  },
+  "wall_report_only": {
+    "fed_decisions": {
+      "B": 1912,
+      "S": 2980
+    },
+    "relief_entries": {
+      "B": 8,
+      "S": 18
+    },
+    "fed_deltas_S_minus_B": [
+      0,
+      124,
+      224,
+      73,
+      206,
+      135,
+      39,
+      267
+    ]
+  },
+  "bounded": {
+    "max_places": 3
+  },
+  "decision": "rejected",
+  "open": [
+    {
+      "seed": 9201,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 89,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.1,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9201,
+        "start_milli": {
+          "x": 2,
+          "z": 100
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 63.30892608354083,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 75.57146501821968,
+        "trace_sha256": "f6289f72652a5f6d44d9b0d06b37881092612ca61a66f3a86725922dd8ef468b"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 89,
+        "decisions": 600,
+        "fed_decisions": 288,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.1,
+        "relief_entries": 2,
+        "relief_events": 11,
+        "schema_version": 1,
+        "seed": 9201,
+        "start_milli": {
+          "x": 2,
+          "z": 100
+        },
+        "starved_decisions": 150,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 5.172438979823736,
+        "steering_decisions": 309,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 48.38791725214054,
+        "trace_sha256": "30714a11a7ccef8024b066f6ad2e08d6180994e1d18d0fdb5faefdcbfc0f943b"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 89,
+        "decisions": 600,
+        "fed_decisions": 410,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.1,
+        "relief_entries": 2,
+        "relief_events": 11,
+        "schema_version": 1,
+        "seed": 9201,
+        "start_milli": {
+          "x": 2,
+          "z": 100
+        },
+        "starved_decisions": 28,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 9.706125203690416,
+        "steering_decisions": 190,
+        "max_places": 2,
+        "max_distance_from_start_blocks": 48.849600387311256,
+        "trace_sha256": "ddf60d46f5340f8728b02ae20a13a26c6bc24eab35a6e05bb5f397bbf342d7e7"
+      }
+    },
+    {
+      "seed": 9203,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 2,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.1,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9203,
+        "start_milli": {
+          "x": 1099,
+          "z": 38
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 55.693357149189666,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 80.18913343464936,
+        "trace_sha256": "fc4c951a5828c0c5fced2d4a024d3e9f834943d50890e5f174253e3c81fd647b"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 2,
+        "decisions": 600,
+        "fed_decisions": 303,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.1,
+        "relief_entries": 2,
+        "relief_events": 11,
+        "schema_version": 1,
+        "seed": 9203,
+        "start_milli": {
+          "x": 1099,
+          "z": 38
+        },
+        "starved_decisions": 135,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 6.436340730570437,
+        "steering_decisions": 294,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 64.894574765538,
+        "trace_sha256": "28cf68c883b3f239ff502ff504254382e086cef39c0f5bda7bbaad6d51ea8d9d"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 2,
+        "decisions": 600,
+        "fed_decisions": 219,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.1,
+        "relief_entries": 1,
+        "relief_events": 3,
+        "schema_version": 1,
+        "seed": 9203,
+        "start_milli": {
+          "x": 1099,
+          "z": 38
+        },
+        "starved_decisions": 221,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 10.121021489948532,
+        "steering_decisions": 356,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 62.81910506366673,
+        "trace_sha256": "86d80cbbefe7f011f217a69f0ac6f91081f0a246480146188e2f48abb5925bec"
+      }
+    },
+    {
+      "seed": 9207,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 161,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 10,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.3,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9207,
+        "start_milli": {
+          "x": -1229,
+          "z": 423
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 52.40454045214022,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 84.2824958932755,
+        "trace_sha256": "4174c2817821efb1be6e214d665e0099cfde035cd71f9d6f7f82e1b40b9ab2cf"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 161,
+        "decisions": 600,
+        "fed_decisions": 409,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 10,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.3,
+        "relief_entries": 2,
+        "relief_events": 10,
+        "schema_version": 1,
+        "seed": 9207,
+        "start_milli": {
+          "x": -1229,
+          "z": 423
+        },
+        "starved_decisions": 29,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 3.021412392800962,
+        "steering_decisions": 191,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 52.00400753788115,
+        "trace_sha256": "6ffaadbd39ca26fb10b90495e72b3197ce91c62779ea157f6df3bf689c53dc5e"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 161,
+        "decisions": 600,
+        "fed_decisions": 219,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 10,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.3,
+        "relief_entries": 1,
+        "relief_events": 3,
+        "schema_version": 1,
+        "seed": 9207,
+        "start_milli": {
+          "x": -1229,
+          "z": 423
+        },
+        "starved_decisions": 221,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 4.493523666916443,
+        "steering_decisions": 291,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 52.43726782546933,
+        "trace_sha256": "0dcc87e9316261a005362ec79b7be84e1b4856cbede97aa6f912fd34fc023624"
+      }
+    },
+    {
+      "seed": 9209,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 44,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.7,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9209,
+        "start_milli": {
+          "x": 504,
+          "z": 486
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 59.21393408254164,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 83.12329822618928,
+        "trace_sha256": "26d1c223ff33a25209cfed3d80a40bbca6ca789a722670b868120f129730eaac"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 44,
+        "decisions": 600,
+        "fed_decisions": 419,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.7,
+        "relief_entries": 2,
+        "relief_events": 11,
+        "schema_version": 1,
+        "seed": 9209,
+        "start_milli": {
+          "x": 504,
+          "z": 486
+        },
+        "starved_decisions": 19,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 4.321393875684361,
+        "steering_decisions": 180,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 60.28049497142505,
+        "trace_sha256": "8babc34cba6932b4932f476d23606a001da5769f16135ae4770ed3097e3d6b42"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 44,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.7,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9209,
+        "start_milli": {
+          "x": 504,
+          "z": 486
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 2.769662253777525,
+        "steering_decisions": 271,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 60.08421972531557,
+        "trace_sha256": "98bff0a3165f94f16cfbaaf247fedaf5b3e416ecd16c66d3422337ada1858f74"
+      }
+    },
+    {
+      "seed": 9213,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 293,
+        "decisions": 600,
+        "fed_decisions": 259,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.5,
+        "relief_entries": 1,
+        "relief_events": 5,
+        "schema_version": 1,
+        "seed": 9213,
+        "start_milli": {
+          "x": 195,
+          "z": -460
+        },
+        "starved_decisions": 181,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 57.13157451129226,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 66.80753599707147,
+        "trace_sha256": "fea156d4c593730add211e779c6decced8e2e790d746b4de2e1c1c5eb650beb9"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 293,
+        "decisions": 600,
+        "fed_decisions": 315,
+        "first_relief_decision": 1,
+        "harm_decisions": 8,
+        "harm_distance": 9,
+        "harm_entries": 1,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.5,
+        "relief_entries": 2,
+        "relief_events": 11,
+        "schema_version": 1,
+        "seed": 9213,
+        "start_milli": {
+          "x": 195,
+          "z": -460
+        },
+        "starved_decisions": 123,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 7.691247316086273,
+        "steering_decisions": 276,
+        "max_places": 2,
+        "max_distance_from_start_blocks": 68.44139555123054,
+        "trace_sha256": "84dc5fa2200c331d34250ecc8fa435f76484da18017ee054d16668b7b92a2136"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 293,
+        "decisions": 600,
+        "fed_decisions": 259,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.5,
+        "relief_entries": 1,
+        "relief_events": 5,
+        "schema_version": 1,
+        "seed": 9213,
+        "start_milli": {
+          "x": 195,
+          "z": -460
+        },
+        "starved_decisions": 181,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 13.13956913296627,
+        "steering_decisions": 300,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 74.57505754607233,
+        "trace_sha256": "e0d43aee79afddad42ddf21a53263faebb419dd323b0d57c563002bcba86a4ce"
+      }
+    },
+    {
+      "seed": 9217,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 75,
+        "decisions": 600,
+        "fed_decisions": 219,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 8,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.5,
+        "relief_entries": 1,
+        "relief_events": 3,
+        "schema_version": 1,
+        "seed": 9217,
+        "start_milli": {
+          "x": 129,
+          "z": 483
+        },
+        "starved_decisions": 221,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 59.873289455482826,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 83.2720992049558,
+        "trace_sha256": "ccc761f7700ac22c2a62e04cd6118b4e8eec44c3baba023d1ce66b305dce594b"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 75,
+        "decisions": 600,
+        "fed_decisions": 225,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 8,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.5,
+        "relief_entries": 2,
+        "relief_events": 9,
+        "schema_version": 1,
+        "seed": 9217,
+        "start_milli": {
+          "x": 129,
+          "z": 483
+        },
+        "starved_decisions": 213,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 11.098148317693768,
+        "steering_decisions": 356,
+        "max_places": 2,
+        "max_distance_from_start_blocks": 59.49139354562137,
+        "trace_sha256": "d47ac38aa5745e2a55dea0d548a8f56c2369784131c98b0e2ba658113a03fc65"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 75,
+        "decisions": 600,
+        "fed_decisions": 219,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 8,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.5,
+        "relief_entries": 1,
+        "relief_events": 3,
+        "schema_version": 1,
+        "seed": 9217,
+        "start_milli": {
+          "x": 129,
+          "z": 483
+        },
+        "starved_decisions": 221,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 6.79876885913913,
+        "steering_decisions": 358,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 59.15455067870941,
+        "trace_sha256": "89d8c434bfa270bde9351355c20f082c2e2f07820344ac7f5f072873fd04cbcc"
+      }
+    },
+    {
+      "seed": 9219,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 76,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 8,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9219,
+        "start_milli": {
+          "x": 242,
+          "z": 970
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 60.64879567705656,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 83.19411291672026,
+        "trace_sha256": "e0d902dda980e6bfd9d6f9602189c54f0223e179ceb670f4553b18ab07dff623"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 76,
+        "decisions": 600,
+        "fed_decisions": 279,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 8,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1,
+        "relief_entries": 3,
+        "relief_events": 9,
+        "schema_version": 1,
+        "seed": 9219,
+        "start_milli": {
+          "x": 242,
+          "z": 970
+        },
+        "starved_decisions": 159,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 13.061459866401616,
+        "steering_decisions": 264,
+        "max_places": 2,
+        "max_distance_from_start_blocks": 46.323038976302065,
+        "trace_sha256": "930c369de4d57c7fbf658bdb324b24106a1537952f60f3e38e2019226048fe89"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 76,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 8,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9219,
+        "start_milli": {
+          "x": 242,
+          "z": 970
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 2.732308631584514,
+        "steering_decisions": 271,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 53.59804627969195,
+        "trace_sha256": "580a678437b48894f23efed27242c08639283987d93420febbfa3c89079573a7"
+      }
+    },
+    {
+      "seed": 9223,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 300,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 10,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.9,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9223,
+        "start_milli": {
+          "x": 450,
+          "z": -779
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 68.56900796054609,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 82.83455993726291,
+        "trace_sha256": "7147541794554d60b502a599af9848ba289f4830c2b4eb8346741d67846eb3b9"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 300,
+        "decisions": 600,
+        "fed_decisions": 368,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 10,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.9,
+        "relief_entries": 2,
+        "relief_events": 9,
+        "schema_version": 1,
+        "seed": 9223,
+        "start_milli": {
+          "x": 450,
+          "z": -779
+        },
+        "starved_decisions": 70,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 12.830502791255043,
+        "steering_decisions": 192,
+        "max_places": 2,
+        "max_distance_from_start_blocks": 58.43617168329904,
+        "trace_sha256": "a193cb908ff17363af25e9da5ae552d84f21c128e4e996111c84f45b664275aa"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 300,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 10,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.9,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9223,
+        "start_milli": {
+          "x": 450,
+          "z": -779
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 3.9886391162901664,
+        "steering_decisions": 361,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 59.653604836589714,
+        "trace_sha256": "5b14c19840b0cc559a0c2360dd02a50c75e39bb5d6c92797c489072fa4549f17"
+      }
+    },
+    {
+      "seed": 9229,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 223,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.1,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9229,
+        "start_milli": {
+          "x": -804,
+          "z": -750
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 60.01278954131692,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 68.18543622358077,
+        "trace_sha256": "8f6e5a67da9cb6a38c39f8cb126a343328a87a669bfeba471a06277394f85e8e"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 223,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.1,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9229,
+        "start_milli": {
+          "x": -804,
+          "z": -750
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 10.830616649110981,
+        "steering_decisions": 271,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 60.13516170261788,
+        "trace_sha256": "76a67b27e8ac32f915383274da8e0165d00236f05872fde73e225a4eda2d1bbd"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 223,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.1,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9229,
+        "start_milli": {
+          "x": -804,
+          "z": -750
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 5.938482064255586,
+        "steering_decisions": 220,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 60.10744816576395,
+        "trace_sha256": "b17f4287454dc96630026b3781a64b752891db769b7eb58e77e24e795155249e"
+      }
+    },
+    {
+      "seed": 9231,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 37,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 11,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.3,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9231,
+        "start_milli": {
+          "x": 240,
+          "z": 181
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 59.050552387805794,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 65.33087883994827,
+        "trace_sha256": "d8278cde4d194d7eae9c70b3215a70965e202b978022225463484786a07e9524"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 37,
+        "decisions": 600,
+        "fed_decisions": 378,
+        "first_relief_decision": 1,
+        "harm_decisions": 16,
+        "harm_distance": 11,
+        "harm_entries": 1,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.3,
+        "relief_entries": 2,
+        "relief_events": 10,
+        "schema_version": 1,
+        "seed": 9231,
+        "start_milli": {
+          "x": 240,
+          "z": 181
+        },
+        "starved_decisions": 60,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 8.137111866389647,
+        "steering_decisions": 220,
+        "max_places": 3,
+        "max_distance_from_start_blocks": 68.57437653380453,
+        "trace_sha256": "321842787be57d5f570467f3218ecbf7697d6b095e0ee9aace9963e0e69fb899"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 37,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 11,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.3,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9231,
+        "start_milli": {
+          "x": 240,
+          "z": 181
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 5.011842101496546,
+        "steering_decisions": 323,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 66.5127848236713,
+        "trace_sha256": "5db4a2e44e11eb4f9c24918b45de09859b442b2bb88a3f921618d6dcd017a6f4"
+      }
+    },
+    {
+      "seed": 9233,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 344,
+        "decisions": 600,
+        "fed_decisions": 219,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.1,
+        "relief_entries": 1,
+        "relief_events": 3,
+        "schema_version": 1,
+        "seed": 9233,
+        "start_milli": {
+          "x": 1057,
+          "z": -303
+        },
+        "starved_decisions": 221,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 68.38971109816944,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 83.17687324010203,
+        "trace_sha256": "4e62998aa2a38d1af369bcdc1713667419e54ff881e002457a245826599b1be8"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 344,
+        "decisions": 600,
+        "fed_decisions": 375,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.1,
+        "relief_entries": 2,
+        "relief_events": 9,
+        "schema_version": 1,
+        "seed": 9233,
+        "start_milli": {
+          "x": 1057,
+          "z": -303
+        },
+        "starved_decisions": 63,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 7.75301212712371,
+        "steering_decisions": 204,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 56.3849816617865,
+        "trace_sha256": "4904d2c5b5dacd31b907fd0a11d6ac9956de84fc2541ef6206cef363ddfce0f0"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 344,
+        "decisions": 600,
+        "fed_decisions": 219,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.1,
+        "relief_entries": 1,
+        "relief_events": 3,
+        "schema_version": 1,
+        "seed": 9233,
+        "start_milli": {
+          "x": 1057,
+          "z": -303
+        },
+        "starved_decisions": 221,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 5.1490349581256485,
+        "steering_decisions": 291,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 56.33503983312695,
+        "trace_sha256": "527865dff62a93625bc29759074d4ada2bb2c27882c2798e4d9ffa1890e5efc3"
+      }
+    },
+    {
+      "seed": 9239,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 45,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.1,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9239,
+        "start_milli": {
+          "x": 71,
+          "z": 71
+        },
+        "starved_decisions": 201,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 73.71945886454309,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 83.70453255350036,
+        "trace_sha256": "498ba3a74a5dc8518aa8588bc6af5eade206b9f80470fba29bfe3be8986a16ed"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 45,
+        "decisions": 600,
+        "fed_decisions": 292,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.1,
+        "relief_entries": 2,
+        "relief_events": 10,
+        "schema_version": 1,
+        "seed": 9239,
+        "start_milli": {
+          "x": 71,
+          "z": 71
+        },
+        "starved_decisions": 146,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 12.998033120437876,
+        "steering_decisions": 278,
+        "max_places": 2,
+        "max_distance_from_start_blocks": 57.014901648604116,
+        "trace_sha256": "5543d3499816f4cfc512bea6d57a59b934c04df1f109732ce48c12b83becb04d"
+      },
+      "X": {
+        "arm": "scrambled",
+        "bearing_degrees": 45,
+        "decisions": 600,
+        "fed_decisions": 298,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.1,
+        "relief_entries": 2,
+        "relief_events": 10,
+        "schema_version": 1,
+        "seed": 9239,
+        "start_milli": {
+          "x": 71,
+          "z": 71
+        },
+        "starved_decisions": 140,
+        "variant": "open",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 1.6224990045277237,
+        "steering_decisions": 302,
+        "max_places": 2,
+        "max_distance_from_start_blocks": 56.5367417879736,
+        "trace_sha256": "31a09ec7dad9ff445a27af5db91ed1f1867ae22c7cfd568dfda21aba376e61f8"
+      }
+    }
+  ],
+  "wall": [
+    {
+      "seed": 9241,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 354,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 10,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.5,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9241,
+        "start_milli": {
+          "x": 497,
+          "z": -52
+        },
+        "starved_decisions": 201,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 68.0600067386004,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 84.09326266116685,
+        "trace_sha256": "86c5b5b97ebe8f7c3fa417f3073001fc670cea11a8b17092647e44eecb8e378e"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 354,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 10,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.5,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9241,
+        "start_milli": {
+          "x": 497,
+          "z": -52
+        },
+        "starved_decisions": 201,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 5.385154190478821,
+        "steering_decisions": 361,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 66.96771332515394,
+        "trace_sha256": "a68f8a55861fa606fa76bc9d88568ecde39841ae98cdb38fa834377a2b92fb6e"
+      }
+    },
+    {
+      "seed": 9243,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 249,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.9,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9243,
+        "start_milli": {
+          "x": -323,
+          "z": -840
+        },
+        "starved_decisions": 201,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 56.44971258384573,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 74.16624511191058,
+        "trace_sha256": "b85a8a6bc13b62db0c5c4736dbfbb67ea64a2892233ff08ffc8f05fd52fa6d56"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 249,
+        "decisions": 600,
+        "fed_decisions": 363,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.9,
+        "relief_entries": 2,
+        "relief_events": 13,
+        "schema_version": 1,
+        "seed": 9243,
+        "start_milli": {
+          "x": -323,
+          "z": -840
+        },
+        "starved_decisions": 75,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 5.351852483019314,
+        "steering_decisions": 235,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 35.55620601245302,
+        "trace_sha256": "0cded34a5d3b2f3d19cb15c5df5eeb856ed9a4df8d85bac586f99abe9db07fdb"
+      }
+    },
+    {
+      "seed": 9247,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 151,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.8,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9247,
+        "start_milli": {
+          "x": -1574,
+          "z": 873
+        },
+        "starved_decisions": 201,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 36.8382935068393,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 59.29199804358089,
+        "trace_sha256": "998e3740762bcf9dfca20ed169d9cc0aaaa4047b741a582d7467691b3ae41aa4"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 151,
+        "decisions": 600,
+        "fed_decisions": 463,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.8,
+        "relief_entries": 2,
+        "relief_events": 11,
+        "schema_version": 1,
+        "seed": 9247,
+        "start_milli": {
+          "x": -1574,
+          "z": 873
+        },
+        "starved_decisions": 0,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 3.1500147137608554,
+        "steering_decisions": 132,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 53.89730317001028,
+        "trace_sha256": "8260d58839f3e761d691426f3bce1f9a62691cd652b206707bae4e555e5e7c9d"
+      }
+    },
+    {
+      "seed": 9249,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 50,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 8,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.8,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9249,
+        "start_milli": {
+          "x": 514,
+          "z": 613
+        },
+        "starved_decisions": 201,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 61.143435505575034,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 78.38401932154282,
+        "trace_sha256": "6940a6576c6b4e8d8a3caa7c0860abfd613fa1c5cdf5313c34c22756d5ab47ce"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 50,
+        "decisions": 600,
+        "fed_decisions": 312,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 8,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.8,
+        "relief_entries": 2,
+        "relief_events": 9,
+        "schema_version": 1,
+        "seed": 9249,
+        "start_milli": {
+          "x": 514,
+          "z": 613
+        },
+        "starved_decisions": 126,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 5.482175161079392,
+        "steering_decisions": 260,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 63.03996678298617,
+        "trace_sha256": "1a87af7bc5d0c93cdedf4da777018ce57a6aabd51b4eb41946cdcf4623487c34"
+      }
+    },
+    {
+      "seed": 9251,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 346,
+        "decisions": 600,
+        "fed_decisions": 219,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.5,
+        "relief_entries": 1,
+        "relief_events": 3,
+        "schema_version": 1,
+        "seed": 9251,
+        "start_milli": {
+          "x": 485,
+          "z": -121
+        },
+        "starved_decisions": 221,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 63.92177793557162,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 84.13337274827391,
+        "trace_sha256": "f2c7c9213200ca4546cbe7580ce7fdc00eb25d853155226f52569e70ec79c6c4"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 346,
+        "decisions": 600,
+        "fed_decisions": 425,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 12,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 0.5,
+        "relief_entries": 2,
+        "relief_events": 10,
+        "schema_version": 1,
+        "seed": 9251,
+        "start_milli": {
+          "x": 485,
+          "z": -121
+        },
+        "starved_decisions": 13,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 6.683948934448874,
+        "steering_decisions": 168,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 52.244314389223256,
+        "trace_sha256": "fe4ef0f91ff0ee7545ce5739edaec4743fbb5bab7885bf44f2d1775546115987"
+      }
+    },
+    {
+      "seed": 9253,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 162,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 11,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.6,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9253,
+        "start_milli": {
+          "x": -1522,
+          "z": 494
+        },
+        "starved_decisions": 201,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 56.83082757949047,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 84.44341144221968,
+        "trace_sha256": "0976c852f736e6c69491c1a99784cfcef8850d0d6b0b9b0f7d5e5b134c33e914"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 162,
+        "decisions": 600,
+        "fed_decisions": 374,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 11,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.6,
+        "relief_entries": 2,
+        "relief_events": 10,
+        "schema_version": 1,
+        "seed": 9253,
+        "start_milli": {
+          "x": -1522,
+          "z": 494
+        },
+        "starved_decisions": 64,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 4.965778992262947,
+        "steering_decisions": 225,
+        "max_places": 1,
+        "max_distance_from_start_blocks": 39.37478250098659,
+        "trace_sha256": "5e3e2a9da3613fcf99efca2f6f7716d9dc74bdbcf227674f28564ebc1e681e88"
+      }
+    },
+    {
+      "seed": 9257,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 248,
+        "decisions": 600,
+        "fed_decisions": 239,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 9,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.5,
+        "relief_entries": 1,
+        "relief_events": 4,
+        "schema_version": 1,
+        "seed": 9257,
+        "start_milli": {
+          "x": -562,
+          "z": -1391
+        },
+        "starved_decisions": 201,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 61.79928781071196,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 80.81325005839079,
+        "trace_sha256": "a670100364ed0ca3d869e56bff93634321e19f61f0ccd7914686d5240987d43c"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 248,
+        "decisions": 600,
+        "fed_decisions": 278,
+        "first_relief_decision": 1,
+        "harm_decisions": 4,
+        "harm_distance": 9,
+        "harm_entries": 1,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.5,
+        "relief_entries": 2,
+        "relief_events": 10,
+        "schema_version": 1,
+        "seed": 9257,
+        "start_milli": {
+          "x": -562,
+          "z": -1391
+        },
+        "starved_decisions": 160,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 2.595013385395954,
+        "steering_decisions": 322,
+        "max_places": 2,
+        "max_distance_from_start_blocks": 61.34851607822312,
+        "trace_sha256": "168fc5b868433bcbc22394804d1f9911350c84a742089a25418c710829c96f03"
+      }
+    },
+    {
+      "seed": 9259,
+      "B": {
+        "arm": "off",
+        "bearing_degrees": 18,
+        "decisions": 600,
+        "fed_decisions": 259,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 11,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.6,
+        "relief_entries": 1,
+        "relief_events": 5,
+        "schema_version": 1,
+        "seed": 9259,
+        "start_milli": {
+          "x": 1522,
+          "z": 494
+        },
+        "starved_decisions": 181,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 21.009332582431192,
+        "steering_decisions": 0,
+        "max_places": 0,
+        "max_distance_from_start_blocks": 79.38752672806982,
+        "trace_sha256": "de1f128b014b927d010ef6d87f93256a3d52ba4b6d72a25132fd296b07427b11"
+      },
+      "S": {
+        "arm": "on",
+        "bearing_degrees": 18,
+        "decisions": 600,
+        "fed_decisions": 526,
+        "first_relief_decision": 1,
+        "harm_decisions": 0,
+        "harm_distance": 11,
+        "harm_entries": 0,
+        "protocol": "spatial-8c-navigation",
+        "relief_centre_milli": {
+          "x": 0,
+          "z": 0
+        },
+        "relief_distance": 1.6,
+        "relief_entries": 5,
+        "relief_events": 12,
+        "schema_version": 1,
+        "seed": 9259,
+        "start_milli": {
+          "x": 1522,
+          "z": 494
+        },
+        "starved_decisions": 0,
+        "variant": "wall",
+        "replayed_exactly": true,
+        "dead_reckoning_error_blocks_median": 4.5508665108965785,
+        "steering_decisions": 74,
+        "max_places": 2,
+        "max_distance_from_start_blocks": 58.89206198631527,
+        "trace_sha256": "69862338e4c3436680c8cfb0afb66c2419a6eecfae7aab512b12b2c4fccdd813"
+      }
+    }
+  ]
+}
