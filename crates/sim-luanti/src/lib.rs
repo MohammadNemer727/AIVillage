@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod ablation;
 pub mod benchmark;
 pub mod contingency;
 pub mod episodic_eval;

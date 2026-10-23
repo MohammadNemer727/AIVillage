@@ -1,15 +1,16 @@
 #!/usr/bin/env sh
-# One untouched real VoxeLibre arm of episodic-policy-live-choice-v4.
+# One untouched real VoxeLibre arm of an episodic live-choice protocol (v4, v5, Experiment 003).
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 repo=$(CDPATH= cd -- "$root/../.." && pwd)
 world=${1:?world required}
-arm=${2:?off or policy required}
+arm=${2:?off, policy, prediction, or both required}
 seed=${3:?seed required}
 bridge_port=${4:?bridge port required}
 server_port=${5:?server port required}
-case "$arm" in off|policy) ;; *) echo "arm must be off or policy" >&2; exit 2;; esac
+case "$arm" in off|policy|prediction|both) ;; *) echo "arm must be off, policy, prediction, or both" >&2; exit 2;; esac
+protocol=${EPISODIC_CHOICE_PROTOCOL:-episodic-policy-live-choice-v5}
 
 games=${LUANTI_GAMES:-"$HOME/.minetest/games"}
 [ -d "$games/mineclone2" ] || { echo "VoxeLibre not found in $games" >&2; exit 77; }
@@ -44,6 +45,7 @@ ai_bridge_step_seconds = 0.1
 ai_bridge_test_hooks = true
 episodic_ab_arm = $arm
 episodic_ab_seed = $seed
+episodic_choice_protocol = $protocol
 episodic_choice_warmup = 24
 episodic_choice_scored = 40
 EOF

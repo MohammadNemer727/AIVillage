@@ -232,7 +232,7 @@ pub fn evaluate(
     })
 }
 
-fn learn_transition(
+pub(crate) fn learn_transition(
     predictor: &mut RecurrentPredictor,
     memory: &mut EpisodicMemory,
     observation: &EnvironmentObservation,

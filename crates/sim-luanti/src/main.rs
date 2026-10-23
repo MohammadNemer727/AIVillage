@@ -14,10 +14,12 @@ use std::{
 use sim_core::runtime::{AffordanceConfig, EpisodicConfig, ExperimentMode};
 use sim_format::{PopulationBlockReason, PopulationLifecycleEvent};
 use sim_luanti::{
-    Bridge, LifecycleConfig, PopulationCoordinator, TraceRecord, benchmark, bind_loopback,
-    contingency, episodic_eval, foraging, load_state, prediction_eval, reaching, replay_trace,
-    save_state, serve_once_concurrent,
+    Bridge, LifecycleConfig, PopulationCoordinator, TraceRecord, ablation, benchmark,
+    bind_loopback, contingency, episodic_eval, foraging, load_state, prediction_eval, reaching,
+    replay_trace, save_state, serve_once_concurrent,
 };
+
+const USAGE: &str = "usage: sim-luanti [replay <trace.ndjson>|prediction-eval|episodic-eval|prediction-ablation <trace.ndjson> [report.json]|online-prediction off|policy|prediction|both <trace.ndjson> [report.json]|benchmark|contingency|foraging|reaching [report.json] [report.md]]";
 
 /// Decisions between saves of the founder's brain (about ten seconds of watched play).
 const SAVE_EVERY_DECISIONS: u64 = 40;
@@ -64,46 +66,26 @@ fn replay(
     Ok(())
 }
 
-fn prediction_evaluation(
-    seed: u64,
-    agent_id: u64,
+/// Loads the contiguous records of one agent from a bridge trace.
+fn agent_records(
     path: &str,
-    output: Option<String>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let records: Vec<TraceRecord> = std::fs::read_to_string(path)?
+    agent_id: u64,
+) -> Result<Vec<TraceRecord>, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(std::fs::read_to_string(path)?
         .lines()
         .map(serde_json::from_str)
-        .collect::<Result<Vec<TraceRecord>, _>>()?;
-    let records: Vec<_> = records
+        .collect::<Result<Vec<TraceRecord>, _>>()?
         .into_iter()
         .filter(|record| record.request.agent_id == agent_id)
-        .collect();
-    let report = prediction_eval::evaluate(seed, &records)?;
-    let json = serde_json::to_vec_pretty(&report)?;
-    if let Some(output) = output {
-        std::fs::write(output, json)?;
-    } else {
-        println!("{}", String::from_utf8(json)?);
-    }
-    Ok(())
+        .collect())
 }
 
-fn episodic_evaluation(
-    seed: u64,
-    agent_id: u64,
-    path: &str,
+/// Writes a JSON report to `output`, or prints it when no path is given.
+fn emit(
+    report: &impl serde::Serialize,
     output: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let records: Vec<TraceRecord> = std::fs::read_to_string(path)?
-        .lines()
-        .map(serde_json::from_str)
-        .collect::<Result<Vec<TraceRecord>, _>>()?;
-    let records: Vec<_> = records
-        .into_iter()
-        .filter(|record| record.request.agent_id == agent_id)
-        .collect();
-    let report = episodic_eval::evaluate(seed, &records)?;
-    let json = serde_json::to_vec_pretty(&report)?;
+    let json = serde_json::to_vec_pretty(report)?;
     if let Some(output) = output {
         std::fs::write(output, json)?;
     } else {
@@ -205,29 +187,27 @@ fn founder_bridge(
 }
 
 fn episodic_config() -> Result<Option<EpisodicConfig>, Box<dyn std::error::Error + Send + Sync>> {
-    let config = match std::env::var("SIM_LUANTI_EPISODIC").as_deref() {
-        Err(_) => return Ok(None),
-        Ok("off") => EpisodicConfig::default(),
-        Ok("prediction") => EpisodicConfig {
-            prediction_enabled: true,
-            policy_enabled: false,
-        },
-        Ok("policy") => EpisodicConfig {
-            prediction_enabled: false,
-            policy_enabled: true,
-        },
-        Ok("both") => EpisodicConfig {
-            prediction_enabled: true,
-            policy_enabled: true,
-        },
-        Ok(value) => {
-            return Err(format!(
-                "SIM_LUANTI_EPISODIC must be off, prediction, policy, or both; got {value}"
-            )
-            .into());
-        }
+    match std::env::var("SIM_LUANTI_EPISODIC") {
+        Err(_) => Ok(None),
+        Ok(value) => Ok(Some(episodic_arm(&value).map_err(|value| {
+            format!("SIM_LUANTI_EPISODIC must be off, prediction, policy, or both; got {value}")
+        })?)),
+    }
+}
+
+/// Parses an episodic switch setting by its arm name.
+fn episodic_arm(value: &str) -> Result<EpisodicConfig, &str> {
+    let (prediction_enabled, policy_enabled) = match value {
+        "off" => (false, false),
+        "prediction" => (true, false),
+        "policy" => (false, true),
+        "both" => (true, true),
+        _ => return Err(value),
     };
-    Ok(Some(config))
+    Ok(EpisodicConfig {
+        prediction_enabled,
+        policy_enabled,
+    })
 }
 
 struct ServerConfig {
@@ -311,27 +291,32 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     } = server_config()?;
     let mut args = std::env::args().skip(1);
     if let Some(command) = args.next() {
-        if command == "prediction-eval" {
-            let path = args
-                .next()
-                .ok_or("usage: sim-luanti prediction-eval <trace.ndjson> [report.json]")?;
+        let trace_command = match command.as_str() {
+            "prediction-eval" | "episodic-eval" | "prediction-ablation" => Some(None),
+            "online-prediction" => Some(Some(
+                episodic_arm(&args.next().ok_or(USAGE)?).map_err(|_| USAGE)?,
+            )),
+            _ => None,
+        };
+        if let Some(arm) = trace_command {
+            let path = args.next().ok_or(USAGE)?;
             let output = args.next();
             if args.next().is_some() {
-                return Err(
-                    "usage: sim-luanti prediction-eval <trace.ndjson> [report.json]".into(),
-                );
+                return Err(USAGE.into());
             }
-            return prediction_evaluation(seed, agent_id, &path, output);
-        }
-        if command == "episodic-eval" {
-            let path = args
-                .next()
-                .ok_or("usage: sim-luanti episodic-eval <trace.ndjson> [report.json]")?;
-            let output = args.next();
-            if args.next().is_some() {
-                return Err("usage: sim-luanti episodic-eval <trace.ndjson> [report.json]".into());
-            }
-            return episodic_evaluation(seed, agent_id, &path, output);
+            let records = agent_records(&path, agent_id)?;
+            return match (command.as_str(), arm) {
+                ("prediction-eval", _) => emit(&prediction_eval::evaluate(seed, &records)?, output),
+                ("episodic-eval", _) => emit(&episodic_eval::evaluate(seed, &records)?, output),
+                ("prediction-ablation", _) => {
+                    emit(&ablation::frozen_replay(seed, &records)?, output)
+                }
+                (_, Some(config)) => emit(
+                    &ablation::online_prediction(seed, &records, config)?,
+                    output,
+                ),
+                (_, None) => unreachable!("online-prediction always parses an arm"),
+            };
         }
         if command == "benchmark" {
             let report = benchmark::run();
@@ -354,10 +339,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             return write_report(args, "contingency-test", &report, &markdown);
         }
         let (Some(path), None, "replay") = (args.next(), args.next(), command.as_str()) else {
-            return Err(
-                "usage: sim-luanti [replay <trace.ndjson>|prediction-eval|episodic-eval <trace.ndjson> [report.json]|benchmark|contingency|foraging|reaching [report.json] [report.md]]"
-                    .into(),
-            );
+            return Err(USAGE.into());
         };
         return replay(seed, agent_id, &path);
     }

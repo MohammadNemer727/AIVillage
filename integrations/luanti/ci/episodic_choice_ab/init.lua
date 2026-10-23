@@ -1,4 +1,5 @@
--- Preregistered real VoxeLibre repeated-choice fixture for episodic-policy-live-choice-v5.
+-- Preregistered real VoxeLibre repeated-choice fixture for the episodic live-choice protocols
+-- (episodic-policy-live-choice-v5 and Experiment 003).
 --
 -- Only the normal affordance policy acts. Forward and backward thrust are the two eligible
 -- choices. A test-only hook applies their bodily consequence after the full action hold and
@@ -9,6 +10,7 @@ local warmup = tonumber(minetest.settings:get("episodic_choice_warmup")) or 24
 local scored = tonumber(minetest.settings:get("episodic_choice_scored")) or 40
 local seed = tonumber(minetest.settings:get("episodic_ab_seed")) or 0
 local arm = minetest.settings:get("episodic_ab_arm") or "unknown"
+local protocol = minetest.settings:get("episodic_choice_protocol") or "episodic-policy-live-choice-v5"
 local floor_y = 199
 local feet = {x = 0, y = floor_y + 0.5, z = 0}
 local started, finishing = false, false
@@ -34,7 +36,7 @@ end
 local function finish()
   local result = {
     schema_version = 1,
-    protocol = "episodic-policy-live-choice-v5",
+    protocol = protocol,
     arm = arm,
     seed = seed,
     warmup_eligible_choices = warmup,

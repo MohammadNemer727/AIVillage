@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "protocol": "experiment-003-episodic-integration",
+  "status": "preregistered_before_outcome_generation",
+  "frozen_on": "2026-10-23",
+  "purpose": "Decide policy-only episodic retrieval and prediction-integrated episodic retrieval separately, using a four-way ablation on untouched data.",
+  "prior_evidence_status": {
+    "episodic-policy-live-choice-v5": "consumed prior evidence only; its seeds and outcomes do not enter either decision below",
+    "declared_expectation": "On consumed v5 A-arm traces a runtime-faithful frozen replay regressed body MAE in 7 of 8 traces with vision tied. Condition C is therefore expected to fail. This expectation is stated in advance and does not alter any rule."
+  },
+  "configuration_under_test": {
+    "code": "the commit that adds this file; no episodic, predictor, or policy change after it",
+    "episodic_capacity": 64,
+    "retrieval_top_k": 4,
+    "prediction_retrieval": "body-only median residual of same-action neighbours, as in v5",
+    "policy_retrieval": "evidence-weighted local consensus, as in v5"
+  },
+  "world": {
+    "engine": "Luanti",
+    "game": "VoxeLibre",
+    "map_seed": 424244,
+    "mapgen": "flat",
+    "decision_seconds": 0.1,
+    "fixture": "integrations/luanti/ci/episodic_choice_ab (forward thrust depletes fullness, backward thrust returns it, applied by a test hook after the full action hold)",
+    "warmup_eligible_choices": 24,
+    "scored_eligible_choices": 40,
+    "consequence_delay_decisions": 1
+  },
+  "paired_runtime_seeds": [601, 607, 613, 617, 631, 641, 643, 647],
+  "seed_provenance": "none of these seeds appears in any earlier preregistration, harness, test, or run directory",
+  "conditions": {
+    "A": "SIM_LUANTI_EPISODIC=off",
+    "B": "SIM_LUANTI_EPISODIC=policy",
+    "C": "SIM_LUANTI_EPISODIC=prediction",
+    "D": "SIM_LUANTI_EPISODIC=both"
+  },
+  "controls": [
+    "fresh reset world and newborn checkpoint per arm",
+    "same genome identity, runtime seed, map seed, starting pose, health 20 and hunger 10 within a seed",
+    "arms run sequentially in the fixed order A, B, C, D for every seed",
+    "action histories are allowed to diverge between arms; identical histories are not required"
+  ],
+  "layers": {
+    "frozen_replay": {
+      "recorded_transitions": "the complete A-arm trace of each seed",
+      "split": "first 80 percent replayed with learning and memory writes in runtime order; final 20 percent scored with no learning and no memory writes",
+      "tool": "sim-luanti prediction-ablation <trace>",
+      "metrics": "pooled absolute error and MAE per modality (vision features 0-11, body 12-17); paired transition wins/ties/losses; held-item reported as a diagnostic only",
+      "pooling": "sum absolute errors and feature samples over all eight seeds, then divide"
+    },
+    "live_paired": {
+      "metrics": [
+        "resource_returns and resource_losses over the 40 scored choices",
+        "per-pair return delta X minus A",
+        "deaths and minimum felt health from the trace (survival and injury)",
+        "mediation: episode writes, retrievals with body evidence, positive score deltas, selected-action changes, and one-step outcomes after each changed action",
+        "online one-step prediction MAE of each arm on its own trace (sim-luanti online-prediction), diagnostic only"
+      ]
+    }
+  },
+  "decision_rules": {
+    "policy_criterion(X)": [
+      "aggregate resource losses fall by at least 16 and aggregate resource returns rise by at least 16, X against A",
+      "at least 6 of 8 pairs have a positive return delta and no pair has a negative return delta",
+      "mediation in X: positive outcome writes > 0, retrievals with body evidence > 0, action changes > 0, and changed actions followed by a nonnegative one-step outcome are at least as many as those followed by a negative one"
+    ],
+    "prediction_criterion(T, K)": [
+      "frozen replay, pooled over the eight seeds: body MAE of T <= body MAE of K and vision MAE of T <= vision MAE of K",
+      "at least one of body or vision is strictly lower for T, and in that modality pooled paired transition wins exceed losses"
+    ],
+    "prediction_regression_tolerance": {
+      "value": 0,
+      "justification": "No accepted reason exists to trade prediction accuracy for retrieval; prediction is the brain's learning signal and any accepted regression would compound in later graph and spatial work."
+    },
+    "validity": [
+      "fixture valid for every seed: the A arm has baseline exposure valid, observed fullness increases > 0 and decreases > 0, and every arm records 40 scored choices",
+      "all 32 live traces replay exactly through the runtime",
+      "frozen replay reports A = B and C = D exactly for every seed (the policy switch cannot alter prediction on fixed actions)"
+    ],
+    "accept_policy_only_retrieval_B": "validity holds AND policy_criterion(B) holds AND frozen B equals frozen A exactly (zero prediction regression)",
+    "accept_prediction_integrated_retrieval": "validity holds AND prediction_criterion(C, A) holds AND policy_criterion(D) holds AND prediction_criterion(D, B) holds",
+    "independence": "Each decision stands alone. B may be accepted when C or D fails; prediction retrieval then stays disabled.",
+    "no_composite": "Modalities and behaviour are never combined into one score."
+  },
+  "exclusions_and_stopping": {
+    "runs": "every one of the 32 arms is run exactly once; no early stopping and no additional seeds",
+    "infrastructure_failure": "if an arm's processes crash or time out before writing a result, that arm alone is rerun once with the same seed before any result is inspected; a second failure stops the experiment as incomplete with no conclusion",
+    "integrity_failure": "a replay mismatch or an invalid fixture is not rerun; the affected decisions fail validity",
+    "after_outcomes": "this file, the seeds, and the thresholds are not revised after any Experiment 003 outcome is generated; the seeds are consumed whatever the result"
+  },
+  "outputs": {
+    "runs": "integrations/luanti/experiment-003-runs/<date>/",
+    "machine_report": "experiment-003-result.json in the run directory",
+    "written_report": "docs/experiment-003-result.md"
+  }
+}
