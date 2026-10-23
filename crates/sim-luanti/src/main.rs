@@ -12,6 +12,7 @@ use std::{
 };
 
 use sim_core::{
+    DevelopmentalGenome,
     phenotype::ExpressionVersion,
     runtime::{AffordanceConfig, EpisodicConfig, ExperimentMode, SpatialConfig},
 };
@@ -19,7 +20,8 @@ use sim_format::{PopulationBlockReason, PopulationLifecycleEvent};
 use sim_luanti::{
     Bridge, LifecycleConfig, PopulationCoordinator, TraceRecord, ablation, benchmark,
     bind_loopback, contingency, episodic_eval, foraging, genome_audit, lineage, load_state,
-    locus_probe, prediction_eval, reaching, replay_trace, save_state, serve_once_concurrent,
+    locus_probe, prediction_eval, reaching, replay_trace, replay_trace_with_genome, save_state,
+    serve_once_concurrent,
 };
 
 const USAGE: &str = "usage: sim-luanti [replay <trace.ndjson>|prediction-eval|episodic-eval|prediction-ablation <trace.ndjson> [report.json]|online-prediction off|policy|prediction|both|graph <trace.ndjson> [report.json]|founders|genome-audit [births] [legacy|v2]|locus-probe [seed,seed,...]|mutation-effect [seed,seed,...]|lineage <genome-rotation> <population-report.json>|benchmark|contingency|foraging|reaching [report.json] [report.md]]";
@@ -61,7 +63,14 @@ fn replay(
     path: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let records = read_trace(path)?;
-    replay_trace(seed, agent_id, &records)?;
+    match founder_loci()?.as_deref() {
+        Some([genome, ..]) => {
+            replay_trace_with_genome(seed, agent_id, genome, &records)?;
+        }
+        _ => {
+            replay_trace(seed, agent_id, &records)?;
+        }
+    }
     println!("replayed {} recorded transitions exactly", records.len());
     Ok(())
 }
@@ -203,6 +212,9 @@ fn founder_bridge(
         );
         return Ok(Bridge::from_runtime(runtime));
     }
+    if let Some(genomes) = founder_loci()? {
+        bridge.set_founder_genomes(&genomes)?;
+    }
     if let Some(config) = episodic_config()? {
         bridge.set_episodic_config(config);
     }
@@ -257,6 +269,38 @@ fn expression_config() -> Result<Option<ExpressionVersion>, Box<dyn std::error::
             return Err(format!("SIM_LUANTI_EXPRESSION must be legacy or v2; got {value}").into());
         }
     })
+}
+
+/// Founder genomes from `SIM_LUANTI_FOUNDER_LOCI`: one entry per founder in body-slot order,
+/// separated by `;`, each 16 comma-separated locus values.
+fn founder_loci()
+-> Result<Option<Vec<DevelopmentalGenome>>, Box<dyn std::error::Error + Send + Sync>> {
+    let Ok(text) = std::env::var("SIM_LUANTI_FOUNDER_LOCI") else {
+        return Ok(None);
+    };
+    text.split(';')
+        .map(|founder| {
+            let values: Vec<u8> = founder
+                .split(',')
+                .map(|value| value.trim().parse())
+                .collect::<Result<_, _>>()
+                .map_err(|_| "SIM_LUANTI_FOUNDER_LOCI values must be integers from 0 to 64")?;
+            if values.len() != DevelopmentalGenome::LOCUS_COUNT
+                || values
+                    .iter()
+                    .any(|value| *value > DevelopmentalGenome::LOCUS_MAX)
+            {
+                return Err(
+                    "SIM_LUANTI_FOUNDER_LOCI needs 16 values from 0 to 64 per founder".into(),
+                );
+            }
+            Ok(values.iter().enumerate().fold(
+                DevelopmentalGenome::uniform(0, 12_000),
+                |genome, (locus, value)| genome.with_locus(locus, *value),
+            ))
+        })
+        .collect::<Result<Vec<_>, Box<dyn std::error::Error + Send + Sync>>>()
+        .map(Some)
 }
 
 /// Spatial memory from `SIM_LUANTI_SPATIAL`: `off`, `on`, or the sham `scrambled`.

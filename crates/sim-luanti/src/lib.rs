@@ -362,6 +362,26 @@ pub fn replay_trace(
     agent_id: u64,
     records: &[TraceRecord],
 ) -> Result<AgentRuntime, BridgeError> {
+    replay_trace_with_genome(
+        seed,
+        agent_id,
+        &FounderSpec::new(seed, agent_id).genome,
+        records,
+    )
+}
+
+/// Replays a recorded trace for an individual whose genome is not the seed's default founder
+/// genome (for example one chosen with `SIM_LUANTI_FOUNDER_LOCI`).
+///
+/// # Errors
+///
+/// Returns an error if any recorded response cannot be reproduced exactly.
+pub fn replay_trace_with_genome(
+    seed: u64,
+    agent_id: u64,
+    genome: &sim_core::DevelopmentalGenome,
+    records: &[TraceRecord],
+) -> Result<AgentRuntime, BridgeError> {
     if let Some(record) = records
         .iter()
         .find(|record| record.request.protocol != PROTOCOL_VERSION)
@@ -398,8 +418,7 @@ pub fn replay_trace(
     }) {
         return Err(BridgeError::Replay);
     }
-    let founder = FounderSpec::new(seed, agent_id);
-    let brain = founder.genome.default_brain_config();
+    let brain = genome.default_brain_config();
     let mut runtime = match (mode, affordance) {
         (ExperimentMode::AffordanceDiscovery, Some(settings)) => {
             AgentRuntime::new_with_affordance(seed, agent_id, brain, settings)
@@ -409,7 +428,7 @@ pub fn replay_trace(
     };
     runtime.set_episodic_config(episodic);
     runtime.set_spatial_config(spatial);
-    runtime.set_phenotype(founder.genome.phenotype(expression));
+    runtime.set_phenotype(genome.phenotype(expression));
     for record in records {
         let transition = runtime
             .step(with_body_clock(&record.request))

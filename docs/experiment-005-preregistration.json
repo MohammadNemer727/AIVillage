@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "protocol": "experiment-005-embodied-survival-reliability",
+  "status": "preregistered_before_outcome_generation",
+  "frozen_on": "2026-10-23",
+  "question": "Can founders move without a fixed driver, does what a founder inherits change whether it survives a hostile encounter, and what happens to populations of founders through their first night, with how many reproductive opportunities?",
+  "scope": "Reliability and the existence of genotype-dependent survival. It does not test whether a beneficial variant spreads (Experiment 006).",
+  "part_A_turn_fidelity": {
+    "status": "done before this protocol was frozen, and reported with it",
+    "diagnosis": "A constant turn command was carried out for only 47.5 percent of the commanded rotation (ci/turn_diag, 300 decisions). The body read its yaw, added the turn and wrote it back, and a stale client packet overwrote the write about half the time.",
+    "fix": "The body holds its intended heading for 8 steps, re-asserts it whenever the client disagrees, and derives direction of travel from it.",
+    "result": "after the fix 299 of 299 decisions carried out exactly the commanded 8 steps (100 percent); ci/turn-diag.sh now fails below 98 percent",
+    "effect_on_earlier_experiments": "none; earlier experiments ran from their own snapshots, and the fix changes live bodies only"
+  },
+  "bodies_and_genomes": {
+    "expression": "v2 (Experiment 004), baseline mode, no wander driver, no episodic or spatial memory",
+    "base_genome": "all loci 32 except the additive drives (3 hunger_drive, 4 pain_flight, 9 locomotor_tone) which are 0",
+    "genotypes": {
+      "still": "base",
+      "tone": "base with locus 9 = 56",
+      "flight": "base with locus 4 = 56",
+      "runner": "base with loci 9 = 56 and 0 = 56"
+    },
+    "injection": "SIM_LUANTI_FOUNDER_LOCI sets each founder's genome; replay uses the same genomes, so every live trace is verified exactly"
+  },
+  "development_history_not_results": "Development used arena seeds 7001-7003 and 7101-7103 (consumed). It found that dead bodies stop making decisions so a fixture must end on death, that a replay must know the injected genome, and that single encounters are very noisy (one 'runner' took no damage in 120 s while a 'still' body died in 12 s), which is why every comparison below is paired and repeated. The genotypes and measures were fixed after that and not tuned on the seeds below.",
+  "part_B_movement_initiation": {
+    "design": "walled flat arena in daylight with no mobs, 600 decisions, one body, hunger held full",
+    "arms": "locomotor tone low (locus 9 = 8) against high (locus 9 = 56), everything else the base genome, matched by seed",
+    "seeds": [
+      7201,
+      7203,
+      7207,
+      7209,
+      7213,
+      7217,
+      7219,
+      7223
+    ],
+    "measure": "path length in blocks over the run",
+    "pass": [
+      "median path length of the high arm is at least 30 blocks",
+      "median path length of the high arm is at least 5 times that of the low arm",
+      "the high arm moves farther than the low arm in at least 7 of 8 pairs"
+    ]
+  },
+  "part_C_hostile_encounter": {
+    "design": "walled flat arena at night with one zombie placed 10 blocks away at a seeded bearing, 1200 decisions (120 s) or until the body dies, one body, hunger held full",
+    "arms": "the four genotypes still, tone, flight and runner, each on every seed",
+    "seeds": [
+      7301,
+      7303,
+      7307,
+      7309,
+      7313,
+      7317,
+      7319,
+      7323
+    ],
+    "measures": "decisions survived (1200 if the body lives), and damage taken (20 minus lowest health)",
+    "pass_genotype_dependent_survival": [
+      "at least one of tone, flight, runner has a mean decisions-survived at least 25 percent above still's",
+      "and survives longer than still in at least 6 of the 8 seeds"
+    ],
+    "report_only": "which genotypes help, hurt, or do nothing; fraction of bodies alive at 120 s per genotype"
+  },
+  "part_D_first_night_populations": {
+    "design": "the real VoxeLibre survival world with natural mobs and the day-night cycle, four founders per population all of one genotype, capacity 6 (two free slots, so that survivors can actually reproduce), mutation off, v2 expression, run to natural extinction or 1500 s",
+    "arms": "genotype still and genotype runner, 2 replicate populations each (seeds 7401 and 7403)",
+    "reproductive_opportunities": "per individual, the number of distinct 10-second (100-decision) windows containing at least one reproduction attempt that met every biological condition (mature, enough reserve, signalling), whether or not a free slot existed. Counting attempts would be meaningless: an eligible individual in a full population asks on every decision.",
+    "measures": [
+      "individuals alive at 1500 s",
+      "time of first death",
+      "births",
+      "reproductive opportunity windows per individual (median and maximum)",
+      "individuals with at least 2 opportunity windows",
+      "stop reason, with natural extinction reported as an outcome and never recovered"
+    ],
+    "criterion_for_experiment_006": "a genotype's populations are suitable for selection experiments if, in at least one replicate, at least 2 individuals reach at least 2 reproductive opportunities and at least one individual is alive at 1500 s. Extinction is allowed and reported; nothing is recovered or restarted."
+  },
+  "infrastructure": {
+    "frozen_build": "the driver refuses a dirty tracked tree and runs every arm and the analysis from a snapshot binary, bridge mod, and script copied into the run directory",
+    "failure_rule": "an arm that fails to write its result is rerun once before any result is inspected; a second failure stops the experiment as incomplete",
+    "after_outcomes": "this file, the seeds, and the thresholds are not revised after any outcome is generated"
+  },
+  "outputs": {
+    "runs": "integrations/luanti/experiment-005-runs/<date>/",
+    "machine_report": "experiment-005-result.json",
+    "written_report": "docs/experiment-005-result.md"
+  }
+}

@@ -17,6 +17,7 @@ integrations/luanti/.body-test-world/
 /integrations/luanti/.experiment-001-*/
 /integrations/luanti/episodic-ab-runs/
 /integrations/luanti/experiment-002-runs/
+/integrations/luanti/experiment-005-runs/
 /integrations/luanti/experiment-004-runs/
 /integrations/luanti/spatial-8c-runs/
 /integrations/luanti/semantic-graph-8b-runs/

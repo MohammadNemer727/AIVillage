@@ -18,10 +18,10 @@ games=${LUANTI_GAMES:-"$HOME/.minetest/games"}
 [ -d "$games/mineclone2" ] || { echo "VoxeLibre not found in $games" >&2; exit 77; }
 rm -rf "$world"
 mkdir -p "$world/worldmods" "$world/home"
-cp -R "$root/games/ai_village/mods/ai_bridge" "$world/worldmods/ai_bridge"
+cp -R "${EPISODIC_CHOICE_BRIDGE_MOD:-$root/games/ai_village/mods/ai_bridge}" "$world/worldmods/ai_bridge"
 fixture=${EPISODIC_CHOICE_FIXTURE:-episodic_choice_ab}
 result_name=${EPISODIC_CHOICE_RESULT:-episodic-choice-result.json}
-cp -R "$root/ci/$fixture" "$world/worldmods/ai_bridge_$fixture"
+cp -R "${EPISODIC_CHOICE_FIXTURE_DIR:-$root/ci/$fixture}" "$world/worldmods/ai_bridge_$fixture"
 cat >"$world/world.mt" <<EOF
 gameid = mineclone2
 backend = sqlite3

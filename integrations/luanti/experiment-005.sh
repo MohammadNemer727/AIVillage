@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+# Runs preregistered Experiment 005 (docs/experiment-005-preregistration.json) exactly once, from
+# a frozen snapshot of the binary, the bridge mod, the arena fixture and the analysis.
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo=$(CDPATH= cd -- "$root/../.." && pwd)
+output=${1:-"$root/experiment-005-runs/$(date -u +%Y-%m-%d)"}
+case "$output" in /*) ;; *) output="$(pwd)/$output";; esac
+[ ! -e "$output" ] || { echo "$output exists; Experiment 005 runs exactly once" >&2; exit 2; }
+[ -z "$(git -C "$repo" status --porcelain --untracked-files=no)" ] || {
+  echo "commit the tree first: the run must use exactly the frozen revision" >&2; exit 2;
+}
+
+mkdir -p "$output/frozen"
+cargo build --quiet -p sim-luanti --manifest-path "$repo/Cargo.toml"
+cp "$repo/target/debug/sim-luanti" "$output/frozen/sim-luanti"
+cp -R "$root/games/ai_village/mods/ai_bridge" "$output/frozen/ai_bridge"
+cp -R "$root/ci/arena" "$output/frozen/arena"
+cp "$root/tools/analyze_experiment_005.py" "$output/frozen/"
+git -C "$repo" rev-parse HEAD >"$output/frozen/git-revision"
+
+python3 "$root/tools/run_experiment_005.py" "$repo" "$output"
+python3 "$output/frozen/analyze_experiment_005.py" "$repo" "$output" >"$output/experiment-005-result.json"
+cat "$output/experiment-005-result.json"

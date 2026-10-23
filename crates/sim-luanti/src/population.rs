@@ -414,6 +414,44 @@ impl PopulationCoordinator {
         }
     }
 
+    /// Replaces the founders' genomes, in body-slot order, before any individual has acted.
+    ///
+    /// Used to build matched populations that differ in chosen loci. Each founder's runtime is
+    /// rebuilt blank from its new genome in the mode it already had.
+    ///
+    /// # Errors
+    ///
+    /// Rejects a count other than the number of living founders, or any individual that has
+    /// already made a decision.
+    pub fn set_founder_genomes(
+        &mut self,
+        genomes: &[DevelopmentalGenome],
+    ) -> Result<(), &'static str> {
+        if genomes.len() != self.individuals.len() {
+            return Err("one genome is required per founder");
+        }
+        if self
+            .individuals
+            .values()
+            .any(|individual| individual.runtime.state().decision_tick > 0)
+        {
+            return Err("founder genomes can only be set before any decision");
+        }
+        let seed = self.seed;
+        let mut by_slot: Vec<_> = self.individuals.iter_mut().collect();
+        by_slot.sort_by_key(|(_, individual)| individual.body_slot.0);
+        for ((id, individual), genome) in by_slot.into_iter().zip(genomes) {
+            let mode = individual.runtime.state().experiment_mode;
+            let episodic = individual.runtime.state().episodic_memory.config;
+            let mut runtime =
+                AgentRuntime::new_with_mode(seed, *id, genome.default_brain_config(), mode);
+            runtime.set_episodic_config(episodic);
+            individual.genome = genome.clone();
+            individual.runtime = runtime;
+        }
+        Ok(())
+    }
+
     /// Expresses every living individual, and every future birth, with `version`.
     ///
     /// Acquired state is untouched; only the developmental parameters are (re)built from each
@@ -1524,6 +1562,32 @@ mod tests {
         let events = population.lifecycle_events().len();
         assert_eq!(population.process_lifecycle(late).unwrap(), blocked);
         assert_eq!(population.lifecycle_events().len(), events);
+    }
+
+    #[test]
+    fn founder_genomes_can_be_chosen_before_any_decision_and_not_after() {
+        let mode = ExperimentMode::PredictiveBaseline;
+        let mut population =
+            PopulationCoordinator::new_population_with_mode(5, 1, 2, 4, mode).unwrap();
+        let chosen = [
+            DevelopmentalGenome::uniform(10, 12_000),
+            DevelopmentalGenome::uniform(50, 12_000).with_locus(9, 64),
+        ];
+        assert!(population.set_founder_genomes(&chosen[..1]).is_err());
+        population.set_founder_genomes(&chosen).unwrap();
+        let manifest = population.manifest();
+        assert_eq!(manifest.individuals[0].genome, chosen[0]);
+        assert_eq!(manifest.individuals[1].genome, chosen[1]);
+        assert_eq!(
+            population
+                .runtime_for(1)
+                .unwrap()
+                .state()
+                .developmental_config,
+            chosen[0].default_brain_config()
+        );
+        population.handle(request(1, 0, 0)).unwrap();
+        assert!(population.set_founder_genomes(&chosen).is_err());
     }
 
     #[test]
