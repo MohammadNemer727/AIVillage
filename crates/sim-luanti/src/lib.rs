@@ -12,6 +12,7 @@ pub mod benchmark;
 pub mod contingency;
 pub mod episodic_eval;
 pub mod foraging;
+pub mod genome_audit;
 pub mod harness;
 pub mod lineage;
 pub mod population;

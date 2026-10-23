@@ -1109,6 +1109,39 @@ impl DevelopmentalGenome {
     fn locus(&self, index: usize) -> u16 {
         u16::from(self.loci[index])
     }
+
+    /// Number of heritable developmental loci.
+    pub const LOCUS_COUNT: usize = 16;
+    /// Largest value a locus can take; mutation clamps to `0..=LOCUS_MAX`.
+    pub const LOCUS_MAX: u8 = 64;
+
+    /// Returns the raw value of every locus.
+    #[must_use]
+    pub const fn loci(&self) -> &[u8; Self::LOCUS_COUNT] {
+        &self.loci
+    }
+
+    /// Returns a copy with one locus set (clamped to [`Self::LOCUS_MAX`]) and everything else
+    /// unchanged, for matched one-locus-at-a-time comparisons.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is not below [`Self::LOCUS_COUNT`].
+    #[must_use]
+    pub fn with_locus(&self, index: usize, value: u8) -> Self {
+        let mut copy = self.clone();
+        copy.loci[index] = value.min(Self::LOCUS_MAX);
+        copy
+    }
+
+    /// A genome with every locus at `value`, for matched baselines.
+    #[must_use]
+    pub fn uniform(value: u8, mutation_rate_ppm: u16) -> Self {
+        Self {
+            loci: [value.min(Self::LOCUS_MAX); Self::LOCUS_COUNT],
+            mutation_rate_ppm,
+        }
+    }
 }
 
 /// Immutable developmental inspection values for a living V2 agent.

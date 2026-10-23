@@ -15,11 +15,11 @@ use sim_core::runtime::{AffordanceConfig, EpisodicConfig, ExperimentMode, Spatia
 use sim_format::{PopulationBlockReason, PopulationLifecycleEvent};
 use sim_luanti::{
     Bridge, LifecycleConfig, PopulationCoordinator, TraceRecord, ablation, benchmark,
-    bind_loopback, contingency, episodic_eval, foraging, lineage, load_state, prediction_eval,
-    reaching, replay_trace, save_state, serve_once_concurrent,
+    bind_loopback, contingency, episodic_eval, foraging, genome_audit, lineage, load_state,
+    prediction_eval, reaching, replay_trace, save_state, serve_once_concurrent,
 };
 
-const USAGE: &str = "usage: sim-luanti [replay <trace.ndjson>|prediction-eval|episodic-eval|prediction-ablation <trace.ndjson> [report.json]|online-prediction off|policy|prediction|both|graph <trace.ndjson> [report.json]|founders|lineage <genome-rotation> <population-report.json>|benchmark|contingency|foraging|reaching [report.json] [report.md]]";
+const USAGE: &str = "usage: sim-luanti [replay <trace.ndjson>|prediction-eval|episodic-eval|prediction-ablation <trace.ndjson> [report.json]|online-prediction off|policy|prediction|both|graph <trace.ndjson> [report.json]|founders|genome-audit [births]|lineage <genome-rotation> <population-report.json>|benchmark|contingency|foraging|reaching [report.json] [report.md]]";
 
 /// Decisions between saves of the founder's brain (about ten seconds of watched play).
 const SAVE_EVERY_DECISIONS: u64 = 40;
@@ -394,6 +394,13 @@ fn run_subcommand(
             &lineage::reconstruct(&manifest, agent_id, founder_count, rotation.parse()?)?,
             None,
         );
+    }
+    if command == "genome-audit" {
+        let births = args.next().map_or(Ok(1_000_000), |value| value.parse())?;
+        if args.next().is_some() {
+            return Err(USAGE.into());
+        }
+        return emit(&genome_audit::audit(births), None);
     }
     if command == "founders" {
         if args.next().is_some() {
