@@ -35,6 +35,57 @@ pub use predictive::{
     developmental_key as predictive_developmental_key, sense_features,
 };
 
+/// One lifetime learning step in live runtime order: the recurrent predictor scores and learns
+/// from `observation`, the private memory completes the preceding event, and only then may
+/// enabled prediction retrieval amend the next prediction. Evaluators call this too, so they
+/// measure exactly the brain that lives in the world.
+pub fn learn_transition(
+    predictor: &mut RecurrentPredictor,
+    memory: &mut EpisodicMemory,
+    observation: &EnvironmentObservation,
+    next_action: PrimitiveAction,
+    tick: u64,
+) -> EpisodicWrite {
+    let current = sense_features(observation);
+    let had_prediction = predictor.prediction_ready;
+    let latent_before = predictor.hidden.clone();
+    let source_before = predictor.previous_senses.clone();
+    let pending_prediction = predictor.prediction.clone();
+    let preceding_action = predictor.previous_action;
+    let uncertainty = predictor.uncertainty();
+    predictor.observe(observation, next_action, tick);
+    let write = if had_prediction {
+        memory.observe(
+            &latent_before,
+            &predictor.hidden,
+            &source_before,
+            &current,
+            preceding_action,
+            &pending_prediction,
+            uncertainty,
+            observation,
+            tick,
+        )
+    } else {
+        EpisodicWrite::default()
+    };
+    amend_prediction(predictor, memory, &current);
+    write
+}
+
+/// Lets retrieved same-action consequences amend the pending prediction, only when enabled.
+pub fn amend_prediction(
+    predictor: &mut RecurrentPredictor,
+    memory: &EpisodicMemory,
+    current: &[i16; SENSE_FEATURES],
+) {
+    if memory.config.prediction_enabled {
+        let summaries =
+            memory.retrieve_for_action(&predictor.hidden, current, predictor.previous_action);
+        predictor.apply_episodic_prediction(&summaries);
+    }
+}
+
 /// Explicit action-selection policy for a standalone founder.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ExperimentMode {
@@ -770,40 +821,13 @@ impl AgentRuntime {
         } else {
             episodic_policy.action_changed = false;
         }
-        let had_prediction = self.state.recurrent_predictor.prediction_ready;
-        let latent_before = self.state.recurrent_predictor.hidden.clone();
-        let source_before = self.state.recurrent_predictor.previous_senses.clone();
-        let pending_prediction = self.state.recurrent_predictor.prediction.clone();
-        let preceding_action = self.state.recurrent_predictor.previous_action;
-        let uncertainty = self.state.recurrent_predictor.uncertainty();
-        self.state
-            .recurrent_predictor
-            .observe(&observation, action, decision_tick);
-        let episodic_write = if had_prediction {
-            self.state.episodic_memory.observe(
-                &latent_before,
-                &self.state.recurrent_predictor.hidden,
-                &source_before,
-                &current_source,
-                preceding_action,
-                &pending_prediction,
-                uncertainty,
-                &observation,
-                decision_tick,
-            )
-        } else {
-            EpisodicWrite::default()
-        };
-        if self.state.episodic_memory.config.prediction_enabled {
-            let summaries = self.state.episodic_memory.retrieve_for_action(
-                &self.state.recurrent_predictor.hidden,
-                &current_source,
-                self.state.recurrent_predictor.previous_action,
-            );
-            self.state
-                .recurrent_predictor
-                .apply_episodic_prediction(&summaries);
-        }
+        let episodic_write = learn_transition(
+            &mut self.state.recurrent_predictor,
+            &mut self.state.episodic_memory,
+            &observation,
+            action,
+            decision_tick,
+        );
         self.state.chemical_adaptation = adaptation;
         self.state.decision_tick += 1;
         Ok(EnvironmentTransition {

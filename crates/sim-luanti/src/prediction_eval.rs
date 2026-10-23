@@ -62,18 +62,8 @@ pub struct PredictionReport {
 ///
 /// Requires at least ten contiguous records from one agent and current protocol.
 pub fn evaluate(seed: u64, records: &[TraceRecord]) -> Result<PredictionReport, &'static str> {
-    if records.len() < 10 {
-        return Err("prediction evaluation requires at least 10 transitions");
-    }
+    crate::validate_contiguous_trace(records, 10)?;
     let first = &records[0];
-    if records.iter().enumerate().any(|(index, record)| {
-        record.request.agent_id != first.request.agent_id
-            || !matches!(record.request.protocol, 4 | crate::PROTOCOL_VERSION)
-            || record.request.observation.sequence
-                != first.request.observation.sequence + index as u64
-    }) {
-        return Err("trace must be contiguous, current-protocol, and from one agent");
-    }
     let split = records.len() * TRAIN_PERCENT / 100;
     let founder = FounderSpec::new(seed, first.request.agent_id);
     let config = founder.genome.default_brain_config();

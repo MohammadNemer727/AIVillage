@@ -11,7 +11,8 @@ use sim_core::{
     },
     runtime::{
         EPISODIC_CAPACITY, EPISODIC_TOP_K, EpisodicConfig, EpisodicMemory, LATENT_FEATURES,
-        RecurrentPredictor, SENSE_FEATURES, predictive_developmental_key, sense_features,
+        RecurrentPredictor, SENSE_FEATURES, learn_transition, predictive_developmental_key,
+        sense_features,
     },
 };
 use sim_format::FounderSpec;
@@ -116,27 +117,16 @@ pub fn evaluate(
     seed: u64,
     records: &[TraceRecord],
 ) -> Result<EpisodicAblationReport, &'static str> {
-    if records.len() < 10 {
-        return Err("episodic evaluation requires at least 10 transitions");
-    }
+    crate::validate_contiguous_trace(records, 10)?;
     let first = &records[0];
-    if records.iter().enumerate().any(|(index, record)| {
-        record.request.agent_id != first.request.agent_id
-            || !matches!(record.request.protocol, 4 | crate::PROTOCOL_VERSION)
-            || record.request.observation.sequence
-                != first.request.observation.sequence + index as u64
-    }) {
-        return Err("trace must be contiguous, current-protocol, and from one agent");
-    }
     let split = records.len() * TRAIN_PERCENT / 100;
     let founder = FounderSpec::new(seed, first.request.agent_id);
     let mut predictor = RecurrentPredictor::new(predictive_developmental_key(
         &founder.genome.default_brain_config(),
     ));
-    let mut memory = EpisodicMemory::new(EpisodicConfig {
-        prediction_enabled: true,
-        policy_enabled: false,
-    });
+    // Historical v5 evaluator: memory writes during training but amends prediction only on the
+    // held-out suffix, unlike the live runtime. `ablation` is the runtime-faithful replacement.
+    let mut memory = EpisodicMemory::new(EpisodicConfig::default());
     for (tick, record) in records[..split].iter().enumerate() {
         learn_transition(
             &mut predictor,
@@ -230,36 +220,6 @@ pub fn evaluate(
             source_features: SENSE_FEATURES,
         },
     })
-}
-
-pub(crate) fn learn_transition(
-    predictor: &mut RecurrentPredictor,
-    memory: &mut EpisodicMemory,
-    observation: &EnvironmentObservation,
-    next_action: PrimitiveAction,
-    tick: u64,
-) {
-    let actual = sense_features(observation);
-    let ready = predictor.prediction_ready;
-    let latent_before = predictor.hidden.clone();
-    let source_before = predictor.previous_senses.clone();
-    let prediction = predictor.prediction.clone();
-    let preceding_action = predictor.previous_action;
-    let uncertainty = predictor.uncertainty();
-    predictor.observe(observation, next_action, tick);
-    if ready {
-        memory.observe(
-            &latent_before,
-            &predictor.hidden,
-            &source_before,
-            &actual,
-            preceding_action,
-            &prediction,
-            uncertainty,
-            observation,
-            tick,
-        );
-    }
 }
 
 fn action_protocol(seed: u64) -> ActionSeedMetrics {

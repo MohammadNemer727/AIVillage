@@ -57,10 +57,7 @@ fn replay(
     agent_id: u64,
     path: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let records = std::fs::read_to_string(path)?
-        .lines()
-        .map(serde_json::from_str)
-        .collect::<Result<Vec<TraceRecord>, _>>()?;
+    let records = read_trace(path)?;
     replay_trace(seed, agent_id, &records)?;
     println!("replayed {} recorded transitions exactly", records.len());
     Ok(())
@@ -71,13 +68,18 @@ fn agent_records(
     path: &str,
     agent_id: u64,
 ) -> Result<Vec<TraceRecord>, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(std::fs::read_to_string(path)?
-        .lines()
-        .map(serde_json::from_str)
-        .collect::<Result<Vec<TraceRecord>, _>>()?
+    Ok(read_trace(path)?
         .into_iter()
         .filter(|record| record.request.agent_id == agent_id)
         .collect())
+}
+
+/// Reads every record of a bridge NDJSON trace.
+fn read_trace(path: &str) -> Result<Vec<TraceRecord>, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(std::fs::read_to_string(path)?
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<Result<Vec<TraceRecord>, _>>()?)
 }
 
 /// Writes a JSON report to `output`, or prints it when no path is given.
@@ -114,14 +116,19 @@ fn founder_genotypes(seed: u64, first_id: u64, count: u32) -> Vec<serde_json::Va
 /// is kept between sessions) if there is one, continuing with everything it learned in the mode
 /// it was saved in; otherwise a newborn in the mode `SIM_LUANTI_MODE` selects.
 fn founder_bridge(
-    seed: u64,
-    agent_id: u64,
-    founder_count: u32,
-    population_capacity: u32,
+    config: &ServerConfig,
     state_path: Option<&std::path::Path>,
     population_path: Option<&std::path::Path>,
-    lifecycle_config: LifecycleConfig,
 ) -> Result<Bridge, Box<dyn std::error::Error + Send + Sync>> {
+    let &ServerConfig {
+        seed,
+        agent_id,
+        founder_count,
+        population_capacity,
+        genome_rotation,
+        lifecycle_config,
+        ..
+    } = config;
     if let Some(path) = population_path
         && path.join("population.json").exists()
     {
@@ -162,6 +169,7 @@ fn founder_bridge(
                     agent_id,
                     founder_count,
                     population_capacity,
+                    genome_rotation,
                     settings,
                 )?
             } else {
@@ -175,9 +183,7 @@ fn founder_bridge(
             founder_count,
             population_capacity,
             mode,
-            std::env::var("SIM_LUANTI_FOUNDER_GENOME_ROTATION")
-                .map_or(Ok(0), |value| value.parse())
-                .map_err(|_| "SIM_LUANTI_FOUNDER_GENOME_ROTATION must be a non-negative integer")?,
+            genome_rotation,
         )?,
         Err(_) => Bridge::new_with_mode(seed, agent_id, mode),
     };
@@ -235,163 +241,167 @@ struct ServerConfig {
     agent_id: u64,
     founder_count: u32,
     population_capacity: u32,
+    genome_rotation: u32,
     lifecycle_config: LifecycleConfig,
+    stop: ExperimentStop,
+}
+
+/// Unattended population-run stop rule and report (named for Experiment 001, which added it).
+struct ExperimentStop {
+    report: Option<PathBuf>,
+    provenance: Option<PathBuf>,
+    name: String,
+    birth_target: u64,
+    deadline: Duration,
+}
+
+/// Reads a numeric setting, rejecting a value that is present but malformed.
+fn number<T: core::str::FromStr>(
+    name: &str,
+    default: T,
+) -> Result<T, Box<dyn std::error::Error + Send + Sync>> {
+    std::env::var(name).map_or(Ok(default), |value| {
+        value
+            .parse()
+            .map_err(|_| format!("{name} must be a non-negative integer, got {value}").into())
+    })
 }
 
 fn server_config() -> Result<ServerConfig, Box<dyn std::error::Error + Send + Sync>> {
-    let founder_count = std::env::var("SIM_LUANTI_FOUNDER_COUNT")
-        .map_or(Ok(1), |value| value.parse::<u32>())
-        .map_err(|_| "SIM_LUANTI_FOUNDER_COUNT must be a positive integer")?;
+    let founder_count = number("SIM_LUANTI_FOUNDER_COUNT", 1_u32)?;
     if founder_count == 0 {
         return Err("SIM_LUANTI_FOUNDER_COUNT must be a positive integer".into());
     }
-    let population_capacity = std::env::var("SIM_LUANTI_POPULATION_CAPACITY")
-        .map_or(Ok(founder_count), |value| value.parse::<u32>())
-        .map_err(|_| "SIM_LUANTI_POPULATION_CAPACITY must be a positive integer")?;
-    let number =
-        |name: &str, default: u64| -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
-            Ok(std::env::var(name).map_or(Ok(default), |value| value.parse::<u64>())?)
-        };
     let mutation_enabled = match std::env::var("SIM_LUANTI_MUTATION").as_deref() {
         Ok("enabled") | Err(_) => true,
         Ok("disabled") => false,
         Ok(_) => return Err("SIM_LUANTI_MUTATION must be enabled or disabled".into()),
     };
     Ok(ServerConfig {
-        port: std::env::var("SIM_LUANTI_PORT")
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(8_481),
-        seed: std::env::var("SIM_LUANTI_SEED")
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(1),
-        agent_id: std::env::var("SIM_LUANTI_AGENT_ID")
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(1),
+        port: number("SIM_LUANTI_PORT", 8_481)?,
+        seed: number("SIM_LUANTI_SEED", 1)?,
+        agent_id: number("SIM_LUANTI_AGENT_ID", 1)?,
         founder_count,
-        population_capacity,
+        population_capacity: number("SIM_LUANTI_POPULATION_CAPACITY", founder_count)?,
+        genome_rotation: number("SIM_LUANTI_FOUNDER_GENOME_ROTATION", 0)?,
         lifecycle_config: LifecycleConfig {
             maturity_decisions: number("SIM_LUANTI_REPRODUCTIVE_MATURITY", 100)?,
-            minimum_reproductive_reserve: u16::try_from(number(
-                "SIM_LUANTI_MINIMUM_REPRODUCTIVE_RESERVE",
-                160,
-            )?)?,
-            reproductive_cost: u16::try_from(number("SIM_LUANTI_REPRODUCTIVE_COST", 80)?)?,
+            minimum_reproductive_reserve: number("SIM_LUANTI_MINIMUM_REPRODUCTIVE_RESERVE", 160)?,
+            reproductive_cost: number("SIM_LUANTI_REPRODUCTIVE_COST", 80)?,
             mutation_enabled,
+        },
+        stop: ExperimentStop {
+            report: std::env::var_os("SIM_LUANTI_EXPERIMENT_001_REPORT").map(PathBuf::from),
+            provenance: std::env::var_os("SIM_LUANTI_RUN_PROVENANCE").map(PathBuf::from),
+            name: std::env::var("SIM_LUANTI_EXPERIMENT_NAME")
+                .unwrap_or_else(|_| "001-autonomous-generational-turnover".to_owned()),
+            birth_target: number("SIM_LUANTI_EXPERIMENT_001_BIRTHS", 100)?,
+            deadline: Duration::from_secs(number(
+                "SIM_LUANTI_EXPERIMENT_001_DEADLINE_SECONDS",
+                86_400,
+            )?),
         },
     })
 }
 
-fn stall_config() -> Option<(u64, Duration)> {
-    std::env::var("SIM_LUANTI_STALL_SEQUENCE")
-        .ok()?
-        .parse()
-        .ok()
-        .map(|sequence| {
-            let milliseconds = std::env::var("SIM_LUANTI_STALL_MS")
-                .ok()
-                .and_then(|value| value.parse().ok())
-                .unwrap_or(750);
-            (sequence, Duration::from_millis(milliseconds))
-        })
+fn stall_config() -> Result<Option<(u64, Duration)>, Box<dyn std::error::Error + Send + Sync>> {
+    if std::env::var_os("SIM_LUANTI_STALL_SEQUENCE").is_none() {
+        return Ok(None);
+    }
+    Ok(Some((
+        number("SIM_LUANTI_STALL_SEQUENCE", 0)?,
+        Duration::from_millis(number("SIM_LUANTI_STALL_MS", 750)?),
+    )))
 }
 
-#[allow(clippy::too_many_lines)]
-fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let ServerConfig {
-        port,
+/// Runs an offline command: evaluation, replay, lineage, or a fixed simulated test.
+fn run_subcommand(
+    command: &str,
+    mut args: impl Iterator<Item = String>,
+    config: &ServerConfig,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let &ServerConfig {
         seed,
         agent_id,
         founder_count,
-        population_capacity,
-        lifecycle_config,
-    } = server_config()?;
-    let mut args = std::env::args().skip(1);
-    if let Some(command) = args.next() {
-        let trace_command = match command.as_str() {
-            "prediction-eval" | "episodic-eval" | "prediction-ablation" => Some(None),
-            "online-prediction" => Some(Some(
-                episodic_arm(&args.next().ok_or(USAGE)?).map_err(|_| USAGE)?,
-            )),
-            _ => None,
+        ..
+    } = config;
+    if matches!(
+        command,
+        "prediction-eval" | "episodic-eval" | "prediction-ablation" | "online-prediction"
+    ) {
+        let arm = if command == "online-prediction" {
+            Some(episodic_arm(&args.next().ok_or(USAGE)?).map_err(|_| USAGE)?)
+        } else {
+            None
         };
-        if let Some(arm) = trace_command {
-            let path = args.next().ok_or(USAGE)?;
-            let output = args.next();
-            if args.next().is_some() {
-                return Err(USAGE.into());
-            }
-            let records = agent_records(&path, agent_id)?;
-            return match (command.as_str(), arm) {
-                ("prediction-eval", _) => emit(&prediction_eval::evaluate(seed, &records)?, output),
-                ("episodic-eval", _) => emit(&episodic_eval::evaluate(seed, &records)?, output),
-                ("prediction-ablation", _) => {
-                    emit(&ablation::frozen_replay(seed, &records)?, output)
-                }
-                (_, Some(config)) => emit(
-                    &ablation::online_prediction(seed, &records, config)?,
-                    output,
-                ),
-                (_, None) => unreachable!("online-prediction always parses an arm"),
-            };
+        let path = args.next().ok_or(USAGE)?;
+        let output = args.next();
+        if args.next().is_some() {
+            return Err(USAGE.into());
         }
-        if command == "lineage" {
-            let (Some(rotation), Some(path), None) = (args.next(), args.next(), args.next()) else {
-                return Err(USAGE.into());
-            };
-            let report: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
-            let manifest = serde_json::from_value(report["manifest"].clone())?;
-            return emit(
-                &lineage::reconstruct(&manifest, agent_id, founder_count, rotation.parse()?)?,
-                None,
-            );
-        }
-        if command == "founders" {
-            if args.next().is_some() {
-                return Err(USAGE.into());
-            }
-            return emit(&founder_genotypes(seed, agent_id, founder_count), None);
-        }
-        if command == "benchmark" {
-            let report = benchmark::run();
-            let markdown = benchmark::markdown(&report);
-            return write_report(args, "affordance-benchmark", &report, &markdown);
-        }
-        if command == "reaching" {
-            let report = reaching::run();
-            let markdown = reaching::markdown(&report);
-            return write_report(args, "reaching-test", &report, &markdown);
-        }
-        if command == "foraging" {
-            let report = foraging::run();
-            let markdown = foraging::markdown(&report);
-            return write_report(args, "foraging-test", &report, &markdown);
-        }
-        if command == "contingency" {
-            let report = contingency::run();
-            let markdown = contingency::markdown(&report);
-            return write_report(args, "contingency-test", &report, &markdown);
-        }
-        let (Some(path), None, "replay") = (args.next(), args.next(), command.as_str()) else {
+        let records = agent_records(&path, agent_id)?;
+        return match (command, arm) {
+            ("prediction-eval", _) => emit(&prediction_eval::evaluate(seed, &records)?, output),
+            ("episodic-eval", _) => emit(&episodic_eval::evaluate(seed, &records)?, output),
+            (_, Some(arm)) => emit(&ablation::online_prediction(seed, &records, arm)?, output),
+            _ => emit(&ablation::frozen_replay(seed, &records)?, output),
+        };
+    }
+    if command == "lineage" {
+        let (Some(rotation), Some(path), None) = (args.next(), args.next(), args.next()) else {
             return Err(USAGE.into());
         };
-        return replay(seed, agent_id, &path);
+        let report: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+        let manifest = serde_json::from_value(report["manifest"].clone())?;
+        return emit(
+            &lineage::reconstruct(&manifest, agent_id, founder_count, rotation.parse()?)?,
+            None,
+        );
     }
-    let server = bind_loopback(port)?;
-    eprintln!("sim-luanti listening on 127.0.0.1:{port}");
+    if command == "founders" {
+        if args.next().is_some() {
+            return Err(USAGE.into());
+        }
+        return emit(&founder_genotypes(seed, agent_id, founder_count), None);
+    }
+    if command == "benchmark" {
+        let report = benchmark::run();
+        let markdown = benchmark::markdown(&report);
+        return write_report(args, "affordance-benchmark", &report, &markdown);
+    }
+    if command == "reaching" {
+        let report = reaching::run();
+        let markdown = reaching::markdown(&report);
+        return write_report(args, "reaching-test", &report, &markdown);
+    }
+    if command == "foraging" {
+        let report = foraging::run();
+        let markdown = foraging::markdown(&report);
+        return write_report(args, "foraging-test", &report, &markdown);
+    }
+    if command == "contingency" {
+        let report = contingency::run();
+        let markdown = contingency::markdown(&report);
+        return write_report(args, "contingency-test", &report, &markdown);
+    }
+    let (Some(path), None, "replay") = (args.next(), args.next(), command) else {
+        return Err(USAGE.into());
+    };
+    replay(seed, agent_id, &path)
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let config = server_config()?;
+    let mut args = std::env::args().skip(1);
+    if let Some(command) = args.next() {
+        return run_subcommand(&command, args, &config);
+    }
+    let server = bind_loopback(config.port)?;
+    eprintln!("sim-luanti listening on 127.0.0.1:{}", config.port);
     let state_path = std::env::var_os("SIM_LUANTI_STATE").map(PathBuf::from);
     let population_path = std::env::var_os("SIM_LUANTI_POPULATION").map(PathBuf::from);
-    let bridge = founder_bridge(
-        seed,
-        agent_id,
-        founder_count,
-        population_capacity,
-        state_path.as_deref(),
-        population_path.as_deref(),
-        lifecycle_config,
-    )?;
+    let bridge = founder_bridge(&config, state_path.as_deref(), population_path.as_deref())?;
     if population_path.is_some() {
         eprintln!(
             "sim-luanti population: {} live individuals, capacity {}",
@@ -400,23 +410,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         );
     }
     let mut saved_at = bridge.total_decisions();
-    let trace_path = std::env::var_os("SIM_LUANTI_TRACE").map(PathBuf::from);
-    let stall_sequence = stall_config();
+    let mut trace = std::env::var_os("SIM_LUANTI_TRACE")
+        .map(|path| OpenOptions::new().create(true).append(true).open(path))
+        .transpose()?;
+    let stall_sequence = stall_config()?;
     let bridge = Arc::new(Mutex::new(bridge));
     let stalled = Arc::new(AtomicBool::new(false));
-    let experiment_report = std::env::var_os("SIM_LUANTI_EXPERIMENT_001_REPORT").map(PathBuf::from);
-    let run_provenance = std::env::var_os("SIM_LUANTI_RUN_PROVENANCE").map(PathBuf::from);
-    let experiment_target = std::env::var("SIM_LUANTI_EXPERIMENT_001_BIRTHS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(100_u64);
-    let experiment_deadline = Duration::from_secs(
-        std::env::var("SIM_LUANTI_EXPERIMENT_001_DEADLINE_SECONDS")
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(86_400),
-    );
-    let experiment_started = Instant::now();
+    let started = Instant::now();
     loop {
         serve_once_concurrent(
             &server,
@@ -428,109 +428,106 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut bridge = bridge
             .lock()
             .map_err(|_| "population coordinator lock was poisoned")?;
-        if let Some(path) = &population_path {
-            let decisions = bridge.total_decisions();
-            if decisions >= saved_at + SAVE_EVERY_DECISIONS {
+        let decisions = bridge.total_decisions();
+        if decisions >= saved_at + SAVE_EVERY_DECISIONS {
+            if let Some(path) = &population_path {
                 bridge.save(path)?;
-                saved_at = decisions;
-            }
-        } else if let Some(path) = &state_path {
-            let decisions = bridge.total_decisions();
-            if decisions >= saved_at + SAVE_EVERY_DECISIONS {
+            } else if let Some(path) = &state_path {
                 save_state(path, bridge.runtime())?;
-                saved_at = decisions;
             }
+            saved_at = decisions;
         }
-        if let Some(path) = &trace_path {
-            let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-            for record in bridge.drain_trace() {
+        let records = bridge.drain_trace();
+        if let Some(file) = &mut trace {
+            for record in records {
                 let mut line = serde_json::to_vec(&record)?;
                 line.push(b'\n');
                 file.write_all(&line)?;
             }
-        } else {
-            let _ = bridge.drain_trace();
         }
-        if let Some(path) = &experiment_report {
-            let births = bridge
-                .lifecycle_events()
-                .iter()
-                .filter(|event| matches!(event, PopulationLifecycleEvent::Birth { .. }))
-                .count() as u64;
-            let live = bridge.manifest().individuals.len();
-            let terminal = if births >= experiment_target {
-                Some("birth_target")
-            } else if live == 0 {
-                Some("natural_extinction")
-            } else if experiment_started.elapsed() >= experiment_deadline {
-                Some("deadline")
-            } else {
-                None
-            };
-            if let Some(stop_reason) = terminal {
-                let attempts = bridge
-                    .lifecycle_events()
-                    .iter()
-                    .filter(|event| {
-                        matches!(event, PopulationLifecycleEvent::ReproductionAttempt { .. })
-                    })
-                    .count() as u64;
-                let blocked = |reason| {
-                    bridge
-                        .lifecycle_events()
-                        .iter()
-                        .filter(|event| {
-                            matches!(
-                                event,
-                                PopulationLifecycleEvent::ReproductionBlocked {
-                                    reason: found,
-                                    ..
-                                } if *found == reason
-                            )
-                        })
-                        .count()
-                };
-                bridge.save(
-                    population_path
-                        .as_deref()
-                        .ok_or("Experiment 001 requires SIM_LUANTI_POPULATION")?,
-                )?;
-                let provenance = run_provenance
-                    .as_ref()
-                    .map(std::fs::read)
-                    .transpose()?
-                    .map(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes))
-                    .transpose()?;
-                let report = serde_json::json!({
-                    "experiment": std::env::var("SIM_LUANTI_EXPERIMENT_NAME")
-                        .unwrap_or_else(|_| "001-autonomous-generational-turnover".to_owned()),
-                    "founder_genome_rotation": std::env::var("SIM_LUANTI_FOUNDER_GENOME_ROTATION")
-                        .ok()
-                        .and_then(|value| value.parse::<u32>().ok())
-                        .unwrap_or(0),
-                    "stop_reason": stop_reason,
-                    "birth_target": experiment_target,
-                    "births": births,
-                    "controller_reproduction_attempts": attempts,
-                    "live_individuals": live,
-                    "elapsed_seconds": experiment_started.elapsed().as_secs(),
-                    "mutation": if bridge.manifest().mutation_enabled { "enabled" } else { "disabled" },
-                    "blocked": {
-                        "no_free_slot": blocked(PopulationBlockReason::NoFreeSlot),
-                        "biological_eligibility": blocked(PopulationBlockReason::BiologicalEligibility),
-                        "infrastructure": blocked(PopulationBlockReason::Infrastructure),
-                    },
-                    "canonical_recovery": {"enabled": false, "excluded": true},
-                    "run_provenance": provenance,
-                    "manifest": bridge.manifest(),
-                });
-                std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
-                println!(
-                    "Experiment 001 stopped at {stop_reason}; wrote {}",
-                    path.display()
-                );
-                return Ok(());
-            }
+        if let Some(path) = &config.stop.report
+            && let Some(stop_reason) = stop_reason(&bridge, &config.stop, started)
+        {
+            bridge.save(
+                population_path
+                    .as_deref()
+                    .ok_or("an experiment report requires SIM_LUANTI_POPULATION")?,
+            )?;
+            let report = experiment_report(&bridge, &config, stop_reason, started)?;
+            std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
+            println!(
+                "{} stopped at {stop_reason}; wrote {}",
+                config.stop.name,
+                path.display()
+            );
+            return Ok(());
         }
     }
+}
+
+/// The unattended run's terminal condition, if one has been reached.
+fn stop_reason(bridge: &Bridge, stop: &ExperimentStop, started: Instant) -> Option<&'static str> {
+    let births = bridge
+        .lifecycle_events()
+        .iter()
+        .filter(|event| matches!(event, PopulationLifecycleEvent::Birth { .. }))
+        .count() as u64;
+    if births >= stop.birth_target {
+        Some("birth_target")
+    } else if bridge.manifest().individuals.is_empty() {
+        Some("natural_extinction")
+    } else if started.elapsed() >= stop.deadline {
+        Some("deadline")
+    } else {
+        None
+    }
+}
+
+fn experiment_report(
+    bridge: &Bridge,
+    config: &ServerConfig,
+    stop_reason: &str,
+    started: Instant,
+) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
+    let events = bridge.lifecycle_events();
+    let count = |predicate: &dyn Fn(&PopulationLifecycleEvent) -> bool| {
+        events.iter().filter(|event| predicate(event)).count()
+    };
+    let blocked = |reason| {
+        count(&|event| {
+            matches!(
+                event,
+                PopulationLifecycleEvent::ReproductionBlocked { reason: found, .. } if *found == reason
+            )
+        })
+    };
+    let provenance = config
+        .stop
+        .provenance
+        .as_ref()
+        .map(std::fs::read)
+        .transpose()?
+        .map(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes))
+        .transpose()?;
+    let manifest = bridge.manifest();
+    Ok(serde_json::json!({
+        "experiment": config.stop.name,
+        "founder_genome_rotation": config.genome_rotation,
+        "stop_reason": stop_reason,
+        "birth_target": config.stop.birth_target,
+        "births": count(&|event| matches!(event, PopulationLifecycleEvent::Birth { .. })),
+        "controller_reproduction_attempts":
+            count(&|event| matches!(event, PopulationLifecycleEvent::ReproductionAttempt { .. })),
+        "live_individuals": manifest.individuals.len(),
+        "elapsed_seconds": started.elapsed().as_secs(),
+        "mutation": if manifest.mutation_enabled { "enabled" } else { "disabled" },
+        "blocked": {
+            "no_free_slot": blocked(PopulationBlockReason::NoFreeSlot),
+            "biological_eligibility": blocked(PopulationBlockReason::BiologicalEligibility),
+            "infrastructure": blocked(PopulationBlockReason::Infrastructure),
+        },
+        "canonical_recovery": {"enabled": false, "excluded": true},
+        "run_provenance": provenance,
+        "manifest": manifest,
+    }))
 }

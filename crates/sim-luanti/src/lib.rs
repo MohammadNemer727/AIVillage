@@ -403,6 +403,27 @@ pub fn replay_trace(
     Ok(runtime)
 }
 
+/// Checks that an evaluation trace has at least `minimum` contiguous current-protocol records
+/// from one agent. Sequence arithmetic is checked because traces are read from files.
+pub(crate) fn validate_contiguous_trace(
+    records: &[TraceRecord],
+    minimum: usize,
+) -> Result<(), &'static str> {
+    if records.len() < minimum {
+        return Err("evaluation requires more transitions");
+    }
+    let first = &records[0];
+    if records.iter().enumerate().any(|(index, record)| {
+        record.request.agent_id != first.request.agent_id
+            || !matches!(record.request.protocol, 4 | PROTOCOL_VERSION)
+            || first.request.observation.sequence.checked_add(index as u64)
+                != Some(record.request.observation.sequence)
+    }) {
+        return Err("trace must be contiguous, current-protocol, and from one agent");
+    }
+    Ok(())
+}
+
 /// Saves a founder's exact runtime state (everything it has learned) to `path`, replacing the
 /// file only once the new state is completely written.
 ///
@@ -413,10 +434,7 @@ pub fn save_state(
     path: &std::path::Path,
     runtime: &AgentRuntime,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let partial = path.with_extension("partial");
-    std::fs::write(&partial, serde_json::to_vec(runtime.state())?)?;
-    std::fs::rename(&partial, path)?;
-    Ok(())
+    population::atomic_write(path, &serde_json::to_vec(runtime.state())?)
 }
 
 /// Loads a founder saved by [`save_state`], or `None` if nothing has been saved at `path`.
@@ -438,8 +456,8 @@ pub fn load_state(
 
 /// Binds an HTTP server exclusively to `127.0.0.1`.
 ///
-/// The returned server has no routing other than `POST /v1/transition`.  Call
-/// [`serve_once`] in a loop controlled by the embedding process.
+/// Routes are `POST /v1/transition`, `POST /v1/lifecycle`, and `GET /v1/population`. Call
+/// [`serve_once_concurrent`] in a loop controlled by the embedding process.
 ///
 /// # Errors
 ///
@@ -449,137 +467,12 @@ pub fn bind_loopback(port: u16) -> Result<Server, Box<dyn std::error::Error + Se
     Server::http(address)
 }
 
-/// Handles at most one request, waiting no longer than `wait`.
+/// Accepts one request and handles its runtime work on an independent worker.
 ///
 /// This function never turns a missing request into an action. The Lua mod owns timeout behaviour
-/// and applies an explicit zero action on disconnect or timeout.
-///
-/// # Errors
-///
-/// Returns I/O failures from the HTTP server.
-pub fn serve_once(
-    server: &Server,
-    bridge: &mut Bridge,
-    wait: Duration,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    serve_once_with_stall(server, bridge, wait, None, &mut false)
-}
-
-/// Handles one request, optionally injecting one pre-runtime stall for smoke testing.
-///
-/// A stalled request receives no runtime decision. The next Lua request therefore preserves its
-/// sequence, reports `Timeout`, and can be accepted as the recovery boundary.
-///
-/// Failures confined to one request, such as a client that disconnects before its reply, are
-/// logged and never end the serving loop.
-///
-/// # Errors
-///
-/// Returns failures of the HTTP server itself.
-pub fn serve_once_with_stall(
-    server: &Server,
-    bridge: &mut Bridge,
-    wait: Duration,
-    stall_sequence: Option<(u64, Duration)>,
-    stalled: &mut bool,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let Some(mut request) = server.recv_timeout(wait)? else {
-        return Ok(());
-    };
-    if request.method() == &Method::Get && request.url() == "/v1/population" {
-        let manifest = bridge.manifest();
-        respond_or_log(request, StatusCode(200), &manifest);
-        return Ok(());
-    }
-    if request.method() != &Method::Post
-        || (request.url() != "/v1/transition" && request.url() != "/v1/lifecycle")
-    {
-        if let Err(error) = request.respond(Response::empty(StatusCode(404))) {
-            eprintln!("sim-luanti: failed to respond to invalid route: {error}");
-        }
-        return Ok(());
-    }
-    let mut body = Vec::new();
-    if let Err(error) = request
-        .as_reader()
-        .take((MAX_PAYLOAD_BYTES + 1) as u64)
-        .read_to_end(&mut body)
-    {
-        eprintln!("sim-luanti: failed to read request: {error}");
-        return Ok(());
-    }
-    if request.url() == "/v1/lifecycle" {
-        let command: LifecycleCommand = match serde_json::from_slice(&body) {
-            Ok(command) => command,
-            Err(error) => {
-                respond_or_log(
-                    request,
-                    StatusCode(400),
-                    &serde_json::json!({"error": format!("invalid lifecycle command: {error}")}),
-                );
-                return Ok(());
-            }
-        };
-        let result = bridge.process_lifecycle(command);
-        match result {
-            Ok(response) => respond_or_log(request, StatusCode(200), &response),
-            Err(error) => respond_or_log(
-                request,
-                StatusCode(400),
-                &serde_json::json!({"error": error.to_string()}),
-            ),
-        }
-        return Ok(());
-    }
-    let wire = match decode_request(&body) {
-        Ok(wire) => wire,
-        Err(error) => {
-            eprintln!("sim-luanti: rejected request: {error}");
-            respond_or_log(
-                request,
-                StatusCode(400),
-                &serde_json::json!({"error": error.to_string(), "expected_sequence": null}),
-            );
-            return Ok(());
-        }
-    };
-    if let Some((sequence, delay)) = stall_sequence
-        && !*stalled
-        && wire.observation.sequence == sequence
-    {
-        *stalled = true;
-        std::thread::sleep(delay);
-        respond_or_log(
-            request,
-            StatusCode(503),
-            &serde_json::json!({"error": "injected smoke stall"}),
-        );
-        return Ok(());
-    }
-    match bridge.handle(wire) {
-        Ok(response) => respond_or_log(request, StatusCode(200), &response),
-        Err(error) => {
-            eprintln!("sim-luanti: rejected request: {error}");
-            let expected_sequence = match &error {
-                BridgeError::Sequence(RuntimeError::UnexpectedSequence { expected, .. }) => {
-                    Some(*expected)
-                }
-                _ => None,
-            };
-            respond_or_log(
-                request,
-                StatusCode(400),
-                &serde_json::json!({
-                    "error": error.to_string(),
-                    "expected_sequence": expected_sequence,
-                }),
-            );
-        }
-    }
-    Ok(())
-}
-
-/// Accepts one request and handles its runtime work on an independent worker.
+/// and applies an explicit zero action on disconnect or timeout. A configured stall delays one
+/// request once and answers 503, so the next Lua request reports `Timeout` as the recovery
+/// boundary. Failures confined to one request are logged and never end the serving loop.
 ///
 /// This is the population-serving path: a deliberately delayed request from one body does not
 /// prevent another body from reaching the coordinator. Runtime mutation remains serialized by
@@ -656,11 +549,7 @@ pub fn serve_once_concurrent(
         Ok(wire) => wire,
         Err(error) => {
             eprintln!("sim-luanti: rejected request: {error}");
-            respond_or_log(
-                request,
-                StatusCode(400),
-                &serde_json::json!({"error": error.to_string(), "expected_sequence": null}),
-            );
+            respond_or_log(request, StatusCode(400), &rejection(&error));
             return Ok(());
         }
     };
@@ -698,24 +587,20 @@ pub fn serve_once_concurrent(
             Ok(response) => respond_or_log(request, StatusCode(200), &response),
             Err(error) => {
                 eprintln!("sim-luanti: rejected request: {error}");
-                let expected_sequence = match &error {
-                    BridgeError::Sequence(RuntimeError::UnexpectedSequence {
-                        expected, ..
-                    }) => Some(*expected),
-                    _ => None,
-                };
-                respond_or_log(
-                    request,
-                    StatusCode(400),
-                    &serde_json::json!({
-                        "error": error.to_string(),
-                        "expected_sequence": expected_sequence,
-                    }),
-                );
+                respond_or_log(request, StatusCode(400), &rejection(&error));
             }
         }
     });
     Ok(())
+}
+
+/// Error body for a rejected transition; a sequence mismatch tells Lua where to resume.
+fn rejection(error: &BridgeError) -> serde_json::Value {
+    let expected_sequence = match error {
+        BridgeError::Sequence(RuntimeError::UnexpectedSequence { expected, .. }) => Some(*expected),
+        _ => None,
+    };
+    serde_json::json!({"error": error.to_string(), "expected_sequence": expected_sequence})
 }
 
 fn respond_or_log<T: Serialize>(request: tiny_http::Request, status: StatusCode, value: &T) {
@@ -827,8 +712,10 @@ mod tests {
         damaged.observation.interoception.as_mut().unwrap().health = 0;
         let body = serde_json::to_vec(&damaged).unwrap();
         let worker = std::thread::spawn(move || {
-            let mut bridge = Bridge::new(4, 9);
-            serve_once(&server, &mut bridge, Duration::from_secs(2)).unwrap();
+            let bridge = Arc::new(Mutex::new(Bridge::new(4, 9)));
+            let stalled = Arc::new(AtomicBool::new(false));
+            serve_once_concurrent(&server, &bridge, Duration::from_secs(2), None, &stalled)
+                .unwrap();
         });
 
         let mut stream = TcpStream::connect(address).unwrap();

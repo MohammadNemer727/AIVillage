@@ -275,6 +275,7 @@ impl PopulationCoordinator {
         first_individual_id: u64,
         founder_count: u32,
         capacity: u32,
+        genome_rotation: u32,
         affordance: AffordanceConfig,
     ) -> Result<Self, String> {
         affordance.validate()?;
@@ -283,7 +284,7 @@ impl PopulationCoordinator {
             first_individual_id,
             founder_count,
             capacity,
-            0,
+            genome_rotation,
             |id, genome| {
                 AgentRuntime::new_with_affordance(
                     seed,
@@ -374,7 +375,8 @@ impl PopulationCoordinator {
         };
         Self {
             seed,
-            capacity: u32::MAX,
+            // One founder has one body: a birth would have no body to occupy.
+            capacity: 1,
             next_individual_id: individual_id.saturating_add(1),
             individuals: BTreeMap::from([(individual_id, individual)]),
             trace: Vec::new(),
@@ -752,7 +754,13 @@ impl PopulationCoordinator {
         let slot_available =
             self.individuals.len() < usize::try_from(self.capacity).unwrap_or(usize::MAX);
         let Some(snapshot) = self.individuals.get(&parent_id) else {
-            return Err(LifecycleError::UnknownIndividual(parent_id).into());
+            // A body may ask to reproduce just before its death is processed. A parent that is no
+            // longer alive is a biological block, recorded once, so the request is not retried.
+            return Ok(self.blocked(
+                &command.event_id,
+                parent_id,
+                PopulationBlockReason::BiologicalEligibility,
+            ));
         };
         self.lifecycle.push(LifecycleEvent::ReproductionAttempt {
             event_id: command.event_id.clone(),
@@ -858,7 +866,7 @@ impl PopulationCoordinator {
         PopulationCommandResult::Blocked { reason }
     }
 
-    /// Returns lifecycle events, including blocked births and labelled recovery births.
+    /// Returns lifecycle events, including blocked reproduction attempts.
     #[must_use]
     pub fn lifecycle_events(&self) -> &[LifecycleEvent] {
         &self.lifecycle
@@ -1013,7 +1021,8 @@ fn runtime_file(individual_id: u64) -> PathBuf {
     PathBuf::from(format!("individuals/{individual_id}.json"))
 }
 
-fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error + Send + Sync>> {
+/// Replaces `path` only after the new bytes are durably on disk.
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error + Send + Sync>> {
     let partial = path.with_extension("partial");
     let mut file = std::fs::File::create(&partial)?;
     file.write_all(bytes)?;
@@ -1378,6 +1387,41 @@ mod tests {
         assert_eq!(entry.parent_id, Some(7));
         assert_eq!(entry.generation, 1);
         assert_eq!(entry.genome, first);
+    }
+
+    #[test]
+    fn reproduction_requested_by_a_dead_parent_is_blocked_once_not_rejected() {
+        let mut population = PopulationCoordinator::new_population_with_mode(
+            5,
+            1,
+            2,
+            2,
+            ExperimentMode::PredictiveBaseline,
+        )
+        .unwrap();
+        let death = LifecycleCommand {
+            event_id: "death-1".into(),
+            operation: LifecycleOperation::Death {
+                individual_id: 1,
+                body_slot: 0,
+            },
+        };
+        population.process_lifecycle(death).unwrap();
+        let late = LifecycleCommand {
+            event_id: "late-reproduce".into(),
+            operation: LifecycleOperation::Reproduce {
+                parent_id: 1,
+                body_slot: 0,
+                infrastructure_failures: 0,
+            },
+        };
+        let blocked = PopulationCommandResult::Blocked {
+            reason: PopulationBlockReason::BiologicalEligibility,
+        };
+        assert_eq!(population.process_lifecycle(late.clone()).unwrap(), blocked);
+        let events = population.lifecycle_events().len();
+        assert_eq!(population.process_lifecycle(late).unwrap(), blocked);
+        assert_eq!(population.lifecycle_events().len(), events);
     }
 
     #[test]

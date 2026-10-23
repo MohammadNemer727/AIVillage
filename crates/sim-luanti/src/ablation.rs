@@ -9,12 +9,12 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 use sim_core::runtime::{
-    EpisodicConfig, EpisodicMemory, RecurrentPredictor, SENSE_FEATURES,
-    predictive_developmental_key, sense_features,
+    EpisodicConfig, EpisodicMemory, RecurrentPredictor, SENSE_FEATURES, amend_prediction,
+    learn_transition, predictive_developmental_key, sense_features,
 };
 use sim_format::FounderSpec;
 
-use crate::{TraceRecord, episodic_eval::learn_transition};
+use crate::TraceRecord;
 
 const TRAIN_PERCENT: usize = 80;
 const MODALITIES: [(&str, core::ops::Range<usize>); 3] =
@@ -185,7 +185,6 @@ pub fn online_prediction(
             record.response.action,
             tick as u64,
         );
-        amend(&mut predictor, &memory, &actual);
     }
     Ok(OnlinePredictionReport {
         seed,
@@ -197,19 +196,7 @@ pub fn online_prediction(
 }
 
 fn validate(records: &[TraceRecord]) -> Result<(), &'static str> {
-    if records.len() < 10 {
-        return Err("prediction ablation requires at least 10 transitions");
-    }
-    let first = &records[0];
-    if records.iter().enumerate().any(|(index, record)| {
-        record.request.agent_id != first.request.agent_id
-            || !matches!(record.request.protocol, 4 | crate::PROTOCOL_VERSION)
-            || record.request.observation.sequence
-                != first.request.observation.sequence + index as u64
-    }) {
-        return Err("trace must be contiguous, current-protocol, and from one agent");
-    }
-    Ok(())
+    crate::validate_contiguous_trace(records, 10)
 }
 
 fn newborn(
@@ -224,19 +211,6 @@ fn newborn(
         )),
         EpisodicMemory::new(config),
     )
-}
-
-/// Applies prediction retrieval exactly where the live runtime does, and only when enabled.
-fn amend(
-    predictor: &mut RecurrentPredictor,
-    memory: &EpisodicMemory,
-    current: &[i16; SENSE_FEATURES],
-) {
-    if memory.config.prediction_enabled {
-        let summaries =
-            memory.retrieve_for_action(&predictor.hidden, current, predictor.previous_action);
-        predictor.apply_episodic_prediction(&summaries);
-    }
 }
 
 fn held_out_errors(
@@ -254,11 +228,6 @@ fn held_out_errors(
             record.response.action,
             tick as u64,
         );
-        amend(
-            &mut predictor,
-            &memory,
-            &sense_features(&record.request.observation),
-        );
     }
     records[split..]
         .iter()
@@ -266,7 +235,7 @@ fn held_out_errors(
             let actual = sense_features(&record.request.observation);
             let error = transition_error(&predictor.prediction, &actual);
             predictor.infer(&record.request.observation, record.response.action);
-            amend(&mut predictor, &memory, &actual);
+            amend_prediction(&mut predictor, &memory, &actual);
             error
         })
         .collect()
