@@ -997,6 +997,27 @@ local function grounded(player, velocity)
 end
 
 -- One server step of driving the founder player with the held action.
+-- A real player body is turned by writing its yaw, but its client keeps sending the yaw it last
+-- knew, so a write is lost whenever such a packet lands before the client has adopted it. Measured
+-- (ci/turn_diag), about half of all commanded turns were lost that way. The body therefore keeps
+-- the heading it intends for a few steps, re-asserts it whenever the client's value disagrees, and
+-- builds the next turn and its direction of travel from the intended heading rather than from a
+-- value that may be stale.
+local HEADING_HOLD_STEPS = 8
+
+local function angle_difference(a, b)
+  return math.abs((a - b + math.pi) % (2 * math.pi) - math.pi)
+end
+
+local function intended_heading(state, player)
+  local actual = player:get_look_horizontal()
+  if state.heading_goal and state.server_step <= state.heading_goal_until then
+    return state.heading_goal, actual
+  end
+  state.heading_goal = nil
+  return actual, actual
+end
+
 local function drive_founder(state, player, dtime)
   local body = state.founder_body
   state.server_step, state.applied_steps, state.elapsed = state.server_step + 1, state.applied_steps + 1, state.elapsed + dtime
@@ -1008,7 +1029,11 @@ local function drive_founder(state, player, dtime)
   if player:get_hp() <= 0 then return end
   local velocity = player:get_velocity()
   state.grounded = grounded(player, velocity) and 255 or 0
-  local action, yaw = state.held, player:get_look_horizontal()
+  local action = state.held
+  local yaw, actual_yaw = intended_heading(state, player)
+  if state.heading_goal and angle_difference(actual_yaw, state.heading_goal) > 1e-3 then
+    player:set_look_horizontal(state.heading_goal)
+  end
   local v2_angle = yaw + math.pi / 2
   local forward = {x = math.cos(v2_angle), z = math.sin(v2_angle)}
   local right = {x = -forward.z, z = forward.x}
@@ -1023,7 +1048,9 @@ local function drive_founder(state, player, dtime)
   end
   if state.applied_steps == 1 then
     local turn = clamp(trunc_toward_zero((action.turn or 0) / 32), -8, 8)
-    player:set_look_horizontal(yaw + turn * (2 * math.pi / 256))
+    state.heading_goal = yaw + turn * (2 * math.pi / 256)
+    state.heading_goal_until = state.server_step + HEADING_HOLD_STEPS
+    player:set_look_horizontal(state.heading_goal)
     state.eye_pitch = clamp(state.eye_pitch + trunc_toward_zero((action.look_pitch or 0) / 32), -128, 127)
     player:set_look_vertical(-state.eye_pitch * math.pi / 512)
     if (action.jump or 0) > 0 and state.grounded > 0 then
