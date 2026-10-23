@@ -32,6 +32,18 @@ Capacity was four, so the high `no_free_slot` count is expected while all bodies
 it is reported rather than treated as failed fitness. Biological blocks mean the durable
 maturity/reserve/cost checks rejected the request.
 
+## Addendum (2026-10-23): what ended both cohorts
+
+A later reading of the retained server logs shows that "natural extinction" was the first
+VoxeLibre night. In both cohorts every founder was killed by a zombie (`mobs_mc:zombie`, 3 damage
+per hit) about 11.4 minutes after the server started, which matches nightfall in VoxeLibre's
+20-minute day. Each newborn reused a dead body's slot, so it appeared among the same zombies and
+died within 36–156 decisions (under 40 seconds) even though it was fully fed. Lineage
+reconstruction (`sim-luanti lineage`) also shows that no birth changed an expressed developmental
+parameter, and founder ordinal 1 parented six of the seven mutation-enabled births. None of this
+changes the narrow turnover result above, but survival in these cohorts measured how long a body
+lasted against the first night, not what the founders did by day.
+
 ## Configuration and provenance
 
 Both reports record:
