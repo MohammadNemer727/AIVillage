@@ -40,7 +40,7 @@ use sim_core::{
     environment::{EnvironmentObservation, EnvironmentTransition, PrimitiveAction},
     runtime::{
         AffordanceConfig, AgentRuntime, EpisodicConfig, EpisodicPolicyDecision, EpisodicWrite,
-        ExperimentMode, FrozenPhysiology, RuntimeError,
+        ExperimentMode, FrozenPhysiology, RuntimeError, SpatialConfig, SpatialDecision,
     },
 };
 use sim_format::FounderSpec;
@@ -113,6 +113,15 @@ pub struct Diagnostics {
     /// Independent episodic prediction and action-selection ablations.
     #[serde(default)]
     pub episodic_config: EpisodicConfig,
+    /// Spatial-memory ablations.
+    #[serde(default)]
+    pub spatial_config: SpatialConfig,
+    /// Fingerprint of private checkpointed spatial memory; zero while it is unused.
+    #[serde(default)]
+    pub spatial_fingerprint: u64,
+    /// Spatial memory's account of this decision; default while it is unused.
+    #[serde(default)]
+    pub spatial: SpatialDecision,
     /// Episode write → retrieval → score delta → selected-action causal evidence.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub episodic_mediation: Option<EpisodicMediation>,
@@ -298,6 +307,9 @@ fn response_for(
             episodic_fingerprint: runtime.state().episodic_memory.fingerprint(),
             episodic_events: runtime.state().episodic_memory.events.len(),
             episodic_config: runtime.state().episodic_memory.config,
+            spatial_config: runtime.state().spatial_memory.config,
+            spatial_fingerprint: runtime.state().spatial_memory.fingerprint(),
+            spatial: transition.spatial,
             episodic_mediation: Some(EpisodicMediation {
                 write: transition.episodic_write,
                 retrieval: transition.episodic_policy,
@@ -351,11 +363,12 @@ pub fn replay_trace(
             received: record.request.protocol,
         });
     }
-    let (mode, affordance, episodic) = records.first().map_or(
+    let (mode, affordance, episodic, spatial) = records.first().map_or(
         (
             ExperimentMode::PredictiveBaseline,
             None,
             EpisodicConfig::default(),
+            SpatialConfig::default(),
         ),
         |record| {
             let diagnostics = &record.response.diagnostics;
@@ -363,6 +376,7 @@ pub fn replay_trace(
                 diagnostics.experiment_mode,
                 diagnostics.affordance_config,
                 diagnostics.episodic_config,
+                diagnostics.spatial_config,
             )
         },
     );
@@ -370,6 +384,7 @@ pub fn replay_trace(
         record.response.diagnostics.experiment_mode != mode
             || record.response.diagnostics.affordance_config != affordance
             || record.response.diagnostics.episodic_config != episodic
+            || record.response.diagnostics.spatial_config != spatial
     }) {
         return Err(BridgeError::Replay);
     }
@@ -383,6 +398,7 @@ pub fn replay_trace(
         _ => AgentRuntime::new_with_mode(seed, agent_id, brain, mode),
     };
     runtime.set_episodic_config(episodic);
+    runtime.set_spatial_config(spatial);
     for record in records {
         let transition = runtime
             .step(record.request.observation)

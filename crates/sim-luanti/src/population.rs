@@ -156,6 +156,13 @@ struct LifecycleWal {
 }
 
 impl PopulationCoordinator {
+    /// Applies spatial-memory ablations to every live private runtime.
+    pub fn set_spatial_config(&mut self, config: sim_core::runtime::SpatialConfig) {
+        for individual in self.individuals.values_mut() {
+            individual.runtime.set_spatial_config(config);
+        }
+    }
+
     /// Applies independent episodic ablations to every live private runtime.
     pub fn set_episodic_config(&mut self, config: sim_core::runtime::EpisodicConfig) {
         for individual in self.individuals.values_mut() {

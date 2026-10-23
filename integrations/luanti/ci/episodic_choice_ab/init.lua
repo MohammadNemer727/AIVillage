@@ -8,6 +8,9 @@
 local founder_name = minetest.settings:get("ai_bridge_founder") or "founder"
 local warmup = tonumber(minetest.settings:get("episodic_choice_warmup")) or 24
 local scored = tonumber(minetest.settings:get("episodic_choice_scored")) or 40
+-- Opt-in reversal: after this many scored choices, forward thrust returns fullness and backward
+-- thrust takes it away. Zero (the default) keeps the mapping fixed for the whole run.
+local reverse_after = tonumber(minetest.settings:get("episodic_choice_reverse_after")) or 0
 local seed = tonumber(minetest.settings:get("episodic_ab_seed")) or 0
 local arm = minetest.settings:get("episodic_ab_arm") or "unknown"
 local protocol = minetest.settings:get("episodic_choice_protocol") or "episodic-policy-live-choice-v5"
@@ -16,6 +19,7 @@ local feet = {x = 0, y = floor_y + 0.5, z = 0}
 local started, finishing = false, false
 local ready_at
 local eligible, resource_losses, resource_returns = 0, 0, 0
+local post_reversal_losses, post_reversal_returns = 0, 0
 local warmup_forward, warmup_backward = 0, 0
 local observed_fullness_increases, observed_fullness_decreases = 0, 0
 local action_distribution = {}
@@ -46,6 +50,9 @@ local function finish()
     baseline_exposure_valid = warmup_forward >= 4 and warmup_backward >= 4,
     resource_losses = resource_losses,
     resource_returns = resource_returns,
+    reverse_after = reverse_after,
+    post_reversal_losses = post_reversal_losses,
+    post_reversal_returns = post_reversal_returns,
     observed_fullness_increases = observed_fullness_increases,
     observed_fullness_decreases = observed_fullness_decreases,
     action_distribution = action_distribution,
@@ -102,14 +109,17 @@ minetest.register_globalstep(function()
       local phase = eligible <= warmup and "warmup" or "scored"
       local hunger = rawget(_G, "mcl_hunger")
       local before = hunger and hunger.get_hunger(body.player) or 0
+      local reversed = reverse_after > 0 and #choices >= reverse_after
       local outcome, after
-      if thrust == 256 then
+      if phase == "warmup" then
+        if thrust == 256 then warmup_forward = warmup_forward + 1
+        else warmup_backward = warmup_backward + 1 end
+      end
+      if (thrust == 256) ~= reversed then
         outcome = "resource_loss"
-        if phase == "warmup" then warmup_forward = warmup_forward + 1 end
         after = math.max(0, before - 4)
       else
         outcome = "resource_return"
-        if phase == "warmup" then warmup_backward = warmup_backward + 1 end
         after = math.min(20, before + 4)
       end
       if hunger then hunger.set_hunger(body.player, after) end
@@ -119,13 +129,19 @@ minetest.register_globalstep(function()
         observed_fullness_decreases = observed_fullness_decreases + 1
       end
       if phase == "scored" then
-        if outcome == "resource_loss" then resource_losses = resource_losses + 1
-        else resource_returns = resource_returns + 1 end
+        if outcome == "resource_loss" then
+          resource_losses = resource_losses + 1
+          if reversed then post_reversal_losses = post_reversal_losses + 1 end
+        else
+          resource_returns = resource_returns + 1
+          if reversed then post_reversal_returns = post_reversal_returns + 1 end
+        end
         table.insert(choices, {
           action_sequence = state.sequence - 1,
           observed_sequence = state.sequence,
           thrust = thrust,
           outcome = outcome,
+          reversed = reversed,
           fullness_before = before,
           fullness_after = after,
         })

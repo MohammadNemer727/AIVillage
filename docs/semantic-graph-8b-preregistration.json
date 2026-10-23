@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "protocol": "semantic-graph-8b-consolidation",
+  "status": "preregistered_before_outcome_generation",
+  "frozen_on": "2026-10-23",
+  "question": "Does consolidating private episodes into a bounded, action-conditioned semantic graph with contradiction handling beat the validated policy-only episodic retrieval (Experiment 003, condition B) when the world changes, without losing its benefit when the world does not?",
+  "depends_on": "Experiment 003 accepted policy-only retrieval (docs/experiment-003-result.md). Prediction retrieval stays disabled in every arm.",
+  "mechanism": {
+    "module": "crates/sim-core/src/runtime/semantic.rs",
+    "node": "an exact primitive action in a context (recurrent latent plus felt drive), with a signed health/fullness/pain outcome class",
+    "equivalence": "predictive and action-conditioned, never visual: same action, same outcome class, context distance below 192",
+    "evidence": "support +2 per merged observation, capped at 1024, minus 1 per 128 idle ticks",
+    "contradiction": "an observation of the same action in a nearby context with a different outcome class halves the older node's support",
+    "capacity": "16 nodes; the weakest by (support, last tick, id) is forgotten",
+    "retrieval": "fixed top-4 summaries, one node per distinct action first, through the same policy consensus rule as raw episodes",
+    "checkpoint": "versioned, validated, migrates a never-written graph; with the graph off, state and fingerprints are bit-identical to before (all retained traces replay exactly)"
+  },
+  "development_check_not_a_result": "A synthetic reversal unit test (graph_follows_a_reversal_no_later_than_raw_episodes) showed the graph switching to the new best action after 3 rounds against 21 for raw episodes. It used no preregistered seed, runs no game, and only shows the experiment can in principle detect a difference. Whether live behaviour matches is unknown and may well not.",
+  "world": {
+    "engine": "Luanti",
+    "game": "VoxeLibre",
+    "map_seed": 424244,
+    "mapgen": "flat",
+    "decision_seconds": 0.1,
+    "fixture": "integrations/luanti/ci/episodic_choice_ab",
+    "warmup_eligible_choices": 24,
+    "consequence_delay_decisions": 1
+  },
+  "paired_runtime_seeds": [709, 719, 727, 733, 739, 743, 751, 757],
+  "seed_provenance": "none of these appears in any earlier preregistration, harness, test, or run directory",
+  "conditions": {
+    "A": "SIM_LUANTI_EPISODIC=off",
+    "B": "SIM_LUANTI_EPISODIC=policy (accepted in Experiment 003)",
+    "G": "SIM_LUANTI_EPISODIC=graph (policy retrieval served by the semantic graph)"
+  },
+  "variants": {
+    "reversal": {
+      "scored_eligible_choices": 80,
+      "reverse_after_scored_choices": 40,
+      "meaning": "after 40 scored choices forward thrust returns fullness and backward thrust takes it away",
+      "primary_window": "scored choices 41-80 (post-reversal)"
+    },
+    "stationary": {
+      "scored_eligible_choices": 40,
+      "reverse_after_scored_choices": 0,
+      "meaning": "the Experiment 003 fixture, unchanged"
+    }
+  },
+  "controls": [
+    "fresh reset world and newborn checkpoint per arm",
+    "same genome identity, runtime seed, map seed, starting pose, health 20 and hunger 10 within a seed and variant",
+    "arms run in the fixed order A, B, G within each seed, variant reversal then stationary",
+    "action histories may diverge between arms"
+  ],
+  "decision_rules": {
+    "validity": [
+      "fixture valid for every seed and variant: A has baseline exposure valid, fullness increases > 0 and decreases > 0, and every arm records its full scored-choice count",
+      "all 48 live traces replay exactly through the runtime",
+      "prediction independence: graph_enabled cannot change any prediction (unit test enabling_the_graph_cannot_change_any_prediction), so the prediction-regression tolerance of zero holds by construction"
+    ],
+    "primary_reversal_G_vs_B": [
+      "post-reversal resource returns G exceed B by at least 16 in aggregate AND post-reversal resource losses B exceed G by at least 16",
+      "at least 6 of 8 pairs have more post-reversal returns for G than B, and no pair has fewer",
+      "mediation: graph contradictions applied > 0 and graph-driven action changes > 0 summed over G arms"
+    ],
+    "non_inferiority_stationary_G_vs_B": [
+      "aggregate resource returns G >= B - 8 and aggregate resource losses G <= B + 8",
+      "no pair has G returns below B returns by more than 4",
+      "G still beats A: aggregate returns G exceed A by at least 16"
+    ],
+    "accept_graph_consolidation": "validity AND primary_reversal_G_vs_B AND non_inferiority_stationary_G_vs_B",
+    "otherwise": "graph consolidation is rejected and the validated configuration stays raw policy-only retrieval (B). Each part is reported separately; no composite score.",
+    "later_gates_unaffected": "Spatial memory (8C) needs only the validated policy-only configuration and does not wait on this decision."
+  },
+  "secondary_report_only": [
+    "graph nodes retained (maximum 16), nodes created and evicted (churn), contradictions applied",
+    "policy flips between consecutive scored choices in the stationary variant (retrieval stability)",
+    "online one-step body and vision prediction error of each arm, diagnostic only"
+  ],
+  "exclusions_and_stopping": {
+    "runs": "every one of the 48 arms is run exactly once; no early stopping and no additional seeds",
+    "infrastructure_failure": "an arm that fails before writing a result is rerun once before any result is inspected; a second failure stops the experiment as incomplete",
+    "frozen_build": "the driver refuses a dirty tracked tree and runs every arm and the analysis from a snapshot binary and script copied into the run directory",
+    "after_outcomes": "this file, the seeds, and the thresholds are not revised after any outcome is generated; the seeds are consumed whatever the result"
+  },
+  "outputs": {
+    "runs": "integrations/luanti/semantic-graph-8b-runs/<date>/",
+    "machine_report": "semantic-graph-8b-result.json",
+    "written_report": "docs/semantic-graph-8b-result.md"
+  }
+}

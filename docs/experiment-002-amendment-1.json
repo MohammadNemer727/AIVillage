@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "amends": "docs/experiment-002-preregistration.json",
+  "date": "2026-10-23",
+  "status": "made before any Experiment 002 outcome was generated or analysed",
+  "attempt_1": {
+    "outcome": "aborted after 14 minutes of evolution-0; no result report was written and none was analysed",
+    "cause": "harness defect: the driver was given a relative output path, so the snapshot ai_bridge mod was linked into each world through a dangling relative symlink. The mod never loaded, no body reached the bridge (next_sequence stayed 0 for all four individuals, the trace stayed empty) and the unattended bodies wandered and died",
+    "inspected": "only the bridge log, the population endpoint, the empty trace and the server log, to diagnose the defect"
+  },
+  "changes": {
+    "harness": "the driver resolves its output path to an absolute path and checks liveness: a run with no transition in its trace within five minutes is killed and treated as an infrastructure failure, rerun once under the frozen rule"
+  },
+  "unchanged": "seed, genotypes, rotations, replicate counts, phenotypes, tests, thresholds, exclusions, and stopping rules",
+  "code_since_freeze": "Added, all off by default: a semantic graph (SIM_LUANTI_EPISODIC=graph), spatial memory (SIM_LUANTI_SPATIAL), a mapping-reversal option in the Experiment 003 fixture, and the 8B/8C tooling. Experiment 002 founders run the predictive baseline with none of them enabled, and the baseline runtime is unchanged: the 48-transition golden trace is identical apart from fields that are empty when the features are off, and retained traces replay exactly.",
+  "pilot": "A 75-second four-body pilot with the fixed harness recorded 1035 transitions from all four individuals and the requested genome rotation; it is not used as data."
+}

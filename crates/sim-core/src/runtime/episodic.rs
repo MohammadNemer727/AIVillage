@@ -14,7 +14,10 @@
 use serde::{Deserialize, Serialize};
 use sim_kernels::derive;
 
-use super::{LATENT_FEATURES, SENSE_FEATURES};
+use super::{
+    LATENT_FEATURES, SENSE_FEATURES,
+    semantic::{GraphWrite, SemanticGraph},
+};
 use crate::environment::{EnvironmentObservation, PrimitiveAction};
 
 /// Current serialized event-record schema.
@@ -37,6 +40,9 @@ pub struct EpisodicConfig {
     pub prediction_enabled: bool,
     /// Permit retrieved body outcomes to bias embodied action selection.
     pub policy_enabled: bool,
+    /// Consolidate episodes into a bounded semantic graph and let it, not raw events, supply
+    /// the retrieval summaries the policy sees.
+    pub graph_enabled: bool,
 }
 
 /// One experience-grounded event belonging to exactly one lifetime.
@@ -123,6 +129,9 @@ pub struct EpisodicWrite {
     pub outcome_utility: i32,
     /// Decisions between the action and this observed consequence.
     pub eligibility_delay: u16,
+    /// What the same consequence did to the semantic graph, when it is enabled.
+    #[serde(default)]
+    pub graph: GraphWrite,
 }
 
 /// Machine-readable retrieval-to-action mediation for one decision.
@@ -158,6 +167,8 @@ pub struct EpisodicMemory {
     pub next_event_id: u64,
     /// Number of records deterministically forgotten.
     pub forgotten: u64,
+    /// Bounded semantic consolidation of the same experience; empty unless enabled.
+    pub graph: SemanticGraph,
 }
 
 impl Default for EpisodicMemory {
@@ -177,6 +188,7 @@ impl EpisodicMemory {
             events: Vec::new(),
             next_event_id: 0,
             forgotten: 0,
+            graph: SemanticGraph::empty(),
         }
     }
 
@@ -186,6 +198,7 @@ impl EpisodicMemory {
             self.schema_version = EPISODIC_SCHEMA_VERSION;
             self.encoder_version = EPISODIC_ENCODER_VERSION;
         }
+        self.graph.migrate_and_validate()?;
         if self.schema_version != EPISODIC_SCHEMA_VERSION
             || self.encoder_version != EPISODIC_ENCODER_VERSION
             || self.events.len() > EPISODIC_CAPACITY
@@ -213,13 +226,58 @@ impl EpisodicMemory {
         Ok(())
     }
 
-    /// Completes the preceding action event and writes it only when experience is salient.
+    /// Completes the preceding action event, writes it only when experience is salient, and
+    /// consolidates the consequence into the semantic graph when that is enabled.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "event construction keeps the complete bounded evidence contract in one causal write"
+    )]
+    pub fn observe(
+        &mut self,
+        latent_before: &[i16],
+        latent_after: &[i16],
+        source_before: &[i16],
+        source_after: &[i16; SENSE_FEATURES],
+        action: PrimitiveAction,
+        prediction: &[i16],
+        uncertainty: u16,
+        observation: &EnvironmentObservation,
+        tick: u64,
+    ) -> EpisodicWrite {
+        let graph = if self.config.graph_enabled && source_before.len() == SENSE_FEATURES {
+            let (body_delta, drive_delta) = outcome(source_before, source_after);
+            self.graph.observe(
+                latent_before,
+                source_before,
+                action,
+                body_delta,
+                drive_delta,
+                tick,
+            )
+        } else {
+            GraphWrite::default()
+        };
+        let mut write = self.observe_event(
+            latent_before,
+            latent_after,
+            source_before,
+            source_after,
+            action,
+            prediction,
+            uncertainty,
+            observation,
+            tick,
+        );
+        write.graph = graph;
+        write
+    }
+
     #[allow(
         clippy::too_many_arguments,
         clippy::too_many_lines,
         reason = "event construction keeps the complete bounded evidence contract in one causal write"
     )]
-    pub fn observe(
+    fn observe_event(
         &mut self,
         latent_before: &[i16],
         latent_after: &[i16],
@@ -245,14 +303,7 @@ impl EpisodicMemory {
         }
         self.decay(tick);
         let surprise = mean_difference(prediction, source_after);
-        let body_delta = [
-            source_after[12].saturating_sub(source_before[12]),
-            source_after[13].saturating_sub(source_before[13]),
-            source_after[15].saturating_sub(source_before[15]),
-        ];
-        let drive_delta = body_drive(source_before)
-            .saturating_sub(body_drive(source_after))
-            .clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+        let (body_delta, drive_delta) = outcome(source_before, source_after);
         let outcome_utility = body_utility(drive_delta, body_delta);
         let mean_motion = observation
             .senses
@@ -415,6 +466,21 @@ impl EpisodicMemory {
         summaries(&selected)
     }
 
+    /// Summaries the policy consults: the semantic graph's when it is enabled, otherwise the
+    /// raw events'. Both are fixed-size and bounded.
+    #[must_use]
+    pub fn policy_summaries(
+        &self,
+        latent: &[i16],
+        source: &[i16; SENSE_FEATURES],
+    ) -> [EpisodicSummary; EPISODIC_TOP_K] {
+        if self.config.graph_enabled {
+            self.graph.retrieve(latent, source)
+        } else {
+            self.retrieve(latent, source)
+        }
+    }
+
     /// Retrieves nearest consequences only for the action whose outcome is being predicted.
     ///
     /// Filtering before truncation prevents unrelated actions from consuming the fixed top-k.
@@ -546,6 +612,14 @@ impl EpisodicMemory {
             u64::from(self.config.policy_enabled),
             0x4550_4346,
         );
+        if self.config.graph_enabled || self.graph.schema_version != 0 {
+            result = derive(
+                result,
+                u64::from(self.config.graph_enabled),
+                self.graph.fingerprint(),
+                0x4550_4752,
+            );
+        }
         for event in &self.events {
             result = derive(
                 result,
@@ -556,6 +630,25 @@ impl EpisodicMemory {
         }
         result
     }
+}
+
+/// Signed health, fullness, and pain changes, and the fall in felt drive, between two felt states.
+fn outcome(source_before: &[i16], source_after: &[i16]) -> ([i16; 3], i16) {
+    let body_delta = [
+        source_after[12].saturating_sub(source_before[12]),
+        source_after[13].saturating_sub(source_before[13]),
+        source_after[15].saturating_sub(source_before[15]),
+    ];
+    let drive_delta = body_drive(source_before)
+        .saturating_sub(body_drive(source_after))
+        .clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+    (body_delta, drive_delta)
+}
+
+/// Signed felt utility of the change between two felt states, for memories other than events.
+pub(super) fn felt_utility(source_before: &[i16], source_after: &[i16]) -> i32 {
+    let (body_delta, drive_delta) = outcome(source_before, source_after);
+    body_utility(drive_delta, body_delta)
 }
 
 fn body_utility(drive_delta: i16, body_delta: [i16; 3]) -> i32 {
@@ -683,7 +776,7 @@ fn event_fingerprint(event: &EpisodicEvent) -> u64 {
     )
 }
 
-fn action_fingerprint(action: PrimitiveAction) -> u64 {
+pub(super) fn action_fingerprint(action: PrimitiveAction) -> u64 {
     let mut result = 0;
     let values = [
         i64::from(action.thrust).cast_unsigned(),
@@ -782,6 +875,7 @@ mod tests {
             let mut memory = EpisodicMemory::new(EpisodicConfig {
                 prediction_enabled: true,
                 policy_enabled: true,
+                graph_enabled: false,
             });
             for tick in 0..EPISODIC_CAPACITY as u64 + 12 {
                 write(&mut memory, tick, if tick % 2 == 0 { 40 } else { -40 });

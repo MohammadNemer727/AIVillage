@@ -27,6 +27,7 @@ pub const CONDITIONS: [(&str, EpisodicConfig); 4] = [
         EpisodicConfig {
             prediction_enabled: false,
             policy_enabled: false,
+            graph_enabled: false,
         },
     ),
     (
@@ -34,6 +35,7 @@ pub const CONDITIONS: [(&str, EpisodicConfig); 4] = [
         EpisodicConfig {
             prediction_enabled: false,
             policy_enabled: true,
+            graph_enabled: false,
         },
     ),
     (
@@ -41,6 +43,7 @@ pub const CONDITIONS: [(&str, EpisodicConfig); 4] = [
         EpisodicConfig {
             prediction_enabled: true,
             policy_enabled: false,
+            graph_enabled: false,
         },
     ),
     (
@@ -48,6 +51,7 @@ pub const CONDITIONS: [(&str, EpisodicConfig); 4] = [
         EpisodicConfig {
             prediction_enabled: true,
             policy_enabled: true,
+            graph_enabled: false,
         },
     ),
 ];

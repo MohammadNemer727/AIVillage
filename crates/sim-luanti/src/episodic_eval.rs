@@ -234,6 +234,7 @@ fn action_protocol(seed: u64) -> ActionSeedMetrics {
     let mut memory = EpisodicMemory::new(EpisodicConfig {
         prediction_enabled: false,
         policy_enabled: true,
+        graph_enabled: false,
     });
     let latent: [i16; LATENT_FEATURES] = core::array::from_fn(|index| {
         i16::try_from(derive(seed, index as u64, 0, 0x4143_544E) % 65).unwrap_or_default() - 32

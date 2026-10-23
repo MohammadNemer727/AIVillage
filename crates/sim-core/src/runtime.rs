@@ -19,6 +19,8 @@ use crate::{
 mod episodic;
 mod homeostasis;
 mod predictive;
+mod semantic;
+mod spatial;
 
 pub use episodic::{
     EPISODIC_CAPACITY, EPISODIC_ENCODER_VERSION, EPISODIC_SCHEMA_VERSION, EPISODIC_TOP_K,
@@ -33,6 +35,10 @@ pub use predictive::{
     ACTION_FEATURES as PREDICTIVE_ACTION_FEATURES, LATENT_FEATURES, REPLAY_CAPACITY,
     RecurrentPredictor, SENSE_FEATURES, TRUNCATED_SEQUENCE, UPDATE_BATCH, UPDATE_CADENCE,
     developmental_key as predictive_developmental_key, sense_features,
+};
+pub use semantic::{GRAPH_CAPACITY, GRAPH_SCHEMA_VERSION, GraphWrite, SemanticGraph, SemanticNode};
+pub use spatial::{
+    Place, SPATIAL_CAPACITY, SPATIAL_SCHEMA_VERSION, SpatialConfig, SpatialDecision, SpatialMemory,
 };
 
 /// One lifetime learning step in live runtime order: the recurrent predictor scores and learns
@@ -590,6 +596,9 @@ pub struct AgentRuntimeState {
     /// Private bounded lifetime episodic records and their independent ablation settings.
     #[serde(default)]
     pub episodic_memory: EpisodicMemory,
+    /// Private bounded dead-reckoned place memory and its ablation switches.
+    #[serde(default)]
+    pub spatial_memory: SpatialMemory,
 }
 
 /// Rejected observation; the runtime state is unchanged.
@@ -646,6 +655,7 @@ impl AgentRuntime {
                     &developmental_config,
                 )),
                 episodic_memory: EpisodicMemory::default(),
+                spatial_memory: SpatialMemory::default(),
             },
         )
     }
@@ -725,6 +735,11 @@ impl AgentRuntime {
         self.state.episodic_memory.config = config;
     }
 
+    /// Sets the spatial-memory ablations; remembered places are retained.
+    pub const fn set_spatial_config(&mut self, config: SpatialConfig) {
+        self.state.spatial_memory.config = config;
+    }
+
     /// Consumes the next observation and emits primitive motor commands.
     ///
     /// An observation reporting a transport fault is consumed but not sensed: the brain and
@@ -760,6 +775,7 @@ impl AgentRuntime {
                 pre_episodic_action: PrimitiveAction::default(),
                 episodic_write: EpisodicWrite::default(),
                 episodic_policy: EpisodicPolicyDecision::default(),
+                spatial: SpatialDecision::default(),
                 affordance_fingerprint: learner_fingerprint(&self.state),
                 brain_fingerprint: brain_fingerprint(&self.state.brain),
             });
@@ -800,7 +816,7 @@ impl AgentRuntime {
         let policy_summaries = self
             .state
             .episodic_memory
-            .retrieve(&self.state.recurrent_predictor.hidden, &current_source);
+            .policy_summaries(&self.state.recurrent_predictor.hidden, &current_source);
         let (mut action, intrinsic_score, recorded_baseline) = match self.state.experiment_mode {
             ExperimentMode::PredictiveBaseline => (baseline_action, 0, PrimitiveAction::default()),
             ExperimentMode::AffordanceDiscovery => {
@@ -821,6 +837,27 @@ impl AgentRuntime {
         } else {
             episodic_policy.action_changed = false;
         }
+        // Self-motion first: integrate the action just executed and remember what it felt like,
+        // then let remembered places steer. Untouched while spatial memory is unused.
+        let felt_utility = if self.state.recurrent_predictor.prediction_ready {
+            episodic::felt_utility(
+                &self.state.recurrent_predictor.previous_senses,
+                &current_source,
+            )
+        } else {
+            0
+        };
+        self.state.spatial_memory.observe(
+            self.state.recurrent_predictor.previous_action,
+            external.touch > 0,
+            felt_utility,
+            decision_tick,
+        );
+        let (steered, spatial) = self.state.spatial_memory.steer(
+            action,
+            observation.interoception.map_or(255, |felt| felt.fullness),
+        );
+        action = steered;
         let episodic_write = learn_transition(
             &mut self.state.recurrent_predictor,
             &mut self.state.episodic_memory,
@@ -839,6 +876,7 @@ impl AgentRuntime {
             pre_episodic_action,
             episodic_write,
             episodic_policy,
+            spatial,
             affordance_fingerprint: learner_fingerprint(&self.state),
             brain_fingerprint: brain_fingerprint(&self.state.brain),
         })
@@ -1002,6 +1040,8 @@ struct StateRepr {
     recurrent_predictor: RecurrentPredictor,
     #[serde(default)]
     episodic_memory: EpisodicMemory,
+    #[serde(default)]
+    spatial_memory: SpatialMemory,
 }
 
 impl From<AgentRuntimeState> for StateRepr {
@@ -1024,6 +1064,7 @@ impl From<AgentRuntimeState> for StateRepr {
             homeostasis: state.homeostasis,
             recurrent_predictor: state.recurrent_predictor,
             episodic_memory: state.episodic_memory,
+            spatial_memory: state.spatial_memory,
         }
     }
 }
@@ -1063,6 +1104,7 @@ impl TryFrom<StateRepr> for AgentRuntimeState {
         }
         repr.recurrent_predictor.validate()?;
         repr.episodic_memory.migrate_and_validate()?;
+        repr.spatial_memory.migrate_and_validate()?;
         if (repr.experiment_mode == ExperimentMode::Homeostatic) != repr.homeostasis.active() {
             return Err("homeostatic state does not match the experiment mode".to_owned());
         }
@@ -1085,6 +1127,7 @@ impl TryFrom<StateRepr> for AgentRuntimeState {
             homeostasis: repr.homeostasis,
             recurrent_predictor: repr.recurrent_predictor,
             episodic_memory: repr.episodic_memory,
+            spatial_memory: repr.spatial_memory,
         })
     }
 }

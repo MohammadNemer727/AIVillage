@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use sim_core::runtime::{AffordanceConfig, EpisodicConfig, ExperimentMode};
+use sim_core::runtime::{AffordanceConfig, EpisodicConfig, ExperimentMode, SpatialConfig};
 use sim_format::{PopulationBlockReason, PopulationLifecycleEvent};
 use sim_luanti::{
     Bridge, LifecycleConfig, PopulationCoordinator, TraceRecord, ablation, benchmark,
@@ -19,7 +19,7 @@ use sim_luanti::{
     reaching, replay_trace, save_state, serve_once_concurrent,
 };
 
-const USAGE: &str = "usage: sim-luanti [replay <trace.ndjson>|prediction-eval|episodic-eval|prediction-ablation <trace.ndjson> [report.json]|online-prediction off|policy|prediction|both <trace.ndjson> [report.json]|founders|lineage <genome-rotation> <population-report.json>|benchmark|contingency|foraging|reaching [report.json] [report.md]]";
+const USAGE: &str = "usage: sim-luanti [replay <trace.ndjson>|prediction-eval|episodic-eval|prediction-ablation <trace.ndjson> [report.json]|online-prediction off|policy|prediction|both|graph <trace.ndjson> [report.json]|founders|lineage <genome-rotation> <population-report.json>|benchmark|contingency|foraging|reaching [report.json] [report.md]]";
 
 /// Decisions between saves of the founder's brain (about ten seconds of watched play).
 const SAVE_EVERY_DECISIONS: u64 = 40;
@@ -136,6 +136,9 @@ fn founder_bridge(
         if let Some(config) = episodic_config()? {
             population.set_episodic_config(config);
         }
+        if let Some(config) = spatial_config()? {
+            population.set_spatial_config(config);
+        }
         eprintln!(
             "sim-luanti: continuing {} independently saved individuals from {}",
             population.manifest().individuals.len(),
@@ -193,6 +196,9 @@ fn founder_bridge(
         if let Some(config) = episodic_config()? {
             runtime.set_episodic_config(config);
         }
+        if let Some(config) = spatial_config()? {
+            runtime.set_spatial_config(config);
+        }
         eprintln!(
             "sim-luanti: continuing the saved founder ({:?}, {} decisions) from {}",
             runtime.state().experiment_mode,
@@ -203,6 +209,9 @@ fn founder_bridge(
     }
     if let Some(config) = episodic_config()? {
         bridge.set_episodic_config(config);
+    }
+    if let Some(config) = spatial_config()? {
+        bridge.set_spatial_config(config);
     }
     if let Some(path) = population_path {
         bridge.set_lifecycle_config(lifecycle_config)?;
@@ -215,23 +224,49 @@ fn episodic_config() -> Result<Option<EpisodicConfig>, Box<dyn std::error::Error
     match std::env::var("SIM_LUANTI_EPISODIC") {
         Err(_) => Ok(None),
         Ok(value) => Ok(Some(episodic_arm(&value).map_err(|value| {
-            format!("SIM_LUANTI_EPISODIC must be off, prediction, policy, or both; got {value}")
+            format!(
+                "SIM_LUANTI_EPISODIC must be off, prediction, policy, both, or graph; got {value}"
+            )
         })?)),
     }
 }
 
+/// Spatial memory from `SIM_LUANTI_SPATIAL`: `off`, `on`, or the sham `scrambled`.
+fn spatial_config() -> Result<Option<SpatialConfig>, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(match std::env::var("SIM_LUANTI_SPATIAL").as_deref() {
+        Err(_) => None,
+        Ok("off") => Some(SpatialConfig::default()),
+        Ok("on") => Some(SpatialConfig {
+            enabled: true,
+            scrambled: false,
+        }),
+        Ok("scrambled") => Some(SpatialConfig {
+            enabled: true,
+            scrambled: true,
+        }),
+        Ok(value) => {
+            return Err(
+                format!("SIM_LUANTI_SPATIAL must be off, on, or scrambled; got {value}").into(),
+            );
+        }
+    })
+}
+
 /// Parses an episodic switch setting by its arm name.
 fn episodic_arm(value: &str) -> Result<EpisodicConfig, &str> {
-    let (prediction_enabled, policy_enabled) = match value {
-        "off" => (false, false),
-        "prediction" => (true, false),
-        "policy" => (false, true),
-        "both" => (true, true),
+    // (prediction retrieval, policy retrieval, semantic graph feeding the policy)
+    let (prediction_enabled, policy_enabled, graph_enabled) = match value {
+        "off" => (false, false, false),
+        "prediction" => (true, false, false),
+        "policy" => (false, true, false),
+        "both" => (true, true, false),
+        "graph" => (false, true, true),
         _ => return Err(value),
     };
     Ok(EpisodicConfig {
         prediction_enabled,
         policy_enabled,
+        graph_enabled,
     })
 }
 

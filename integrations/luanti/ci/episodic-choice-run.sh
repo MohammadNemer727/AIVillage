@@ -5,12 +5,14 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 repo=$(CDPATH= cd -- "$root/../.." && pwd)
 world=${1:?world required}
-arm=${2:?off, policy, prediction, or both required}
+arm=${2:?off, policy, prediction, both, or graph required}
 seed=${3:?seed required}
 bridge_port=${4:?bridge port required}
 server_port=${5:?server port required}
-case "$arm" in off|policy|prediction|both) ;; *) echo "arm must be off, policy, prediction, or both" >&2; exit 2;; esac
+case "$arm" in off|policy|prediction|both|graph) ;; *) echo "arm must be off, policy, prediction, both, or graph" >&2; exit 2;; esac
 protocol=${EPISODIC_CHOICE_PROTOCOL:-episodic-policy-live-choice-v5}
+scored=${EPISODIC_CHOICE_SCORED:-40}
+reverse_after=${EPISODIC_CHOICE_REVERSE_AFTER:-0}
 
 games=${LUANTI_GAMES:-"$HOME/.minetest/games"}
 [ -d "$games/mineclone2" ] || { echo "VoxeLibre not found in $games" >&2; exit 77; }
@@ -47,7 +49,8 @@ episodic_ab_arm = $arm
 episodic_ab_seed = $seed
 episodic_choice_protocol = $protocol
 episodic_choice_warmup = 24
-episodic_choice_scored = 40
+episodic_choice_scored = $scored
+episodic_choice_reverse_after = $reverse_after
 EOF
 cat >"$world/founder-client.conf" <<'EOF'
 video_driver = opengl

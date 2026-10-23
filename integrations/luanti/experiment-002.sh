@@ -6,6 +6,8 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo=$(CDPATH= cd -- "$root/../.." && pwd)
 output=${1:-"$root/experiment-002-runs/$(date -u +%Y-%m-%d)"}
+# Absolute, because worlds link the snapshot mod by this path from inside their own folders.
+case "$output" in /*) ;; *) output="$(pwd)/$output";; esac
 [ ! -e "$output" ] || { echo "$output exists; Experiment 002 runs exactly once" >&2; exit 2; }
 [ -z "$(git -C "$repo" status --porcelain --untracked-files=no)" ] || {
   echo "commit the tree first: the run must use exactly the frozen revision" >&2; exit 2;
@@ -27,7 +29,9 @@ export SIM_LUANTI_EXPERIMENT_NAME=002-heritable-behavioral-variation
 export SIM_LUANTI_MINIMUM_REPRODUCTIVE_RESERVE=160 SIM_LUANTI_REPRODUCTIVE_COST=80
 export SIM_LUANTI_EXPERIMENT_001_BIRTHS=100 SIM_LUANTI_EXPERIMENT_001_DEADLINE_SECONDS=1800
 
-# One population run; a run that fails before writing its report is rerun once.
+# One population run. A run whose bodies never reach the bridge (no transition recorded within
+# five minutes) or that fails before writing its report is an infrastructure failure and is
+# rerun once.
 run() {
   name=$1 rotation=$2 mutation=$3 maturity=$4
   world="$output/$name"
@@ -38,7 +42,20 @@ run() {
       SIM_LUANTI_REPRODUCTIVE_MATURITY=$maturity \
       SIM_LUANTI_EXPERIMENT_001_REPORT="$world/population-report.json" \
       SIM_LUANTI_TRACE="$world/bridge-trace.ndjson" \
-      sh "$root/play.sh" "$world" >"$world/launcher.log" 2>&1 || true
+      sh "$root/play.sh" "$world" >"$world/launcher.log" 2>&1 &
+    launcher=$!
+    alive=0
+    for _ in $(seq 1 60); do
+      [ -s "$world/bridge-trace.ndjson" ] && { alive=1; break; }
+      kill -0 "$launcher" 2>/dev/null || break
+      sleep 5
+    done
+    if [ "$alive" -eq 1 ]; then
+      wait "$launcher" || true
+    else
+      kill "$launcher" 2>/dev/null || true
+      wait "$launcher" 2>/dev/null || true
+    fi
     [ -f "$world/population-report.json" ] && return 0
     [ "$attempt" -eq 1 ] || {
       echo "second infrastructure failure in $name; Experiment 002 is incomplete" >&2; exit 1;

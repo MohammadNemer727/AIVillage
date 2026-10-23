@@ -326,11 +326,22 @@ pub struct EnvironmentTransition {
     /// Bounded retrieval and score evidence for this action decision.
     #[serde(default)]
     pub episodic_policy: crate::runtime::EpisodicPolicyDecision,
+    /// Spatial memory's account of this decision; omitted while spatial memory is unused.
+    #[serde(default, skip_serializing_if = "is_default_spatial")]
+    pub spatial: crate::runtime::SpatialDecision,
     /// Fingerprint of the checkpointed affordance learner, or zero for the baseline.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     pub affordance_fingerprint: u64,
     /// Fingerprint of the brain state after this decision.
     pub brain_fingerprint: u64,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip predicate signature"
+)]
+fn is_default_spatial(value: &crate::runtime::SpatialDecision) -> bool {
+    *value == crate::runtime::SpatialDecision::default()
 }
 
 #[allow(
