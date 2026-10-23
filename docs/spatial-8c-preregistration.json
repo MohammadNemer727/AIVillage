@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "protocol": "spatial-8c-navigation",
+  "status": "preregistered_before_outcome_generation",
+  "frozen_on": "2026-10-23",
+  "question": "Can a body that has felt relief at a place get back to it, using only a private dead-reckoned memory grown from its own felt heading, motor commands, clock and touch, and does that depend on the memory being authentic?",
+  "depends_on": "Experiment 003 validated policy-only episodic retrieval, which 8C builds after. The episodic policy is OFF in every 8C arm: in development pilots it made the body repeat 'turn in place' for the whole run because that action once preceded relief, so the body never left the patch and spatial memory had nothing to improve. 8C therefore isolates the spatial switch and does not combine it with episodic retrieval.",
+  "mechanism": {
+    "module": "crates/sim-core/src/runtime/spatial.rs",
+    "self_motion": "path integration from the felt orientation sense, the commanded thrust and strafe, the body's own sense of how long the action was held (held_ms, measured by the bridge as application evidence) and the felt touch sense. No world coordinate, node name, map, or designer label is read.",
+    "body_prior": "full thrust walks this body 3.8 blocks/s, measured over 69 straight runs in development pilots",
+    "places": "at most 16, merged within 4 blocks, valence from felt relief (fed or healed) and felt harm (hurt); ordinary hunger is never counted as harm",
+    "behaviour": "when fullness is below half and a relieving place is known, steer to it; on arrival without relief search for 90 decisions then steer back; sidestep for 20 decisions after 3 consecutive decisions pushing against something; turn away from and walk out of a remembered harm",
+    "sham_control": "the same memory, costs and steering, but each place is stored mirrored through the birth point and shifted 24 blocks, so the map is wrong"
+  },
+  "development_pilots_not_results": "Development seeds 9001-9004, 9005-9007, 9008-9010, 9011-9013, 9014-9016, 9017-9019, 9020-9022, 9023-9025 and 9030-9032 were used to build and debug the fixture and mechanism and are consumed. They exposed and led to fixes for: bodies that never left the patch under the episodic policy, a body clock mismatch, dropped turns (heading is now felt), wall-sliding drift (the arena is now 121x121), a harm-avoidance freeze, no search at arrival, a speed gain 5 percent too high, and a sham control that mapped the birth patch onto itself. The final mechanism was not tuned on any seed below.",
+  "world": {
+    "engine": "Luanti",
+    "game": "VoxeLibre",
+    "fixture": "integrations/luanti/ci/spatial_nav",
+    "arena": "121x121 stone floor with stone walls, no mobs, daylight",
+    "relief_patch": "radius 6 blocks at the origin; the body is born inside it with fullness at 8 of 20; standing in it adds 4 per decision while below 20",
+    "harm_patch": "radius 3 blocks at a seeded bearing and 8-12 blocks distance; each decision inside costs 2 health down to a floor of 1",
+    "hunger": "falls 1 per 20 decisions down to a floor of 1, so starvation damage never occurs",
+    "episode_decisions": 600,
+    "driver": "SIM_LUANTI_MODE=wander, a fixed deterministic exploratory gait that stands in for evolved exploration and learns nothing",
+    "bridge": "paused until the body is placed so no motion is integrated before the experiment begins"
+  },
+  "seeds": {
+    "open": [9201, 9203, 9207, 9209, 9213, 9217, 9219, 9223, 9229, 9231, 9233, 9239],
+    "wall": [9241, 9243, 9247, 9249, 9251, 9253, 9257, 9259],
+    "provenance": "none of these appears in any earlier preregistration, harness, test, pilot, or run directory"
+  },
+  "conditions": {
+    "B": "SIM_LUANTI_SPATIAL=off (matched non-spatial control)",
+    "S": "SIM_LUANTI_SPATIAL=on",
+    "X": "SIM_LUANTI_SPATIAL=scrambled (sham map)"
+  },
+  "variants": {
+    "open": "arms B, S, X on the 12 open seeds",
+    "wall": "arms B and S on the 8 wall seeds; a stone wall 11 blocks wide and 3 high crosses the way back to the patch 9 blocks out at a seeded bearing. Report only: it tests detours but does not gate."
+  },
+  "decision_rules": {
+    "validity": [
+      "all runs complete 600 decisions and every trace replays exactly",
+      "median dead-reckoning error of the S arms over the open seeds is at most 12 blocks (the median over seeds of each arm's median error against the server's true position)"
+    ],
+    "primary_open_S_vs_B": [
+      "aggregate fed decisions of S exceed B by at least 10 percent of all decisions (720 of 7200)",
+      "aggregate relief entries of S exceed B by at least 6",
+      "at least 9 of 12 pairs have more fed decisions for S, and at most 1 pair has fewer",
+      "harm entries of S do not exceed B in aggregate",
+      "spatial steering was active in at least one S arm"
+    ],
+    "sham_open_S_vs_X": [
+      "aggregate fed decisions of S exceed X by at least 5 percent of all decisions (360)",
+      "at least 9 of 12 pairs favour S, and at most 1 favours X"
+    ],
+    "accept_spatial_memory": "validity AND primary_open_S_vs_B AND sham_open_S_vs_X",
+    "otherwise": "spatial memory is rejected for navigation as built. Each part is reported separately, with no composite score. The wall variant is described but does not decide."
+  },
+  "secondary_report_only": [
+    "dead-reckoning error by arm and seed",
+    "places retained (maximum 16), steering, searching and avoiding decisions",
+    "wall variant fed decisions and relief entries"
+  ],
+  "exclusions_and_stopping": {
+    "runs": "all 52 arms run exactly once; no additional seeds",
+    "infrastructure_failure": "an arm that fails before writing a result, or whose bridge sees no transition within five minutes, is rerun once before any result is inspected; a second failure stops the experiment as incomplete",
+    "frozen_build": "the driver refuses a dirty tracked tree and runs every arm and the analysis from a snapshot binary and script copied into the run directory",
+    "after_outcomes": "this file, the seeds, and the thresholds are not revised after any outcome is generated"
+  },
+  "outputs": {
+    "runs": "integrations/luanti/spatial-8c-runs/<date>/",
+    "machine_report": "spatial-8c-result.json",
+    "written_report": "docs/spatial-8c-result.md"
+  }
+}

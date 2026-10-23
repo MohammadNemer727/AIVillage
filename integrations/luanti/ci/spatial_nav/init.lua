@@ -18,7 +18,7 @@ local arm = settings:get("spatial_arm") or "unknown"
 local protocol = settings:get("spatial_protocol") or "spatial-8c"
 local floor_y = 199
 local half = 60
-local relief_radius, harm_radius = 4.0, 3.0
+local relief_radius, harm_radius = 6.0, 3.0
 local drain_every, start_hunger = 20, 8
 
 local rng = PcgRandom(seed)

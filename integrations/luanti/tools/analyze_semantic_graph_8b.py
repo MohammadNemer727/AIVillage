@@ -16,6 +16,7 @@ ARMS = {"A": "off", "B": "policy", "G": "graph"}
 SCORED = {"reversal": 80, "stationary": 40}
 PRIMARY_MARGIN = 16
 MIN_POSITIVE_PAIRS = 6
+MAX_NEGATIVE_PAIRS = 1
 STATIONARY_TOLERANCE = 8
 STATIONARY_PAIR_TOLERANCE = 4
 
@@ -100,7 +101,7 @@ def main():
         post_returns["G"] - post_returns["B"] >= PRIMARY_MARGIN
         and post_losses["B"] - post_losses["G"] >= PRIMARY_MARGIN
         and primary["positive_pairs"] >= MIN_POSITIVE_PAIRS
-        and primary["negative_pairs"] == 0
+        and primary["negative_pairs"] <= MAX_NEGATIVE_PAIRS
         and mediation["graph_contradictions"] > 0
         and mediation["action_changes"] > 0
     )

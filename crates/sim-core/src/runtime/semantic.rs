@@ -2,8 +2,7 @@
 //!
 //! A node stands for "this action, in contexts like this, had this kind of bodily outcome". Nodes
 //! are merged by predictive, action-conditioned equivalence (same exact action, same signed
-//! health/fullness/pain outcome class, nearby recurrent and drive context), never by visual
-//! similarity. Support is the evidence weight of a node. A new observation of the same action in
+//! health/fullness/pain outcome class, a similar felt body state), never by visual similarity. Support is the evidence weight of a node. A new observation of the same action in
 //! a nearby context with a different outcome class contradicts the older node and halves its
 //! support, so the graph follows a changed world instead of averaging two worlds together.
 //!
@@ -30,6 +29,7 @@ pub const GRAPH_SCHEMA_VERSION: u16 = 1;
 /// Maximum private nodes retained by one individual.
 pub const GRAPH_CAPACITY: usize = 16;
 const MERGE_DISTANCE: u32 = 192;
+const LATENT_WEIGHT_DIVISOR: u32 = 32;
 const SUPPORT_PER_OBSERVATION: u16 = 2;
 const MAX_SUPPORT: u16 = 1_024;
 const DECAY_TICKS: u64 = 128;
@@ -353,6 +353,9 @@ fn drive_of(source: &[i16]) -> [i16; 3] {
     ]
 }
 
+/// How far a context is from a node: the felt drive state, plus the recurrent latent at a small
+/// weight. The latent drifts with every moment of experience, so it must not decide equivalence;
+/// the felt body state is what makes two consequences "the same kind of situation".
 fn distance(node: &SemanticNode, latent: &[i16], drive: [i16; 3]) -> u32 {
     let latent_distance: u32 = node
         .latent
@@ -364,9 +367,9 @@ fn distance(node: &SemanticNode, latent: &[i16], drive: [i16; 3]) -> u32 {
         .drive
         .iter()
         .zip(drive)
-        .map(|(left, right)| u32::from(left.abs_diff(right)) * 4)
+        .map(|(left, right)| u32::from(left.abs_diff(right)))
         .sum();
-    latent_distance.saturating_add(drive_distance)
+    drive_distance.saturating_add(latent_distance / LATENT_WEIGHT_DIVISOR)
 }
 
 fn running_mean(mean: i16, value: i16, seen: i64) -> i16 {

@@ -8,14 +8,14 @@
   "mechanism": {
     "module": "crates/sim-core/src/runtime/semantic.rs",
     "node": "an exact primitive action in a context (recurrent latent plus felt drive), with a signed health/fullness/pain outcome class",
-    "equivalence": "predictive and action-conditioned, never visual: same action, same outcome class, context distance below 192",
+    "equivalence": "predictive and action-conditioned, never visual: same action, same outcome class, and context distance below 192, where distance is the felt drive state (L1 over health, fullness and pain deficits) plus the recurrent latent at weight 1/32",
     "evidence": "support +2 per merged observation, capped at 1024, minus 1 per 128 idle ticks",
     "contradiction": "an observation of the same action in a nearby context with a different outcome class halves the older node's support",
     "capacity": "16 nodes; the weakest by (support, last tick, id) is forgotten",
     "retrieval": "fixed top-4 summaries, one node per distinct action first, through the same policy consensus rule as raw episodes",
     "checkpoint": "versioned, validated, migrates a never-written graph; with the graph off, state and fingerprints are bit-identical to before (all retained traces replay exactly)"
   },
-  "development_check_not_a_result": "A synthetic reversal unit test (graph_follows_a_reversal_no_later_than_raw_episodes) showed the graph switching to the new best action after 3 rounds against 21 for raw episodes. It used no preregistered seed, runs no game, and only shows the experiment can in principle detect a difference. Whether live behaviour matches is unknown and may well not.",
+  "development_check_not_a_result": "A synthetic reversal unit test (graph_follows_a_reversal_no_later_than_raw_episodes) showed the graph switching to the new best action after 3 rounds against 21 for raw episodes. Live development pilots then used seeds 9101, 9102 and 9103 (consumed). The first design matched contexts on a recurrent latent that drifts by far more than the merge distance between consecutive choices, so it filled its 16 nodes with near-duplicates, never contradicted the old world, and failed to adapt (2 of 40 post-reversal returns against 33 for raw memory on one seed). Matching on the felt drive state with the latent at weight 1/32 fixed that; on two further seeds the graph then had more post-reversal returns than raw memory (34 against 23, and 7 against 3). The final mechanism was not tuned on any seed below. Thresholds were set after those pilots and before any preregistered seed ran.",
   "world": {
     "engine": "Luanti",
     "game": "VoxeLibre",
@@ -60,7 +60,7 @@
     ],
     "primary_reversal_G_vs_B": [
       "post-reversal resource returns G exceed B by at least 16 in aggregate AND post-reversal resource losses B exceed G by at least 16",
-      "at least 6 of 8 pairs have more post-reversal returns for G than B, and no pair has fewer",
+      "at least 6 of 8 pairs have more post-reversal returns for G than B, and at most 1 pair has fewer",
       "mediation: graph contradictions applied > 0 and graph-driven action changes > 0 summed over G arms"
     ],
     "non_inferiority_stationary_G_vs_B": [

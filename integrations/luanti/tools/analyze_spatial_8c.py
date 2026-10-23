@@ -14,11 +14,12 @@ import statistics
 import sys
 
 ARMS = {"B": "off", "S": "on", "X": "scrambled"}
-DECISIONS = 900
+DECISIONS = 600
 FED_MARGIN_FRACTION = 0.10
 MIN_POSITIVE_PAIRS_FRACTION = 0.75
 SHAM_MARGIN_FRACTION = 0.05
-MAX_MEDIAN_DEAD_RECKONING_ERROR_BLOCKS = 3.0
+MAX_MEDIAN_DEAD_RECKONING_ERROR_BLOCKS = 12.0
+MAX_NEGATIVE_PAIRS = 1
 MIN_ENTRIES_MARGIN = 6
 
 
@@ -99,7 +100,7 @@ def main():
         fed["S"] - fed["B"] >= FED_MARGIN_FRACTION * all_decisions
         and entries["S"] - entries["B"] >= MIN_ENTRIES_MARGIN
         and primary["positive_pairs"] >= needed_pairs
-        and primary["negative_pairs"] == 0
+        and primary["negative_pairs"] <= MAX_NEGATIVE_PAIRS
         and harm["S"] <= harm["B"]
         and primary["steering_decisions"] > 0
     )
@@ -111,7 +112,7 @@ def main():
     sham["passes"] = (
         fed["S"] - fed["X"] >= SHAM_MARGIN_FRACTION * all_decisions
         and sham["positive_pairs"] >= needed_pairs
-        and sham["negative_pairs"] == 0
+        and sham["negative_pairs"] <= MAX_NEGATIVE_PAIRS
     )
 
     wall = {

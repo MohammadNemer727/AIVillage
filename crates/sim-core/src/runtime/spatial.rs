@@ -44,7 +44,10 @@ const FULL_THRUST_STEP: i64 = FULL_THRUST_SPEED / 10;
 const NOMINAL_HOLD_MS: i64 = 100;
 /// Decisions spent searching around a remembered place that did not deliver, before steering
 /// back to it again.
-const SEARCH_DECISIONS: u16 = 60;
+const SEARCH_DECISIONS: u16 = 90;
+/// Milliblocks by which the sham control shifts every remembered place (after mirroring), so a
+/// place remembered near the birth point is not mapped back onto itself.
+const SCRAMBLE_OFFSET: i64 = 24_000;
 /// Felt fullness below which the body goes looking for a relieving place.
 const HUNGRY_BELOW: u16 = 128;
 const DECAY_TICKS: u64 = 256;
@@ -59,8 +62,8 @@ const DETOUR_DECISIONS: u16 = 20;
 pub struct SpatialConfig {
     /// Let remembered places steer the body.
     pub enabled: bool,
-    /// Sham control: places are remembered at mirrored coordinates, so the map is wrong while
-    /// every other cost and mechanism is identical.
+    /// Sham control: places are remembered mirrored through the birth point and shifted by 24
+    /// blocks, so the map is wrong while every other cost and mechanism is identical.
     pub scrambled: bool,
 }
 
@@ -362,7 +365,7 @@ impl SpatialMemory {
 
     fn remember(&mut self, utility: i32, tick: u64) {
         let (x, y) = if self.config.scrambled {
-            (-self.x, -self.y)
+            (SCRAMBLE_OFFSET - self.x, -SCRAMBLE_OFFSET - self.y)
         } else {
             (self.x, self.y)
         };
@@ -593,7 +596,10 @@ mod tests {
         }
         assert_eq!(
             (sham.places[0].x, sham.places[0].y),
-            (-real.places[0].x, -real.places[0].y)
+            (
+                SCRAMBLE_OFFSET - real.places[0].x,
+                -SCRAMBLE_OFFSET - real.places[0].y
+            )
         );
         let _ = tick;
     }
