@@ -1,0 +1,2661 @@
+{
+  "schema_version": 1,
+  "protocol": "semantic-graph-8b-consolidation",
+  "preregistration_sha256": "2edc191e8c6ad117653f0bac39caa684766eb9170b822367fbfdce38ae19487f",
+  "git_revision_of_snapshot": "e6ee9a8172847480c47051fa492b0fc03d888f8c",
+  "seeds": [
+    709,
+    719,
+    727,
+    733,
+    739,
+    743,
+    751,
+    757
+  ],
+  "infrastructure_reruns": [
+    "stationary-seed-743-graph"
+  ],
+  "validity": {
+    "fixture_valid_reversal": true,
+    "fixture_valid_stationary": true,
+    "all_traces_replay_exactly": true,
+    "valid": true
+  },
+  "primary_reversal_G_vs_B": {
+    "post_reversal_returns": {
+      "A": 153,
+      "B": 95,
+      "G": 227
+    },
+    "post_reversal_losses": {
+      "A": 167,
+      "B": 225,
+      "G": 93
+    },
+    "return_deltas_G_minus_B": [
+      38,
+      4,
+      -27,
+      37,
+      9,
+      0,
+      34,
+      37
+    ],
+    "positive_pairs": 6,
+    "negative_pairs": 1,
+    "mediation": {
+      "graph_contradictions": 74,
+      "action_changes": 786
+    },
+    "passes": true
+  },
+  "non_inferiority_stationary_G_vs_B": {
+    "resource_returns": {
+      "A": 140,
+      "B": 320,
+      "G": 320
+    },
+    "resource_losses": {
+      "A": 180,
+      "B": 0,
+      "G": 0
+    },
+    "worst_pair_shortfall_G_vs_B": 0,
+    "policy_flips": {
+      "A": 82,
+      "B": 0,
+      "G": 0
+    },
+    "passes": true
+  },
+  "graph_secondary": {
+    "nodes_max": 10,
+    "nodes_created_total": 64,
+    "nodes_evicted_total": 0
+  },
+  "decision": "accepted",
+  "reversal": [
+    {
+      "seed": 709,
+      "A": {
+        "action_distribution": {
+          "-256": 51,
+          "0": 608,
+          "256": 53
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 39,
+        "observed_fullness_increases": 42,
+        "post_reversal_losses": 18,
+        "post_reversal_returns": 22,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 34,
+        "resource_returns": 46,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 709,
+        "warmup_backward": 9,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 15,
+        "replayed_exactly": true,
+        "trace_sha256": "e3ddd8f1e8d01055b80d0b5d8a8a55dd570988831f807b98a02b9f8c34310fee",
+        "trace": {
+          "transitions": 758,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 716,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 20,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 4542,
+            "absolute_error_total": 15055,
+            "mae_milli": 3314
+          },
+          "held_item": {
+            "feature_samples": 4542,
+            "absolute_error_total": 7908,
+            "mae_milli": 1741
+          },
+          "vision": {
+            "feature_samples": 9084,
+            "absolute_error_total": 169067,
+            "mae_milli": 18611
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 104,
+          "0": 6
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 5,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 40,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 40,
+        "resource_returns": 40,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 709,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "781d4559b33ed78aa5a3f70c7a33a9dbc52c688b2131e9772752866edfbbfbd3",
+        "trace": {
+          "transitions": 152,
+          "action_changes": 95,
+          "retrievals_with_body_evidence": 114,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 906,
+            "absolute_error_total": 1241,
+            "mae_milli": 1369
+          },
+          "held_item": {
+            "feature_samples": 906,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1812,
+            "absolute_error_total": 13077,
+            "mae_milli": 7216
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 66,
+          "256": 38
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 2,
+        "observed_fullness_increases": 5,
+        "post_reversal_losses": 2,
+        "post_reversal_returns": 38,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 2,
+        "resource_returns": 78,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 709,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "132d8d1fe8a4cc789c203cff98209d4a656b58b9a030818c57bace5391528ef5",
+        "trace": {
+          "transitions": 149,
+          "action_changes": 101,
+          "retrievals_with_body_evidence": 108,
+          "graph_nodes_max": 3,
+          "graph_created": 3,
+          "graph_evicted": 0,
+          "graph_merged": 4,
+          "graph_contradictions": 4
+        },
+        "policy_flips": 1,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 888,
+            "absolute_error_total": 785,
+            "mae_milli": 884
+          },
+          "held_item": {
+            "feature_samples": 888,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1776,
+            "absolute_error_total": 33373,
+            "mae_milli": 18791
+          }
+        }
+      }
+    },
+    {
+      "seed": 719,
+      "A": {
+        "action_distribution": {
+          "-256": 48,
+          "0": 540,
+          "256": 56
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 41,
+        "observed_fullness_increases": 44,
+        "post_reversal_losses": 17,
+        "post_reversal_returns": 23,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 38,
+        "resource_returns": 42,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 719,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "4c397d58fa6dde37fd5528a0f527596837181d52db3386635593e46ae6eac634",
+        "trace": {
+          "transitions": 686,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 648,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 17,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 4110,
+            "absolute_error_total": 14386,
+            "mae_milli": 3500
+          },
+          "held_item": {
+            "feature_samples": 4110,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 8220,
+            "absolute_error_total": 167198,
+            "mae_milli": 20340
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 71,
+          "0": 10,
+          "256": 33
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 6,
+        "observed_fullness_increases": 9,
+        "post_reversal_losses": 7,
+        "post_reversal_returns": 33,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 7,
+        "resource_returns": 73,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 719,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "47ebaee8f3d1af30de5a5f00b6c5bda9ae573b711102b079f0e38c0b8069eaad",
+        "trace": {
+          "transitions": 160,
+          "action_changes": 100,
+          "retrievals_with_body_evidence": 118,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 3,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 954,
+            "absolute_error_total": 1329,
+            "mae_milli": 1393
+          },
+          "held_item": {
+            "feature_samples": 954,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1908,
+            "absolute_error_total": 46689,
+            "mae_milli": 24470
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 67,
+          "0": 26,
+          "256": 37
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 6,
+        "post_reversal_losses": 3,
+        "post_reversal_returns": 37,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 3,
+        "resource_returns": 77,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 719,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "04734266f0225f540e76a30207bb7dc43c1bc05c28e1b29c9afa3dd1d7c57b43",
+        "trace": {
+          "transitions": 169,
+          "action_changes": 101,
+          "retrievals_with_body_evidence": 134,
+          "graph_nodes_max": 4,
+          "graph_created": 4,
+          "graph_evicted": 0,
+          "graph_merged": 6,
+          "graph_contradictions": 3
+        },
+        "policy_flips": 1,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1008,
+            "absolute_error_total": 1515,
+            "mae_milli": 1502
+          },
+          "held_item": {
+            "feature_samples": 1008,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2016,
+            "absolute_error_total": 26194,
+            "mae_milli": 12993
+          }
+        }
+      }
+    },
+    {
+      "seed": 727,
+      "A": {
+        "action_distribution": {
+          "-256": 50,
+          "0": 686,
+          "256": 54
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 48,
+        "observed_fullness_increases": 48,
+        "post_reversal_losses": 19,
+        "post_reversal_returns": 21,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 40,
+        "resource_returns": 40,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 727,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "da7504d5f0aa0709c0245af0621346bf24e792e8cf9786175b16fb1312907b8e",
+        "trace": {
+          "transitions": 833,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 794,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 22,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 4992,
+            "absolute_error_total": 16332,
+            "mae_milli": 3271
+          },
+          "held_item": {
+            "feature_samples": 4992,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 9984,
+            "absolute_error_total": 232932,
+            "mae_milli": 23330
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 73,
+          "0": 64,
+          "256": 31
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 5,
+        "observed_fullness_increases": 8,
+        "post_reversal_losses": 9,
+        "post_reversal_returns": 31,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 9,
+        "resource_returns": 71,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 727,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "f99f0c019f27a4be7aa592f6e554475c3e4e5a8a286b09992d20fd9aed1de468",
+        "trace": {
+          "transitions": 214,
+          "action_changes": 98,
+          "retrievals_with_body_evidence": 172,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 1,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1278,
+            "absolute_error_total": 2327,
+            "mae_milli": 1820
+          },
+          "held_item": {
+            "feature_samples": 1278,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2556,
+            "absolute_error_total": 63229,
+            "mae_milli": 24737
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 97,
+          "0": 68,
+          "256": 7
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 10,
+        "observed_fullness_increases": 9,
+        "post_reversal_losses": 36,
+        "post_reversal_returns": 4,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 36,
+        "resource_returns": 44,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 727,
+        "warmup_backward": 21,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 3,
+        "replayed_exactly": true,
+        "trace_sha256": "aa83bd4621e85f7207724b5d98e0a620473e719584e2a92ec2ae1d6a6f866e45",
+        "trace": {
+          "transitions": 216,
+          "action_changes": 101,
+          "retrievals_with_body_evidence": 176,
+          "graph_nodes_max": 10,
+          "graph_created": 10,
+          "graph_evicted": 0,
+          "graph_merged": 17,
+          "graph_contradictions": 29
+        },
+        "policy_flips": 5,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1290,
+            "absolute_error_total": 2489,
+            "mae_milli": 1929
+          },
+          "held_item": {
+            "feature_samples": 1290,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2580,
+            "absolute_error_total": 51105,
+            "mae_milli": 19808
+          }
+        }
+      }
+    },
+    {
+      "seed": 733,
+      "A": {
+        "action_distribution": {
+          "-256": 41,
+          "0": 624,
+          "256": 63
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 39,
+        "observed_fullness_increases": 40,
+        "post_reversal_losses": 19,
+        "post_reversal_returns": 21,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 43,
+        "resource_returns": 37,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 733,
+        "warmup_backward": 6,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 18,
+        "replayed_exactly": true,
+        "trace_sha256": "8ecbd6e3b779065e29334e75da0d13c3cf034ebf82f6f463d27a49dc762316a2",
+        "trace": {
+          "transitions": 772,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 766,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 20,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 4626,
+            "absolute_error_total": 16579,
+            "mae_milli": 3583
+          },
+          "held_item": {
+            "feature_samples": 4626,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 9252,
+            "absolute_error_total": 175129,
+            "mae_milli": 18928
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 98,
+          "0": 85,
+          "256": 6
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 8,
+        "observed_fullness_increases": 5,
+        "post_reversal_losses": 40,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 40,
+        "resource_returns": 40,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 733,
+        "warmup_backward": 18,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 6,
+        "replayed_exactly": true,
+        "trace_sha256": "33469ddd23968c32d6b31f9c68d9276cb5be2b1cc246ce8ad59c1edd77ee66b0",
+        "trace": {
+          "transitions": 234,
+          "action_changes": 134,
+          "retrievals_with_body_evidence": 192,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1398,
+            "absolute_error_total": 1359,
+            "mae_milli": 972
+          },
+          "held_item": {
+            "feature_samples": 1398,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2796,
+            "absolute_error_total": 38766,
+            "mae_milli": 13864
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 38,
+          "256": 40
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 6,
+        "observed_fullness_increases": 8,
+        "post_reversal_losses": 3,
+        "post_reversal_returns": 37,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 3,
+        "resource_returns": 77,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 733,
+        "warmup_backward": 21,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 3,
+        "replayed_exactly": true,
+        "trace_sha256": "1f59d03df8892413dcead98aa22401bb1fdfc9bfd51ea2f439b6dcb26a3aed71",
+        "trace": {
+          "transitions": 186,
+          "action_changes": 94,
+          "retrievals_with_body_evidence": 145,
+          "graph_nodes_max": 5,
+          "graph_created": 5,
+          "graph_evicted": 0,
+          "graph_merged": 10,
+          "graph_contradictions": 6
+        },
+        "policy_flips": 1,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1110,
+            "absolute_error_total": 2049,
+            "mae_milli": 1845
+          },
+          "held_item": {
+            "feature_samples": 1110,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2220,
+            "absolute_error_total": 51374,
+            "mae_milli": 23141
+          }
+        }
+      }
+    },
+    {
+      "seed": 739,
+      "A": {
+        "action_distribution": {
+          "-256": 59,
+          "0": 517,
+          "256": 45
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 40,
+        "observed_fullness_increases": 38,
+        "post_reversal_losses": 23,
+        "post_reversal_returns": 17,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 39,
+        "resource_returns": 41,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 739,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "13d70282c9ba9feb67db4de3ff582db5ef5a0e9a8c42a007f5447da629a7abf2",
+        "trace": {
+          "transitions": 668,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 662,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 18,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 4002,
+            "absolute_error_total": 13648,
+            "mae_milli": 3410
+          },
+          "held_item": {
+            "feature_samples": 4002,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 8004,
+            "absolute_error_total": 155919,
+            "mae_milli": 19480
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 67,
+          "0": 155,
+          "256": 37
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 8,
+        "observed_fullness_increases": 10,
+        "post_reversal_losses": 12,
+        "post_reversal_returns": 28,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 12,
+        "resource_returns": 68,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 739,
+        "warmup_backward": 15,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 9,
+        "replayed_exactly": true,
+        "trace_sha256": "923e246612fec6ee4cd8433ba06cd4cc704ae8e966287d4a19cdc641b071700a",
+        "trace": {
+          "transitions": 304,
+          "action_changes": 167,
+          "retrievals_with_body_evidence": 263,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 1,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1818,
+            "absolute_error_total": 3431,
+            "mae_milli": 1887
+          },
+          "held_item": {
+            "feature_samples": 1818,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 3636,
+            "absolute_error_total": 90716,
+            "mae_milli": 24949
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 67,
+          "0": 20,
+          "256": 37
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 6,
+        "post_reversal_losses": 3,
+        "post_reversal_returns": 37,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 3,
+        "resource_returns": 77,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 739,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "0d5becd67a147a2d98cc8ccbcc91aec39e1b1cd0c789056ecdf1caf8afd8b699",
+        "trace": {
+          "transitions": 169,
+          "action_changes": 98,
+          "retrievals_with_body_evidence": 128,
+          "graph_nodes_max": 4,
+          "graph_created": 4,
+          "graph_evicted": 0,
+          "graph_merged": 6,
+          "graph_contradictions": 3
+        },
+        "policy_flips": 1,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1008,
+            "absolute_error_total": 1261,
+            "mae_milli": 1250
+          },
+          "held_item": {
+            "feature_samples": 1008,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2016,
+            "absolute_error_total": 49593,
+            "mae_milli": 24599
+          }
+        }
+      }
+    },
+    {
+      "seed": 743,
+      "A": {
+        "action_distribution": {
+          "-256": 57,
+          "0": 611,
+          "256": 47
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 45,
+        "observed_fullness_increases": 44,
+        "post_reversal_losses": 23,
+        "post_reversal_returns": 17,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 41,
+        "resource_returns": 39,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 743,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "5d9b2668299adb31cf260bec94e3122b089d904abf576df17c64603920e35aa0",
+        "trace": {
+          "transitions": 758,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 719,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 19,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 4542,
+            "absolute_error_total": 16189,
+            "mae_milli": 3564
+          },
+          "held_item": {
+            "feature_samples": 4542,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 9084,
+            "absolute_error_total": 162387,
+            "mae_milli": 17876
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 102,
+          "0": 9,
+          "256": 2
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 7,
+        "observed_fullness_increases": 5,
+        "post_reversal_losses": 40,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 40,
+        "resource_returns": 40,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 743,
+        "warmup_backward": 22,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 2,
+        "replayed_exactly": true,
+        "trace_sha256": "2cf70a1fca2eb4bcc47d508c3e8b2adc8c8267c070f8785db8a8e050e483684a",
+        "trace": {
+          "transitions": 159,
+          "action_changes": 99,
+          "retrievals_with_body_evidence": 117,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 948,
+            "absolute_error_total": 927,
+            "mae_milli": 977
+          },
+          "held_item": {
+            "feature_samples": 948,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1896,
+            "absolute_error_total": 20362,
+            "mae_milli": 10739
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 95,
+          "0": 27,
+          "256": 9
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 8,
+        "observed_fullness_increases": 5,
+        "post_reversal_losses": 40,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 40,
+        "resource_returns": 40,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 743,
+        "warmup_backward": 15,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 9,
+        "replayed_exactly": true,
+        "trace_sha256": "13b458bac39e35df26b856e82f30b263f7c947d77927ba438899053d3cc55d2f",
+        "trace": {
+          "transitions": 174,
+          "action_changes": 90,
+          "retrievals_with_body_evidence": 135,
+          "graph_nodes_max": 9,
+          "graph_created": 9,
+          "graph_evicted": 0,
+          "graph_merged": 9,
+          "graph_contradictions": 23
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1038,
+            "absolute_error_total": 2174,
+            "mae_milli": 2094
+          },
+          "held_item": {
+            "feature_samples": 1038,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2076,
+            "absolute_error_total": 41136,
+            "mae_milli": 19815
+          }
+        }
+      }
+    },
+    {
+      "seed": 751,
+      "A": {
+        "action_distribution": {
+          "-256": 59,
+          "0": 543,
+          "256": 45
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 40,
+        "observed_fullness_increases": 38,
+        "post_reversal_losses": 28,
+        "post_reversal_returns": 12,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 50,
+        "resource_returns": 30,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 751,
+        "warmup_backward": 13,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 11,
+        "replayed_exactly": true,
+        "trace_sha256": "debc65f544073e48db1de6a4331025fa9d7e9f4ffd38b3855fd7b44ec1edf5e4",
+        "trace": {
+          "transitions": 691,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 651,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 17,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 4140,
+            "absolute_error_total": 14466,
+            "mae_milli": 3494
+          },
+          "held_item": {
+            "feature_samples": 4140,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 8280,
+            "absolute_error_total": 159472,
+            "mae_milli": 19259
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 101,
+          "0": 32,
+          "256": 3
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 7,
+        "observed_fullness_increases": 6,
+        "post_reversal_losses": 37,
+        "post_reversal_returns": 3,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 37,
+        "resource_returns": 43,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 751,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "ce434395d69d77c27d104ad53d599a2a820624161611862fec52761b7fcc06b7",
+        "trace": {
+          "transitions": 181,
+          "action_changes": 95,
+          "retrievals_with_body_evidence": 139,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 2,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1080,
+            "absolute_error_total": 1264,
+            "mae_milli": 1170
+          },
+          "held_item": {
+            "feature_samples": 1080,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2160,
+            "absolute_error_total": 30169,
+            "mae_milli": 13967
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 67,
+          "0": 20,
+          "256": 37
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 6,
+        "post_reversal_losses": 3,
+        "post_reversal_returns": 37,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 3,
+        "resource_returns": 77,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 751,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "30b955e3707fe29e83afe55f1e5633e23154f4a9a207440ad383a5db91cd0471",
+        "trace": {
+          "transitions": 169,
+          "action_changes": 101,
+          "retrievals_with_body_evidence": 128,
+          "graph_nodes_max": 4,
+          "graph_created": 4,
+          "graph_evicted": 0,
+          "graph_merged": 6,
+          "graph_contradictions": 3
+        },
+        "policy_flips": 1,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1008,
+            "absolute_error_total": 1291,
+            "mae_milli": 1280
+          },
+          "held_item": {
+            "feature_samples": 1008,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2016,
+            "absolute_error_total": 40576,
+            "mae_milli": 20126
+          }
+        }
+      }
+    },
+    {
+      "seed": 757,
+      "A": {
+        "action_distribution": {
+          "-256": 59,
+          "0": 527,
+          "256": 45
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 42,
+        "observed_fullness_increases": 43,
+        "post_reversal_losses": 20,
+        "post_reversal_returns": 20,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 36,
+        "resource_returns": 44,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 757,
+        "warmup_backward": 15,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 9,
+        "replayed_exactly": true,
+        "trace_sha256": "23172db33237f16c693ef18436561fc187dfedf386cb15b140ac778f03328853",
+        "trace": {
+          "transitions": 677,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 635,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 19,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 4056,
+            "absolute_error_total": 14382,
+            "mae_milli": 3545
+          },
+          "held_item": {
+            "feature_samples": 4056,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 8112,
+            "absolute_error_total": 156971,
+            "mae_milli": 19350
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 104,
+          "0": 2
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 5,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 40,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 40,
+        "resource_returns": 40,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 757,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "46ff63df62b0820c85243cd93c20368e02bf8ba3de7c76a3927cb136d30aad1e",
+        "trace": {
+          "transitions": 152,
+          "action_changes": 96,
+          "retrievals_with_body_evidence": 110,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 906,
+            "absolute_error_total": 1469,
+            "mae_milli": 1621
+          },
+          "held_item": {
+            "feature_samples": 906,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1812,
+            "absolute_error_total": 18945,
+            "mae_milli": 10455
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 67,
+          "0": 41,
+          "256": 37
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 6,
+        "post_reversal_losses": 3,
+        "post_reversal_returns": 37,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 3,
+        "resource_returns": 77,
+        "reverse_after": 40,
+        "schema_version": 1,
+        "scored_eligible_choices": 80,
+        "seed": 757,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "5caa985bb3aad3ef9714658408e1e13ab53352d48bdafe673bfd8436c5e27177",
+        "trace": {
+          "transitions": 186,
+          "action_changes": 100,
+          "retrievals_with_body_evidence": 148,
+          "graph_nodes_max": 4,
+          "graph_created": 4,
+          "graph_evicted": 0,
+          "graph_merged": 6,
+          "graph_contradictions": 3
+        },
+        "policy_flips": 1,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1110,
+            "absolute_error_total": 2031,
+            "mae_milli": 1829
+          },
+          "held_item": {
+            "feature_samples": 1110,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2220,
+            "absolute_error_total": 28190,
+            "mae_milli": 12698
+          }
+        }
+      }
+    }
+  ],
+  "stationary": [
+    {
+      "seed": 709,
+      "A": {
+        "action_distribution": {
+          "-256": 30,
+          "0": 303,
+          "256": 34
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 23,
+        "observed_fullness_increases": 23,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 25,
+        "resource_returns": 15,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 709,
+        "warmup_backward": 15,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 9,
+        "replayed_exactly": true,
+        "trace_sha256": "37b0a60f6be4a3b438d0648d22bd1ce248eec3e60a2007737368ae04aa46ca9b",
+        "trace": {
+          "transitions": 411,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 370,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 9,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2460,
+            "absolute_error_total": 8740,
+            "mae_milli": 3552
+          },
+          "held_item": {
+            "feature_samples": 2460,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 4920,
+            "absolute_error_total": 102060,
+            "mae_milli": 20743
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 2
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 709,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "9887eb1bff13d5234b13eedd679a1d62c1b64ea7a6cfff1001e6b6d7958558fc",
+        "trace": {
+          "transitions": 109,
+          "action_changes": 64,
+          "retrievals_with_body_evidence": 70,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 648,
+            "absolute_error_total": 939,
+            "mae_milli": 1449
+          },
+          "held_item": {
+            "feature_samples": 648,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1296,
+            "absolute_error_total": 29589,
+            "mae_milli": 22831
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 4
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 709,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "f36440bcf39162f66191904683cc1a7f630703f4278ce2549b7a0db3b8d39927",
+        "trace": {
+          "transitions": 112,
+          "action_changes": 86,
+          "retrievals_with_body_evidence": 103,
+          "graph_nodes_max": 6,
+          "graph_created": 6,
+          "graph_evicted": 0,
+          "graph_merged": 2,
+          "graph_contradictions": 4
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 666,
+            "absolute_error_total": 805,
+            "mae_milli": 1208
+          },
+          "held_item": {
+            "feature_samples": 666,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1332,
+            "absolute_error_total": 34827,
+            "mae_milli": 26146
+          }
+        }
+      }
+    },
+    {
+      "seed": 719,
+      "A": {
+        "action_distribution": {
+          "-256": 25,
+          "0": 306,
+          "256": 39
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 23,
+        "observed_fullness_increases": 22,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 24,
+        "resource_returns": 16,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 719,
+        "warmup_backward": 9,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 15,
+        "replayed_exactly": true,
+        "trace_sha256": "cd0eb952527f2ab0bfa462b8e39272269e903ddf716f29b3f77466715766a6b9",
+        "trace": {
+          "transitions": 408,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 373,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 10,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2442,
+            "absolute_error_total": 8301,
+            "mae_milli": 3399
+          },
+          "held_item": {
+            "feature_samples": 2442,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 4884,
+            "absolute_error_total": 92785,
+            "mae_milli": 18997
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 2
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 719,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "f4b64e16754f405abcff1efd5da2d0ceec59ffd1fd1e448ba563277a3b4716c9",
+        "trace": {
+          "transitions": 112,
+          "action_changes": 61,
+          "retrievals_with_body_evidence": 70,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 666,
+            "absolute_error_total": 1191,
+            "mae_milli": 1788
+          },
+          "held_item": {
+            "feature_samples": 666,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1332,
+            "absolute_error_total": 22098,
+            "mae_milli": 16590
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 7
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 719,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "fcd5be81b53522bc49ff0008dc60566ce53603fc120df4575ae806666ef44a21",
+        "trace": {
+          "transitions": 111,
+          "action_changes": 63,
+          "retrievals_with_body_evidence": 74,
+          "graph_nodes_max": 2,
+          "graph_created": 2,
+          "graph_evicted": 0,
+          "graph_merged": 2,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 660,
+            "absolute_error_total": 685,
+            "mae_milli": 1037
+          },
+          "held_item": {
+            "feature_samples": 660,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1320,
+            "absolute_error_total": 34159,
+            "mae_milli": 25878
+          }
+        }
+      }
+    },
+    {
+      "seed": 727,
+      "A": {
+        "action_distribution": {
+          "-256": 39,
+          "0": 412,
+          "256": 25
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 24,
+        "observed_fullness_increases": 25,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 16,
+        "resource_returns": 24,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 727,
+        "warmup_backward": 15,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 9,
+        "replayed_exactly": true,
+        "trace_sha256": "709b0612a013a06f8a132250a5f045eed188637d71dfc1e5c4612c06580826d6",
+        "trace": {
+          "transitions": 517,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 480,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 9,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 3096,
+            "absolute_error_total": 9867,
+            "mae_milli": 3187
+          },
+          "held_item": {
+            "feature_samples": 3096,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 6192,
+            "absolute_error_total": 117935,
+            "mae_milli": 19046
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 35
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 727,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "c8f9e6c7dfe616e360800d4c754eaf764356ba0ecc317af26330963ef400ec83",
+        "trace": {
+          "transitions": 145,
+          "action_changes": 64,
+          "retrievals_with_body_evidence": 103,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 864,
+            "absolute_error_total": 1337,
+            "mae_milli": 1547
+          },
+          "held_item": {
+            "feature_samples": 864,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1728,
+            "absolute_error_total": 22754,
+            "mae_milli": 13167
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 13
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 727,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "eb00b5954c2051337bf628ff023fc71ef627bb143231dcc115d503bb925fa7c5",
+        "trace": {
+          "transitions": 121,
+          "action_changes": 64,
+          "retrievals_with_body_evidence": 81,
+          "graph_nodes_max": 2,
+          "graph_created": 2,
+          "graph_evicted": 0,
+          "graph_merged": 2,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 720,
+            "absolute_error_total": 1551,
+            "mae_milli": 2154
+          },
+          "held_item": {
+            "feature_samples": 720,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1440,
+            "absolute_error_total": 20891,
+            "mae_milli": 14507
+          }
+        }
+      }
+    },
+    {
+      "seed": 733,
+      "A": {
+        "action_distribution": {
+          "-256": 30,
+          "0": 300,
+          "256": 34
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 28,
+        "observed_fullness_increases": 29,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 22,
+        "resource_returns": 18,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 733,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "bba61dcdf751779ac4172b8af3552f5beabc75149f04f5b8f224b67d96b47d06",
+        "trace": {
+          "transitions": 412,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 368,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 10,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2466,
+            "absolute_error_total": 9724,
+            "mae_milli": 3943
+          },
+          "held_item": {
+            "feature_samples": 2466,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 4932,
+            "absolute_error_total": 99807,
+            "mae_milli": 20236
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 61,
+          "0": 18,
+          "256": 3
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 5,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 733,
+        "warmup_backward": 21,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 3,
+        "replayed_exactly": true,
+        "trace_sha256": "c940fa82541f620fd299996b4f4ccc146b3f3650b532387fddc6998fcb9a2bfd",
+        "trace": {
+          "transitions": 127,
+          "action_changes": 61,
+          "retrievals_with_body_evidence": 86,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 756,
+            "absolute_error_total": 1703,
+            "mae_milli": 2252
+          },
+          "held_item": {
+            "feature_samples": 756,
+            "absolute_error_total": 1318,
+            "mae_milli": 1743
+          },
+          "vision": {
+            "feature_samples": 1512,
+            "absolute_error_total": 35406,
+            "mae_milli": 23416
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 61,
+          "0": 38,
+          "256": 3
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 5,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 733,
+        "warmup_backward": 21,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 3,
+        "replayed_exactly": true,
+        "trace_sha256": "21b6291aa6cc585f0b19a5328d1da94ca04785a4f4112697b880a0a061d43ce2",
+        "trace": {
+          "transitions": 144,
+          "action_changes": 60,
+          "retrievals_with_body_evidence": 105,
+          "graph_nodes_max": 3,
+          "graph_created": 3,
+          "graph_evicted": 0,
+          "graph_merged": 6,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 858,
+            "absolute_error_total": 1751,
+            "mae_milli": 2040
+          },
+          "held_item": {
+            "feature_samples": 858,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1716,
+            "absolute_error_total": 39170,
+            "mae_milli": 22826
+          }
+        }
+      }
+    },
+    {
+      "seed": 739,
+      "A": {
+        "action_distribution": {
+          "-256": 25,
+          "0": 351,
+          "256": 39
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 25,
+        "observed_fullness_increases": 24,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 24,
+        "resource_returns": 16,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 739,
+        "warmup_backward": 9,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 15,
+        "replayed_exactly": true,
+        "trace_sha256": "56ebccaf073b924ad3f7e77028e7969f2918b5d0ea93fcaed9174fb839d84e2e",
+        "trace": {
+          "transitions": 457,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 419,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 10,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2736,
+            "absolute_error_total": 8863,
+            "mae_milli": 3239
+          },
+          "held_item": {
+            "feature_samples": 2736,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5472,
+            "absolute_error_total": 106687,
+            "mae_milli": 19496
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 29
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 739,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "b55d25b4b3f81037eda6894e2c372ee229927951896598b7a7ae9a42bbb27eed",
+        "trace": {
+          "transitions": 139,
+          "action_changes": 64,
+          "retrievals_with_body_evidence": 97,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 828,
+            "absolute_error_total": 1471,
+            "mae_milli": 1776
+          },
+          "held_item": {
+            "feature_samples": 828,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1656,
+            "absolute_error_total": 27984,
+            "mae_milli": 16898
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 62,
+          "0": 12,
+          "256": 2
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 2,
+        "observed_fullness_increases": 5,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 739,
+        "warmup_backward": 22,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 2,
+        "replayed_exactly": true,
+        "trace_sha256": "8f1a07a56c84b69f00096446b9c298dd662eb090b139455f5281500efcc28e6b",
+        "trace": {
+          "transitions": 119,
+          "action_changes": 59,
+          "retrievals_with_body_evidence": 80,
+          "graph_nodes_max": 2,
+          "graph_created": 2,
+          "graph_evicted": 0,
+          "graph_merged": 5,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 708,
+            "absolute_error_total": 1143,
+            "mae_milli": 1614
+          },
+          "held_item": {
+            "feature_samples": 708,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1416,
+            "absolute_error_total": 35682,
+            "mae_milli": 25199
+          }
+        }
+      }
+    },
+    {
+      "seed": 743,
+      "A": {
+        "action_distribution": {
+          "-256": 33,
+          "0": 343,
+          "256": 31
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 29,
+        "observed_fullness_increases": 26,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 22,
+        "resource_returns": 18,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 743,
+        "warmup_backward": 15,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 9,
+        "replayed_exactly": true,
+        "trace_sha256": "56d85a220328c12f6f7cb6d8e93d4d8dc59ffa04350f07ae984af2dd884ee3fa",
+        "trace": {
+          "transitions": 448,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 411,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 12,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2682,
+            "absolute_error_total": 8501,
+            "mae_milli": 3169
+          },
+          "held_item": {
+            "feature_samples": 2682,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5364,
+            "absolute_error_total": 113251,
+            "mae_milli": 21113
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 57,
+          "0": 115,
+          "256": 7
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 7,
+        "observed_fullness_increases": 10,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 743,
+        "warmup_backward": 17,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 7,
+        "replayed_exactly": true,
+        "trace_sha256": "a49c6a0c360bc7daff9aa36a0b22c1e2dd20fda2e7800e6d1f7f29f3db814cad",
+        "trace": {
+          "transitions": 225,
+          "action_changes": 49,
+          "retrievals_with_body_evidence": 183,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 1344,
+            "absolute_error_total": 3272,
+            "mae_milli": 2434
+          },
+          "held_item": {
+            "feature_samples": 1344,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 2688,
+            "absolute_error_total": 58856,
+            "mae_milli": 21895
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 61,
+          "0": 12,
+          "256": 3
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 3,
+        "observed_fullness_increases": 5,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 743,
+        "warmup_backward": 21,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 3,
+        "replayed_exactly": true,
+        "trace_sha256": "b895d08d84ff4c740cbaf978e3b8ad0d7f023c5d8d2a67fb4b822b6ebf11cfcb",
+        "trace": {
+          "transitions": 121,
+          "action_changes": 61,
+          "retrievals_with_body_evidence": 80,
+          "graph_nodes_max": 2,
+          "graph_created": 2,
+          "graph_evicted": 0,
+          "graph_merged": 6,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 720,
+            "absolute_error_total": 1447,
+            "mae_milli": 2009
+          },
+          "held_item": {
+            "feature_samples": 720,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1440,
+            "absolute_error_total": 17201,
+            "mae_milli": 11945
+          }
+        }
+      }
+    },
+    {
+      "seed": 751,
+      "A": {
+        "action_distribution": {
+          "-256": 30,
+          "0": 380,
+          "256": 34
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 30,
+        "observed_fullness_increases": 30,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 22,
+        "resource_returns": 18,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 751,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "2606fa8bb2724d602e8e2e5afeb99b2124a3a5b880e2efad318ea8765eafeaa7",
+        "trace": {
+          "transitions": 490,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 448,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 12,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 2934,
+            "absolute_error_total": 9865,
+            "mae_milli": 3362
+          },
+          "held_item": {
+            "feature_samples": 2934,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 5868,
+            "absolute_error_total": 121446,
+            "mae_milli": 20696
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 1
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 751,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "214912b2e8834561255ddfade006f9265955a0bce327ee5d9061487e035377d5",
+        "trace": {
+          "transitions": 105,
+          "action_changes": 60,
+          "retrievals_with_body_evidence": 68,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 624,
+            "absolute_error_total": 683,
+            "mae_milli": 1094
+          },
+          "held_item": {
+            "feature_samples": 624,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1248,
+            "absolute_error_total": 17456,
+            "mae_milli": 13987
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 6
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 751,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "91d4fa091beb3f7c3154bcbd4a53289632ef9529a975137b23e6014e7a47579a",
+        "trace": {
+          "transitions": 115,
+          "action_changes": 64,
+          "retrievals_with_body_evidence": 74,
+          "graph_nodes_max": 2,
+          "graph_created": 2,
+          "graph_evicted": 0,
+          "graph_merged": 2,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 684,
+            "absolute_error_total": 1193,
+            "mae_milli": 1744
+          },
+          "held_item": {
+            "feature_samples": 684,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1368,
+            "absolute_error_total": 27669,
+            "mae_milli": 20225
+          }
+        }
+      }
+    },
+    {
+      "seed": 757,
+      "A": {
+        "action_distribution": {
+          "-256": 27,
+          "0": 412,
+          "256": 37
+        },
+        "arm": "off",
+        "baseline_exposure_valid": true,
+        "observed_fullness_decreases": 27,
+        "observed_fullness_increases": 27,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 25,
+        "resource_returns": 15,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 757,
+        "warmup_backward": 12,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 12,
+        "replayed_exactly": true,
+        "trace_sha256": "9bd94b9d0b205c35f685d8dd9bdd3d445f084640303d1941d60da64645106c50",
+        "trace": {
+          "transitions": 520,
+          "action_changes": 0,
+          "retrievals_with_body_evidence": 480,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 10,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 3114,
+            "absolute_error_total": 10952,
+            "mae_milli": 3517
+          },
+          "held_item": {
+            "feature_samples": 3114,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 6228,
+            "absolute_error_total": 130335,
+            "mae_milli": 20927
+          }
+        }
+      },
+      "B": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 4
+        },
+        "arm": "policy",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 757,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "66faaaf9fa10c2657400b1a5a14ab076e798c50c677a3262617c732360fa911e",
+        "trace": {
+          "transitions": 112,
+          "action_changes": 61,
+          "retrievals_with_body_evidence": 72,
+          "graph_nodes_max": 0,
+          "graph_created": 0,
+          "graph_evicted": 0,
+          "graph_merged": 0,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 666,
+            "absolute_error_total": 1425,
+            "mae_milli": 2139
+          },
+          "held_item": {
+            "feature_samples": 666,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1332,
+            "absolute_error_total": 21073,
+            "mae_milli": 15820
+          }
+        }
+      },
+      "G": {
+        "action_distribution": {
+          "-256": 64,
+          "0": 6
+        },
+        "arm": "graph",
+        "baseline_exposure_valid": false,
+        "observed_fullness_decreases": 0,
+        "observed_fullness_increases": 3,
+        "post_reversal_losses": 0,
+        "post_reversal_returns": 0,
+        "protocol": "semantic-graph-8b-consolidation",
+        "resource_losses": 0,
+        "resource_returns": 40,
+        "reverse_after": 0,
+        "schema_version": 1,
+        "scored_eligible_choices": 40,
+        "seed": 757,
+        "warmup_backward": 24,
+        "warmup_eligible_choices": 24,
+        "warmup_forward": 0,
+        "replayed_exactly": true,
+        "trace_sha256": "2c3702fb490885165b71713a76f32d5ca6d9673985759db7eff31d467322d3a8",
+        "trace": {
+          "transitions": 112,
+          "action_changes": 64,
+          "retrievals_with_body_evidence": 74,
+          "graph_nodes_max": 2,
+          "graph_created": 2,
+          "graph_evicted": 0,
+          "graph_merged": 2,
+          "graph_contradictions": 0
+        },
+        "policy_flips": 0,
+        "online_prediction": {
+          "body": {
+            "feature_samples": 666,
+            "absolute_error_total": 661,
+            "mae_milli": 992
+          },
+          "held_item": {
+            "feature_samples": 666,
+            "absolute_error_total": 0,
+            "mae_milli": 0
+          },
+          "vision": {
+            "feature_samples": 1332,
+            "absolute_error_total": 18864,
+            "mae_milli": 14162
+          }
+        }
+      }
+    }
+  ]
+}
