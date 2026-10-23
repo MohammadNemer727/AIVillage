@@ -1,0 +1,495 @@
+{
+  "schema_version": 1,
+  "protocol": "experiment-004-genotype-to-phenotype-expression",
+  "preregistration_sha256": "b2c77673d7de80695335a2eb279ca8e8488bcfa3c2aea2fd350ba8110a42e1eb",
+  "part_2_matched_probes": {
+    "loci": [
+      {
+        "locus": 0,
+        "parameter": "thrust_gain",
+        "measure": "mean absolute thrust over all decisions",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.7974408498309995,
+        "passes": true
+      },
+      {
+        "locus": 1,
+        "parameter": "turn_gain",
+        "measure": "mean absolute turn over all decisions",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.6312849162011174,
+        "passes": true
+      },
+      {
+        "locus": 2,
+        "parameter": "motor_threshold",
+        "measure": "fraction of fed, unhurt decisions with any thrust or turn carried out",
+        "expected": "HighLess",
+        "observed_direction": "HighLess",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.4166666666666667,
+        "passes": true
+      },
+      {
+        "locus": 3,
+        "parameter": "hunger_drive",
+        "measure": "mean thrust over hungry decisions (felt fullness below 96)",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.2828502415458936,
+        "passes": true
+      },
+      {
+        "locus": 4,
+        "parameter": "pain_flight",
+        "measure": "mean thrust over decisions in which pain is felt",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.8192791005291006,
+        "passes": true
+      },
+      {
+        "locus": 5,
+        "parameter": "jaw_gain",
+        "measure": "mean jaw amplitude over all decisions",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.2506122821187567,
+        "passes": true
+      },
+      {
+        "locus": 6,
+        "parameter": "connection_stride",
+        "measure": "fraction of decisions whose action differs between the arms",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.185,
+        "passes": true
+      },
+      {
+        "locus": 7,
+        "parameter": "visual_gain",
+        "measure": "fraction of decisions whose action differs between the arms",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.5466666666666666,
+        "passes": true
+      },
+      {
+        "locus": 8,
+        "parameter": "chemical_gain",
+        "measure": "fraction of decisions whose action differs between the arms",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.7883333333333333,
+        "passes": true
+      },
+      {
+        "locus": 9,
+        "parameter": "locomotor_tone",
+        "measure": "mean thrust over fed, unhurt decisions",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.8539561617590037,
+        "passes": true
+      },
+      {
+        "locus": 10,
+        "parameter": "interoceptive_gain",
+        "measure": "fraction of decisions whose action differs between the arms",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 1.0,
+        "passes": true
+      },
+      {
+        "locus": 11,
+        "parameter": "reserve_recovery",
+        "measure": "births in 600 decisions",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.7142857142857143,
+        "passes": true
+      },
+      {
+        "locus": 12,
+        "parameter": "maturity_percent",
+        "measure": "decision of the first birth (600 if none)",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.5514705882352942,
+        "passes": true
+      },
+      {
+        "locus": 13,
+        "parameter": "plasticity_scale",
+        "measure": "fraction of decisions whose action differs between the arms",
+        "expected": "HighGreater",
+        "observed_direction": "HighGreater",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.9983333333333333,
+        "passes": true
+      },
+      {
+        "locus": 14,
+        "parameter": "reserve_threshold",
+        "measure": "births in 600 decisions",
+        "expected": "HighLess",
+        "observed_direction": "HighLess",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.14285714285714285,
+        "passes": true
+      },
+      {
+        "locus": 15,
+        "parameter": "reproductive_cost",
+        "measure": "births in 600 decisions",
+        "expected": "HighLess",
+        "observed_direction": "HighLess",
+        "seeds_in_expected_direction": 8,
+        "median_relative_effect": 0.5483870967741935,
+        "passes": true
+      }
+    ],
+    "failing_loci": [],
+    "all_pass": true,
+    "absolute": [
+      {
+        "locus": 0,
+        "parameter": "thrust_gain",
+        "median_low": 2.945,
+        "median_high": 14.146666666666667
+      },
+      {
+        "locus": 1,
+        "parameter": "turn_gain",
+        "median_low": 1.7483333333333333,
+        "median_high": 4.555
+      },
+      {
+        "locus": 2,
+        "parameter": "motor_threshold",
+        "median_low": 0.02111324376199616,
+        "median_high": 0.013435700575815739
+      },
+      {
+        "locus": 3,
+        "parameter": "hunger_drive",
+        "median_low": 110.65454545454546,
+        "median_high": 153.4
+      },
+      {
+        "locus": 4,
+        "parameter": "pain_flight",
+        "median_low": 40.48148148148148,
+        "median_high": 224.0
+      },
+      {
+        "locus": 5,
+        "parameter": "jaw_gain",
+        "median_low": 191.75,
+        "median_high": 255.87333333333333
+      },
+      {
+        "locus": 6,
+        "parameter": "connection_stride",
+        "median_low": 0.0,
+        "median_high": 0.185
+      },
+      {
+        "locus": 7,
+        "parameter": "visual_gain",
+        "median_low": 0.0,
+        "median_high": 0.5466666666666666
+      },
+      {
+        "locus": 8,
+        "parameter": "chemical_gain",
+        "median_low": 0.0,
+        "median_high": 0.7883333333333333
+      },
+      {
+        "locus": 9,
+        "parameter": "locomotor_tone",
+        "median_low": 12.299424184261037,
+        "median_high": 84.16122840690979
+      },
+      {
+        "locus": 10,
+        "parameter": "interoceptive_gain",
+        "median_low": 0.0,
+        "median_high": 1.0
+      },
+      {
+        "locus": 11,
+        "parameter": "reserve_recovery",
+        "median_low": 10.0,
+        "median_high": 35.0
+      },
+      {
+        "locus": 12,
+        "parameter": "maturity_percent",
+        "median_low": 61.0,
+        "median_high": 136.0
+      },
+      {
+        "locus": 13,
+        "parameter": "plasticity_scale",
+        "median_low": 0.0,
+        "median_high": 0.9983333333333333
+      },
+      {
+        "locus": 14,
+        "parameter": "reserve_threshold",
+        "median_low": 21.0,
+        "median_high": 18.0
+      },
+      {
+        "locus": 15,
+        "parameter": "reproductive_cost",
+        "median_low": 31.0,
+        "median_high": 14.0
+      }
+    ]
+  },
+  "part_3_mutation_reaches_phenotype": {
+    "births": 4000000,
+    "fraction_births_expressed_v2": 0.13338675,
+    "fraction_births_expressed_legacy": 0.0103445,
+    "expected_expressed_changes_in_54_births_v2": 7.2028845,
+    "probability_none_in_54_births_v2": 0.00043910415039148144,
+    "coverage_by_locus": [
+      {
+        "locus": 0,
+        "value_changed": 37767,
+        "parameter_changed": 37767,
+        "coverage": 1.0
+      },
+      {
+        "locus": 1,
+        "value_changed": 37929,
+        "parameter_changed": 37929,
+        "coverage": 1.0
+      },
+      {
+        "locus": 2,
+        "value_changed": 38094,
+        "parameter_changed": 38094,
+        "coverage": 1.0
+      },
+      {
+        "locus": 3,
+        "value_changed": 37844,
+        "parameter_changed": 37844,
+        "coverage": 1.0
+      },
+      {
+        "locus": 4,
+        "value_changed": 37836,
+        "parameter_changed": 37836,
+        "coverage": 1.0
+      },
+      {
+        "locus": 5,
+        "value_changed": 37575,
+        "parameter_changed": 37575,
+        "coverage": 1.0
+      },
+      {
+        "locus": 6,
+        "value_changed": 37928,
+        "parameter_changed": 37928,
+        "coverage": 1.0
+      },
+      {
+        "locus": 7,
+        "value_changed": 37982,
+        "parameter_changed": 37982,
+        "coverage": 1.0
+      },
+      {
+        "locus": 8,
+        "value_changed": 37678,
+        "parameter_changed": 37678,
+        "coverage": 1.0
+      },
+      {
+        "locus": 9,
+        "value_changed": 37475,
+        "parameter_changed": 37475,
+        "coverage": 1.0
+      },
+      {
+        "locus": 10,
+        "value_changed": 37718,
+        "parameter_changed": 37718,
+        "coverage": 1.0
+      },
+      {
+        "locus": 11,
+        "value_changed": 37922,
+        "parameter_changed": 37922,
+        "coverage": 1.0
+      },
+      {
+        "locus": 12,
+        "value_changed": 37452,
+        "parameter_changed": 37452,
+        "coverage": 1.0
+      },
+      {
+        "locus": 13,
+        "value_changed": 37743,
+        "parameter_changed": 3485,
+        "coverage": 0.09233500251702302
+      },
+      {
+        "locus": 14,
+        "value_changed": 37659,
+        "parameter_changed": 37659,
+        "coverage": 1.0
+      },
+      {
+        "locus": 15,
+        "value_changed": 37861,
+        "parameter_changed": 37861,
+        "coverage": 1.0
+      }
+    ],
+    "loci_with_coverage_at_least_80_percent": 15,
+    "passes": true,
+    "ordinary_mutation_effects": [
+      {
+        "locus": 0,
+        "parameter": "thrust_gain",
+        "changes_measure_in_every_seed_both_directions": true,
+        "median_effect_down": 0.051412614980289074,
+        "median_effect_up": 0.04474959612277861
+      },
+      {
+        "locus": 1,
+        "parameter": "turn_gain",
+        "changes_measure_in_every_seed_both_directions": true,
+        "median_effect_down": 0.027224112785610093,
+        "median_effect_up": 0.02088167053364274
+      },
+      {
+        "locus": 2,
+        "parameter": "motor_threshold",
+        "changes_measure_in_every_seed_both_directions": false,
+        "median_effect_down": 0.0,
+        "median_effect_up": 0.0
+      },
+      {
+        "locus": 3,
+        "parameter": "hunger_drive",
+        "changes_measure_in_every_seed_both_directions": true,
+        "median_effect_down": 0.013540197461213009,
+        "median_effect_up": 0.0133593097689953
+      },
+      {
+        "locus": 4,
+        "parameter": "pain_flight",
+        "changes_measure_in_every_seed_both_directions": true,
+        "median_effect_down": 0.0625,
+        "median_effect_up": 0.058823529411764705
+      },
+      {
+        "locus": 5,
+        "parameter": "jaw_gain",
+        "changes_measure_in_every_seed_both_directions": true,
+        "median_effect_down": 3.258093103276668e-05,
+        "median_effect_up": 3.257986955017269e-05
+      },
+      {
+        "locus": 6,
+        "parameter": "connection_stride",
+        "changes_measure_in_every_seed_both_directions": true,
+        "median_effect_down": 0.10666666666666667,
+        "median_effect_up": 0.12166666666666667
+      },
+      {
+        "locus": 7,
+        "parameter": "visual_gain",
+        "changes_measure_in_every_seed_both_directions": true,
+        "median_effect_down": 0.36,
+        "median_effect_up": 0.4216666666666667
+      },
+      {
+        "locus": 8,
+        "parameter": "chemical_gain",
+        "changes_measure_in_every_seed_both_directions": true,
+        "median_effect_down": 0.355,
+        "median_effect_up": 0.37833333333333335
+      },
+      {
+        "locus": 9,
+        "parameter": "locomotor_tone",
+        "changes_measure_in_every_seed_both_directions": true,
+        "median_effect_down": 0.0620944950841858,
+        "median_effect_up": 0.058464190683206525
+      },
+      {
+        "locus": 10,
+        "parameter": "interoceptive_gain",
+        "changes_measure_in_every_seed_both_directions": true,
+        "median_effect_down": 0.51,
+        "median_effect_up": 0.575
+      },
+      {
+        "locus": 11,
+        "parameter": "reserve_recovery",
+        "changes_measure_in_every_seed_both_directions": false,
+        "median_effect_down": 0.0,
+        "median_effect_up": 0.16666666666666666
+      },
+      {
+        "locus": 12,
+        "parameter": "maturity_percent",
+        "changes_measure_in_every_seed_both_directions": true,
+        "median_effect_down": 0.04040404040404041,
+        "median_effect_up": 0.029411764705882353
+      },
+      {
+        "locus": 13,
+        "parameter": "plasticity_scale",
+        "changes_measure_in_every_seed_both_directions": false,
+        "median_effect_down": 0.03666666666666667,
+        "median_effect_up": 0.0
+      },
+      {
+        "locus": 14,
+        "parameter": "reserve_threshold",
+        "changes_measure_in_every_seed_both_directions": false,
+        "median_effect_down": 0.0,
+        "median_effect_up": 0.0
+      },
+      {
+        "locus": 15,
+        "parameter": "reproductive_cost",
+        "changes_measure_in_every_seed_both_directions": false,
+        "median_effect_down": 0.0,
+        "median_effect_up": 0.0
+      }
+    ],
+    "loci_an_ordinary_mutation_always_moves": 11
+  },
+  "conclusions": {
+    "every_locus_expressed": true,
+    "mutation_reaches_phenotype": true
+  }
+}

@@ -1,0 +1,355 @@
+{
+  "births": 4000000,
+  "expression": "V2",
+  "mutation_rate_ppm": 12000,
+  "uses": [
+    {
+      "locus": 0,
+      "live": null,
+      "legacy_world": "growth target: 64 + locus"
+    },
+    {
+      "locus": 1,
+      "live": null,
+      "legacy_world": "head radius: (32 + locus / 2) / 192 of a body unit"
+    },
+    {
+      "locus": 2,
+      "live": null,
+      "legacy_world": null
+    },
+    {
+      "locus": 3,
+      "live": null,
+      "legacy_world": null
+    },
+    {
+      "locus": 4,
+      "live": null,
+      "legacy_world": null
+    },
+    {
+      "locus": 5,
+      "live": null,
+      "legacy_world": null
+    },
+    {
+      "locus": 6,
+      "live": "connection_stride = 1 + locus % 15",
+      "legacy_world": null
+    },
+    {
+      "locus": 7,
+      "live": null,
+      "legacy_world": null
+    },
+    {
+      "locus": 8,
+      "live": null,
+      "legacy_world": null
+    },
+    {
+      "locus": 9,
+      "live": null,
+      "legacy_world": null
+    },
+    {
+      "locus": 10,
+      "live": null,
+      "legacy_world": null
+    },
+    {
+      "locus": 11,
+      "live": null,
+      "legacy_world": null
+    },
+    {
+      "locus": 12,
+      "live": null,
+      "legacy_world": "metabolic cost: locus / 128, which is 0 for every value up to 64"
+    },
+    {
+      "locus": 13,
+      "live": "plasticity_scale = 1 + locus / 16",
+      "legacy_world": null
+    },
+    {
+      "locus": 14,
+      "live": null,
+      "legacy_world": null
+    },
+    {
+      "locus": 15,
+      "live": null,
+      "legacy_world": null
+    }
+  ],
+  "loci": [
+    {
+      "locus": 0,
+      "draws_hit": 47937,
+      "zero_steps": 9571,
+      "clamped_no_ops": 599,
+      "changed": 37767,
+      "expressed_parameter_changed": 37767,
+      "applied_steps": [
+        9271,
+        9507,
+        10170,
+        9771,
+        9218
+      ]
+    },
+    {
+      "locus": 1,
+      "draws_hit": 48279,
+      "zero_steps": 9796,
+      "clamped_no_ops": 554,
+      "changed": 37929,
+      "expressed_parameter_changed": 37929,
+      "applied_steps": [
+        9319,
+        9704,
+        10350,
+        9688,
+        9218
+      ]
+    },
+    {
+      "locus": 2,
+      "draws_hit": 48453,
+      "zero_steps": 9751,
+      "clamped_no_ops": 608,
+      "changed": 38094,
+      "expressed_parameter_changed": 38094,
+      "applied_steps": [
+        9615,
+        9663,
+        10359,
+        9499,
+        9317
+      ]
+    },
+    {
+      "locus": 3,
+      "draws_hit": 47771,
+      "zero_steps": 9376,
+      "clamped_no_ops": 551,
+      "changed": 37844,
+      "expressed_parameter_changed": 37844,
+      "applied_steps": [
+        9249,
+        9709,
+        9927,
+        9557,
+        9329
+      ]
+    },
+    {
+      "locus": 4,
+      "draws_hit": 48013,
+      "zero_steps": 9603,
+      "clamped_no_ops": 574,
+      "changed": 37836,
+      "expressed_parameter_changed": 37836,
+      "applied_steps": [
+        9217,
+        9534,
+        10177,
+        9742,
+        9343
+      ]
+    },
+    {
+      "locus": 5,
+      "draws_hit": 47847,
+      "zero_steps": 9690,
+      "clamped_no_ops": 582,
+      "changed": 37575,
+      "expressed_parameter_changed": 37575,
+      "applied_steps": [
+        9172,
+        9552,
+        10272,
+        9485,
+        9366
+      ]
+    },
+    {
+      "locus": 6,
+      "draws_hit": 47979,
+      "zero_steps": 9460,
+      "clamped_no_ops": 591,
+      "changed": 37928,
+      "expressed_parameter_changed": 37928,
+      "applied_steps": [
+        9259,
+        9586,
+        10051,
+        9724,
+        9359
+      ]
+    },
+    {
+      "locus": 7,
+      "draws_hit": 48072,
+      "zero_steps": 9484,
+      "clamped_no_ops": 606,
+      "changed": 37982,
+      "expressed_parameter_changed": 37982,
+      "applied_steps": [
+        9393,
+        9553,
+        10090,
+        9714,
+        9322
+      ]
+    },
+    {
+      "locus": 8,
+      "draws_hit": 47784,
+      "zero_steps": 9527,
+      "clamped_no_ops": 579,
+      "changed": 37678,
+      "expressed_parameter_changed": 37678,
+      "applied_steps": [
+        9181,
+        9632,
+        10106,
+        9556,
+        9309
+      ]
+    },
+    {
+      "locus": 9,
+      "draws_hit": 47534,
+      "zero_steps": 9467,
+      "clamped_no_ops": 592,
+      "changed": 37475,
+      "expressed_parameter_changed": 37475,
+      "applied_steps": [
+        9234,
+        9526,
+        10059,
+        9342,
+        9373
+      ]
+    },
+    {
+      "locus": 10,
+      "draws_hit": 47874,
+      "zero_steps": 9572,
+      "clamped_no_ops": 584,
+      "changed": 37718,
+      "expressed_parameter_changed": 37718,
+      "applied_steps": [
+        9275,
+        9658,
+        10156,
+        9350,
+        9435
+      ]
+    },
+    {
+      "locus": 11,
+      "draws_hit": 48213,
+      "zero_steps": 9668,
+      "clamped_no_ops": 623,
+      "changed": 37922,
+      "expressed_parameter_changed": 37922,
+      "applied_steps": [
+        9270,
+        9618,
+        10291,
+        9784,
+        9250
+      ]
+    },
+    {
+      "locus": 12,
+      "draws_hit": 47818,
+      "zero_steps": 9790,
+      "clamped_no_ops": 576,
+      "changed": 37452,
+      "expressed_parameter_changed": 37452,
+      "applied_steps": [
+        9345,
+        9472,
+        10366,
+        9348,
+        9287
+      ]
+    },
+    {
+      "locus": 13,
+      "draws_hit": 47997,
+      "zero_steps": 9657,
+      "clamped_no_ops": 597,
+      "changed": 37743,
+      "expressed_parameter_changed": 3485,
+      "applied_steps": [
+        9379,
+        9506,
+        10254,
+        9721,
+        9137
+      ]
+    },
+    {
+      "locus": 14,
+      "draws_hit": 47650,
+      "zero_steps": 9424,
+      "clamped_no_ops": 567,
+      "changed": 37659,
+      "expressed_parameter_changed": 37659,
+      "applied_steps": [
+        9260,
+        9676,
+        9991,
+        9674,
+        9049
+      ]
+    },
+    {
+      "locus": 15,
+      "draws_hit": 48025,
+      "zero_steps": 9587,
+      "clamped_no_ops": 577,
+      "changed": 37861,
+      "expressed_parameter_changed": 37861,
+      "applied_steps": [
+        9213,
+        9679,
+        10164,
+        9591,
+        9378
+      ]
+    }
+  ],
+  "loci_changed_per_birth": [
+    3436719,
+    523871,
+    37707,
+    1637,
+    63,
+    3,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "fraction_any_locus_changed": 0.14082025,
+  "fraction_expressed_parameter_changed": 0.13338675,
+  "expected_births_per_expressed_change": 7.49699651577087,
+  "expected_expressed_changes_in_54_births": 7.2028845,
+  "probability_none_in_54_births": 0.00043910415039148144,
+  "founder_values_at_clamp_limit": 0.030807515625,
+  "replica_matches_real_mutation": true
+}

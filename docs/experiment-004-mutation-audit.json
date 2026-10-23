@@ -1,5 +1,6 @@
 {
   "births": 4000000,
+  "expression": "Legacy",
   "mutation_rate_ppm": 12000,
   "uses": [
     {
@@ -90,7 +91,7 @@
       "zero_steps": 9571,
       "clamped_no_ops": 599,
       "changed": 37767,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9271,
         9507,
@@ -105,7 +106,7 @@
       "zero_steps": 9796,
       "clamped_no_ops": 554,
       "changed": 37929,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9319,
         9704,
@@ -120,7 +121,7 @@
       "zero_steps": 9751,
       "clamped_no_ops": 608,
       "changed": 38094,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9615,
         9663,
@@ -135,7 +136,7 @@
       "zero_steps": 9376,
       "clamped_no_ops": 551,
       "changed": 37844,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9249,
         9709,
@@ -150,7 +151,7 @@
       "zero_steps": 9603,
       "clamped_no_ops": 574,
       "changed": 37836,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9217,
         9534,
@@ -165,7 +166,7 @@
       "zero_steps": 9690,
       "clamped_no_ops": 582,
       "changed": 37575,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9172,
         9552,
@@ -180,7 +181,7 @@
       "zero_steps": 9460,
       "clamped_no_ops": 591,
       "changed": 37928,
-      "live_parameter_changed": 37928,
+      "expressed_parameter_changed": 37928,
       "applied_steps": [
         9259,
         9586,
@@ -195,7 +196,7 @@
       "zero_steps": 9484,
       "clamped_no_ops": 606,
       "changed": 37982,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9393,
         9553,
@@ -210,7 +211,7 @@
       "zero_steps": 9527,
       "clamped_no_ops": 579,
       "changed": 37678,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9181,
         9632,
@@ -225,7 +226,7 @@
       "zero_steps": 9467,
       "clamped_no_ops": 592,
       "changed": 37475,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9234,
         9526,
@@ -240,7 +241,7 @@
       "zero_steps": 9572,
       "clamped_no_ops": 584,
       "changed": 37718,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9275,
         9658,
@@ -255,7 +256,7 @@
       "zero_steps": 9668,
       "clamped_no_ops": 623,
       "changed": 37922,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9270,
         9618,
@@ -270,7 +271,7 @@
       "zero_steps": 9790,
       "clamped_no_ops": 576,
       "changed": 37452,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9345,
         9472,
@@ -285,7 +286,7 @@
       "zero_steps": 9657,
       "clamped_no_ops": 597,
       "changed": 37743,
-      "live_parameter_changed": 3485,
+      "expressed_parameter_changed": 3485,
       "applied_steps": [
         9379,
         9506,
@@ -300,7 +301,7 @@
       "zero_steps": 9424,
       "clamped_no_ops": 567,
       "changed": 37659,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9260,
         9676,
@@ -315,7 +316,7 @@
       "zero_steps": 9587,
       "clamped_no_ops": 577,
       "changed": 37861,
-      "live_parameter_changed": 0,
+      "expressed_parameter_changed": 0,
       "applied_steps": [
         9213,
         9679,
@@ -345,9 +346,9 @@
     0
   ],
   "fraction_any_locus_changed": 0.14082025,
-  "fraction_live_parameter_changed": 0.0103445,
-  "expected_births_per_live_change": 96.66972787471603,
-  "expected_live_changes_in_54_births": 0.558603,
+  "fraction_expressed_parameter_changed": 0.0103445,
+  "expected_births_per_expressed_change": 96.66972787471603,
+  "expected_expressed_changes_in_54_births": 0.558603,
   "probability_none_in_54_births": 0.570345868480103,
   "founder_values_at_clamp_limit": 0.030807515625,
   "replica_matches_real_mutation": true
