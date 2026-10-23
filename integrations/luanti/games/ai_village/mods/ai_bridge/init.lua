@@ -219,6 +219,18 @@ local function deliver_lifecycle(event_id, pending)
     if not current then return end
     current.in_flight = false
     local reply = minetest.parse_json(result.data or "")
+    if result.code and result.code >= 400 and result.code < 500 then
+      -- Rust rejected the command itself (malformed, or its subject no longer exists). Repeating
+      -- it cannot change the answer, so release the body instead of retrying every second.
+      local source = states[current.body_slot + 1]
+      if source and current.blocks_body ~= false then source.lifecycle_pending = false end
+      minetest.log("warning", "AI_BRIDGE_LIFECYCLE " .. minetest.write_json({
+        event = "rejected", event_id = event_id, code = result.code,
+        error = reply and reply.error}))
+      lifecycle_pending[event_id] = nil
+      save_lifecycle_pending()
+      return
+    end
     if not result.succeeded or not reply or not reply.result then
       current.failures = current.failures + 1
       if current.command.command == "reproduce" then
