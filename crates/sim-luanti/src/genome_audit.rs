@@ -12,7 +12,7 @@
 )]
 
 use serde::Serialize;
-use sim_core::DevelopmentalGenome;
+use sim_core::{DevelopmentalGenome, phenotype::ExpressionVersion};
 use sim_format::FounderSpec;
 use sim_kernels::derive;
 
@@ -90,8 +90,8 @@ pub struct LocusMutation {
     pub clamped_no_ops: u64,
     /// Births in which the stored value changed.
     pub changed: u64,
-    /// Births in which a value the live runtime reads changed its derived parameter.
-    pub live_parameter_changed: u64,
+    /// Births in which the parameter this locus is expressed as changed.
+    pub expressed_parameter_changed: u64,
     /// Applied steps after clamping, indexed by step + 2 (-2, -1, 0, +1, +2).
     pub applied_steps: [u64; 5],
 }
@@ -101,6 +101,8 @@ pub struct LocusMutation {
 pub struct MutationAudit {
     /// Births simulated.
     pub births: u64,
+    /// The expression map the births were expressed under.
+    pub expression: ExpressionVersion,
     /// Per-locus mutation probability in parts per million.
     pub mutation_rate_ppm: u16,
     /// Source audit of locus reads.
@@ -111,12 +113,12 @@ pub struct MutationAudit {
     pub loci_changed_per_birth: [u64; DevelopmentalGenome::LOCUS_COUNT + 1],
     /// Fraction of births with at least one changed locus.
     pub fraction_any_locus_changed: f64,
-    /// Fraction of births in which the live runtime's derived parameters changed.
-    pub fraction_live_parameter_changed: f64,
-    /// Expected births until one changes a live parameter.
-    pub expected_births_per_live_change: f64,
-    /// Expected live-parameter changes in a 54-birth experiment (Experiment 002's size).
-    pub expected_live_changes_in_54_births: f64,
+    /// Fraction of births in which at least one expressed parameter changed.
+    pub fraction_expressed_parameter_changed: f64,
+    /// Expected births until one changes an expressed parameter.
+    pub expected_births_per_expressed_change: f64,
+    /// Expected expressed-parameter changes in a 54-birth experiment (Experiment 002's size).
+    pub expected_expressed_changes_in_54_births: f64,
     /// Probability of seeing none in 54 births if births are independent.
     pub probability_none_in_54_births: f64,
     /// Fraction of founder locus values sitting at the clamp limits 0 or 64.
@@ -125,18 +127,14 @@ pub struct MutationAudit {
     pub replica_matches_real_mutation: bool,
 }
 
-fn live_parameters(genome: &DevelopmentalGenome) -> (usize, i32) {
-    let config = genome.default_brain_config();
-    (config.connection_stride, config.plasticity_scale)
-}
-
-/// Simulates `births` single births from founder genomes across many seeds.
+/// Simulates `births` single births from founder genomes across many seeds, expressed under
+/// `expression`.
 ///
 /// # Panics
 ///
 /// Panics if `births` is zero.
 #[must_use]
-pub fn audit(births: u64) -> MutationAudit {
+pub fn audit(births: u64, expression: ExpressionVersion) -> MutationAudit {
     assert!(births > 0, "an audit needs at least one birth");
     let mut loci: Vec<LocusMutation> = (0..DevelopmentalGenome::LOCUS_COUNT)
         .map(|locus| LocusMutation {
@@ -145,7 +143,7 @@ pub fn audit(births: u64) -> MutationAudit {
         })
         .collect();
     let mut per_birth = [0_u64; DevelopmentalGenome::LOCUS_COUNT + 1];
-    let mut live_changed = 0_u64;
+    let mut expressed_changed = 0_u64;
     let mut at_limit = 0_u64;
     let mut founder_values = 0_u64;
     let mut rate = 0;
@@ -182,34 +180,35 @@ pub fn audit(births: u64) -> MutationAudit {
         }
         replica_matches &= replica == *child.loci();
         per_birth[changed] += 1;
-        let (parent_stride, parent_scale) = live_parameters(&parent);
-        let (child_stride, child_scale) = live_parameters(&child);
-        if parent_stride != child_stride {
-            loci[6].live_parameter_changed += 1;
+        let parent_parameters = parent.phenotype(expression).parameters();
+        let child_parameters = child.phenotype(expression).parameters();
+        let mut any = false;
+        for (locus, stats) in loci.iter_mut().enumerate() {
+            let moved = parent_parameters[locus] != child_parameters[locus];
+            stats.expressed_parameter_changed += u64::from(moved);
+            any |= moved;
         }
-        if parent_scale != child_scale {
-            loci[13].live_parameter_changed += 1;
-        }
-        live_changed += u64::from(parent_stride != child_stride || parent_scale != child_scale);
+        expressed_changed += u64::from(any);
     }
     let births_f = births as f64;
-    let fraction_live = live_changed as f64 / births_f;
+    let fraction_expressed = expressed_changed as f64 / births_f;
     let any_changed = births - per_birth[0];
     MutationAudit {
         births,
+        expression,
         mutation_rate_ppm: rate,
         uses: LOCUS_USES.to_vec(),
         loci,
         loci_changed_per_birth: per_birth,
         fraction_any_locus_changed: any_changed as f64 / births_f,
-        fraction_live_parameter_changed: fraction_live,
-        expected_births_per_live_change: if fraction_live > 0.0 {
-            1.0 / fraction_live
+        fraction_expressed_parameter_changed: fraction_expressed,
+        expected_births_per_expressed_change: if fraction_expressed > 0.0 {
+            1.0 / fraction_expressed
         } else {
             f64::INFINITY
         },
-        expected_live_changes_in_54_births: 54.0 * fraction_live,
-        probability_none_in_54_births: (1.0 - fraction_live).powi(54),
+        expected_expressed_changes_in_54_births: 54.0 * fraction_expressed,
+        probability_none_in_54_births: (1.0 - fraction_expressed).powi(54),
         founder_values_at_clamp_limit: at_limit as f64 / founder_values as f64,
         replica_matches_real_mutation: replica_matches,
     }
@@ -221,7 +220,7 @@ mod tests {
 
     #[test]
     fn the_replica_reproduces_the_real_mutation_on_every_birth() {
-        let report = audit(20_000);
+        let report = audit(20_000, ExpressionVersion::V2);
         assert!(report.replica_matches_real_mutation);
         assert_eq!(report.loci.len(), DevelopmentalGenome::LOCUS_COUNT);
         let accounted: u64 = report.loci_changed_per_birth.iter().sum();

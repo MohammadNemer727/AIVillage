@@ -15,6 +15,7 @@ pub mod foraging;
 pub mod genome_audit;
 pub mod harness;
 pub mod lineage;
+pub mod locus_probe;
 pub mod population;
 pub mod prediction_eval;
 pub mod reaching;

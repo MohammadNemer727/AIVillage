@@ -169,10 +169,6 @@ pub struct EpisodicMemory {
     pub forgotten: u64,
     /// Bounded semantic consolidation of the same experience; empty unless enabled.
     pub graph: SemanticGraph,
-    /// Surprise needed to store an otherwise unremarkable event; zero means the legacy default.
-    pub surprise_write: u16,
-    /// Retention a stored event starts with; zero means the legacy default.
-    pub initial_retention: u16,
 }
 
 impl Default for EpisodicMemory {
@@ -182,22 +178,6 @@ impl Default for EpisodicMemory {
 }
 
 impl EpisodicMemory {
-    fn surprise_threshold(&self) -> u16 {
-        if self.surprise_write == 0 {
-            SURPRISE_WRITE
-        } else {
-            self.surprise_write
-        }
-    }
-
-    fn starting_retention(&self) -> u16 {
-        if self.initial_retention == 0 {
-            INITIAL_RETENTION
-        } else {
-            self.initial_retention
-        }
-    }
-
     /// Canonical empty newborn memory.
     #[must_use]
     pub const fn new(config: EpisodicConfig) -> Self {
@@ -209,8 +189,6 @@ impl EpisodicMemory {
             next_event_id: 0,
             forgotten: 0,
             graph: SemanticGraph::empty(),
-            surprise_write: 0,
-            initial_retention: 0,
         }
     }
 
@@ -348,7 +326,7 @@ impl EpisodicMemory {
         let harmful = body_delta[0] < 0 || body_delta[2] > 0;
         let relieving = body_delta[0] > 0 || body_delta[1] > 0 || body_delta[2] < 0;
         let novel = nearest >= NOVEL_DISTANCE;
-        if surprise < self.surprise_threshold() && !harmful && !relieving && !novel {
+        if surprise < SURPRISE_WRITE && !harmful && !relieving && !novel {
             return EpisodicWrite {
                 events_before,
                 events_after: events_before,
@@ -359,7 +337,6 @@ impl EpisodicMemory {
             };
         }
 
-        let starting_retention = self.starting_retention();
         let mut candidate = EpisodicEvent {
             schema_version: EPISODIC_SCHEMA_VERSION,
             encoder_version: EPISODIC_ENCODER_VERSION,
@@ -375,7 +352,7 @@ impl EpisodicMemory {
             drive_delta,
             self_motion,
             tick,
-            retention: starting_retention,
+            retention: INITIAL_RETENTION,
             evidence: 1,
             contradictions: 0,
             fingerprint: 0,
@@ -391,7 +368,7 @@ impl EpisodicMemory {
                 && event.self_motion == candidate.self_motion
         }) {
             existing.evidence = existing.evidence.saturating_add(1);
-            existing.retention = starting_retention;
+            existing.retention = INITIAL_RETENTION;
             return EpisodicWrite {
                 events_before,
                 events_after: events_before,
@@ -635,14 +612,6 @@ impl EpisodicMemory {
             u64::from(self.config.policy_enabled),
             0x4550_4346,
         );
-        if self.surprise_write != 0 || self.initial_retention != 0 {
-            result = derive(
-                result,
-                u64::from(self.surprise_write),
-                u64::from(self.initial_retention),
-                0x4550_5445,
-            );
-        }
         if self.config.graph_enabled || self.graph.schema_version != 0 {
             result = derive(
                 result,

@@ -356,6 +356,20 @@ impl PopulationCoordinator {
         })
     }
 
+    /// Creates a one-founder population around a chosen genome, for matched comparisons that
+    /// differ in exactly one locus.
+    #[must_use]
+    pub fn new_with_genome(
+        seed: u64,
+        individual_id: u64,
+        genome: DevelopmentalGenome,
+        mode: ExperimentMode,
+    ) -> Self {
+        let runtime =
+            AgentRuntime::new_with_mode(seed, individual_id, genome.default_brain_config(), mode);
+        Self::from_founder(seed, individual_id, genome, runtime)
+    }
+
     /// Continues a legacy one-founder checkpoint inside a population coordinator.
     #[must_use]
     pub fn from_runtime(runtime: AgentRuntime) -> Self {
@@ -413,23 +427,26 @@ impl PopulationCoordinator {
         }
     }
 
-    /// Reproductive maturity, reserve threshold and birth cost for an individual with `genome`:
-    /// the configured values under legacy expression, the individual's own under v2.
-    fn life_history(&self, genome: &DevelopmentalGenome) -> (u64, u16, u16) {
+    /// Reproductive maturity, reserve threshold, birth cost and reserve refill speed for an
+    /// individual with `genome`: the configured values under legacy expression, the individual's
+    /// own under v2.
+    fn life_history(&self, genome: &DevelopmentalGenome) -> LifeHistory {
         let config = self.lifecycle_config;
         if self.expression == ExpressionVersion::Legacy {
-            return (
-                config.maturity_decisions,
-                config.minimum_reproductive_reserve,
-                config.reproductive_cost,
-            );
+            return LifeHistory {
+                maturity: config.maturity_decisions,
+                minimum_reserve: config.minimum_reproductive_reserve,
+                cost: config.reproductive_cost,
+                recovery_gain: sim_core::phenotype::GAIN_UNIT,
+            };
         }
         let phenotype = genome.phenotype(self.expression);
-        (
-            config.maturity_decisions * u64::from(phenotype.maturity_percent) / 100,
-            phenotype.reserve_threshold,
-            phenotype.reproductive_cost,
-        )
+        LifeHistory {
+            maturity: config.maturity_decisions * u64::from(phenotype.maturity_percent) / 100,
+            minimum_reserve: phenotype.reserve_threshold,
+            cost: phenotype.reproductive_cost,
+            recovery_gain: phenotype.reserve_recovery,
+        }
     }
 
     /// Applies lifecycle eligibility and mutation settings.
@@ -561,12 +578,12 @@ impl PopulationCoordinator {
         }
         let slot_available =
             self.individuals.len() < usize::try_from(self.capacity).unwrap_or(usize::MAX);
-        let maturity = self
+        let history = self
             .individuals
             .get(&request.agent_id)
-            .map_or(self.lifecycle_config.maturity_decisions, |individual| {
-                self.life_history(&individual.genome).0
-            });
+            .map(|individual| self.life_history(&individual.genome));
+        let maturity = history.map_or(self.lifecycle_config.maturity_decisions, |h| h.maturity);
+        let recovery_gain = history.map_or(sim_core::phenotype::GAIN_UNIT, |h| h.recovery_gain);
         let Some(individual) = self.individuals.get_mut(&request.agent_id) else {
             return Err(BridgeError::UnknownIndividual(request.agent_id));
         };
@@ -585,7 +602,11 @@ impl PopulationCoordinator {
             .step(crate::with_body_clock(&request))
             .map_err(BridgeError::Sequence)?;
         if let Some(observed) = observed_reserve {
-            let recovery = observed / 64;
+            let recovery = u16::try_from(
+                u32::from(observed) * u32::from(recovery_gain)
+                    / (64 * u32::from(sim_core::phenotype::GAIN_UNIT)),
+            )
+            .unwrap_or(u16::MAX);
             individual.reproductive_reserve = individual
                 .reproductive_reserve
                 .saturating_add(recovery)
@@ -815,7 +836,12 @@ impl PopulationCoordinator {
                 PopulationBlockReason::BiologicalEligibility,
             ));
         };
-        let (maturity, minimum_reserve, cost) = self.life_history(&snapshot.genome);
+        let LifeHistory {
+            maturity,
+            minimum_reserve,
+            cost,
+            ..
+        } = self.life_history(&snapshot.genome);
         self.lifecycle.push(LifecycleEvent::ReproductionAttempt {
             event_id: command.event_id.clone(),
             parent_id,
@@ -826,14 +852,7 @@ impl PopulationCoordinator {
             reproductive_reserve: snapshot.reproductive_reserve,
             slot_available,
         });
-        let eligible = self.individuals.get(&parent_id).is_some_and(|parent| {
-            parent.body_slot.0 == body_slot
-                && parent.runtime.state().decision_tick >= maturity
-                && parent.reproductive_reserve >= minimum_reserve
-                && parent.reproductive_reserve >= cost
-                && parent.reproduction_signal > 0
-        });
-        if !eligible {
+        if !self.may_reproduce(parent_id, body_slot, maturity, minimum_reserve, cost) {
             return Ok(self.blocked(
                 &command.event_id,
                 parent_id,
@@ -905,6 +924,25 @@ impl PopulationCoordinator {
             body_slot: slot,
             generation,
             reserve_after,
+        })
+    }
+
+    /// Whether the parent is mature, holds enough reserve for the threshold and the cost, and is
+    /// signalling, in the body slot that is asking.
+    fn may_reproduce(
+        &self,
+        parent_id: u64,
+        body_slot: u32,
+        maturity: u64,
+        minimum_reserve: u16,
+        cost: u16,
+    ) -> bool {
+        self.individuals.get(&parent_id).is_some_and(|parent| {
+            parent.body_slot.0 == body_slot
+                && parent.runtime.state().decision_tick >= maturity
+                && parent.reproductive_reserve >= minimum_reserve
+                && parent.reproductive_reserve >= cost
+                && parent.reproduction_signal > 0
         })
     }
 
@@ -1039,6 +1077,16 @@ impl PopulationCoordinator {
             storage_directory: Some(directory.to_path_buf()),
         })
     }
+}
+
+/// One individual's reproductive timings and reserve dynamics.
+#[derive(Clone, Copy)]
+struct LifeHistory {
+    maturity: u64,
+    minimum_reserve: u16,
+    cost: u16,
+    /// Reserve refill speed, in 1/64.
+    recovery_gain: u16,
 }
 
 fn newborn_runtime(

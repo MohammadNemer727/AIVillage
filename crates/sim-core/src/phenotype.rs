@@ -2,7 +2,8 @@
 //!
 //! A [`DevelopmentalGenome`] is sixteen loci in `0..=64`. Expression turns each locus into one
 //! bounded, interpretable developmental parameter, never into a behaviour: gains, thresholds,
-//! rates, and life-history timings that the live runtime already has places to apply.
+//! tones, and life-history timings that the live runtime already has places to apply. Every
+//! parameter has a direct behavioural or life-history consequence in a baseline founder.
 //!
 //! Expression is versioned so that nothing changes silently. [`ExpressionVersion::Legacy`] is
 //! the original behaviour (only loci 6 and 13 are read, everything else is a fixed constant) and
@@ -12,11 +13,15 @@
 //! Every parameter is a monotone integer map of its locus over a fixed, documented range, with
 //! enough resolution that a one- or two-step mutation moves it. The coarse existing maps for loci
 //! 6 and 13 are kept exactly as they were.
+//!
+//! Predictor and episodic-memory tuning is deliberately not a gene here: in a baseline founder
+//! nothing downstream acts on what those tune, so such a gene would change internal state and no
+//! behaviour. They return as genes when the evolving population uses policy retrieval.
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    DevelopmentalGenome,
+    DevelopmentalGenome, RawSensoryFrame,
     environment::{Interoception, PrimitiveAction},
 };
 
@@ -34,6 +39,8 @@ pub enum ExpressionVersion {
 pub const GAIN_UNIT: u16 = 64;
 /// Felt fullness (0..=255) below which the hunger drive acts.
 pub const HUNGER_DRIVE_BELOW: u16 = 96;
+/// Largest value of a bounded receptor amplitude.
+const RECEPTOR_MAX: i32 = 255;
 
 /// One locus's role in [`ExpressionVersion::V2`].
 #[derive(Clone, Copy, Debug)]
@@ -69,8 +76,8 @@ pub const LOCUS_ROLES: [LocusRole; DevelopmentalGenome::LOCUS_COUNT] = [
     role(
         2,
         "motor_threshold",
-        "smallest thrust or turn that is carried out (movement initiation)",
-        (0, 64),
+        "smallest thrust or turn that is carried out (movement initiation), out of 256",
+        (0, 192),
         "action shaping",
     ),
     role(
@@ -103,38 +110,38 @@ pub const LOCUS_ROLES: [LocusRole; DevelopmentalGenome::LOCUS_COUNT] = [
     ),
     role(
         7,
-        "predictor_learning_divisor",
-        "divisor of the predictor's gradient step; smaller learns faster",
-        (4096, 256),
-        "recurrent predictor",
+        "visual_gain",
+        "sensitivity of the retina to colour and brightness, in 1/64 (64 = 1x)",
+        (32, 128),
+        "senses",
     ),
     role(
         8,
-        "predictor_update_period",
-        "decisions between predictor updates; smaller updates more often",
-        (4, 1),
-        "recurrent predictor",
+        "chemical_gain",
+        "sensitivity of the chemical receptors, in 1/64 (64 = 1x)",
+        (32, 128),
+        "senses",
     ),
     role(
         9,
-        "predictor_rehearsal_batch",
-        "replay samples rehearsed per predictor update",
-        (4, 68),
-        "recurrent predictor",
+        "locomotor_tone",
+        "resting forward drive while fed and unhurt",
+        (0, 96),
+        "action shaping",
     ),
     role(
         10,
-        "episodic_surprise_write",
-        "prediction surprise needed to store an unremarkable event; smaller stores more",
-        (66, 2),
-        "episodic memory",
+        "interoceptive_gain",
+        "how strongly hunger, pain and toxin are felt, in 1/64 (64 = 1x)",
+        (16, 128),
+        "senses",
     ),
     role(
         11,
-        "episodic_retention",
-        "starting retention of a stored event",
-        (512, 2048),
-        "episodic memory",
+        "reserve_recovery",
+        "speed at which reproductive reserve refills from being fed, in 1/64 (64 = 1x)",
+        (32, 128),
+        "lifecycle",
     ),
     role(
         12,
@@ -201,16 +208,16 @@ pub struct DevelopmentalPhenotype {
     pub jaw_gain: u16,
     /// Recurrent connection stride.
     pub connection_stride: usize,
-    /// Predictor gradient divisor.
-    pub predictor_learning_divisor: u16,
-    /// Decisions between predictor updates.
-    pub predictor_update_period: u8,
-    /// Replay samples per predictor update.
-    pub predictor_rehearsal_batch: u8,
-    /// Surprise needed to store an unremarkable event.
-    pub episodic_surprise_write: u16,
-    /// Starting retention of a stored event.
-    pub episodic_retention: u16,
+    /// Retinal colour and brightness gain, in 1/64.
+    pub visual_gain: u16,
+    /// Chemical receptor gain, in 1/64.
+    pub chemical_gain: u16,
+    /// Resting forward drive while fed and unhurt.
+    pub locomotor_tone: u16,
+    /// Interoceptive (hunger, pain, toxin) gain, in 1/64.
+    pub interoceptive_gain: u16,
+    /// Reproductive reserve refill speed, in 1/64.
+    pub reserve_recovery: u16,
     /// Reproductive maturity as a percentage of the configured maturity.
     pub maturity_percent: u16,
     /// Plasticity multiplier.
@@ -248,16 +255,40 @@ impl DevelopmentalPhenotype {
             pain_flight: 0,
             jaw_gain: GAIN_UNIT,
             connection_stride,
-            predictor_learning_divisor: 1_024,
-            predictor_update_period: 2,
-            predictor_rehearsal_batch: 8,
-            episodic_surprise_write: 6,
-            episodic_retention: 1_024,
+            visual_gain: GAIN_UNIT,
+            chemical_gain: GAIN_UNIT,
+            locomotor_tone: 0,
+            interoceptive_gain: GAIN_UNIT,
+            reserve_recovery: GAIN_UNIT,
             maturity_percent: 100,
             plasticity_scale,
             reserve_threshold: 160,
             reproductive_cost: 80,
         }
+    }
+
+    /// Every parameter as an integer, in locus order, so the value at index `i` is the one locus
+    /// `i` expresses.
+    #[must_use]
+    pub fn parameters(&self) -> [i32; DevelopmentalGenome::LOCUS_COUNT] {
+        [
+            i32::from(self.thrust_gain),
+            i32::from(self.turn_gain),
+            i32::from(self.motor_threshold),
+            i32::from(self.hunger_drive),
+            i32::from(self.pain_flight),
+            i32::from(self.jaw_gain),
+            i32::try_from(self.connection_stride).unwrap_or(i32::MAX),
+            i32::from(self.visual_gain),
+            i32::from(self.chemical_gain),
+            i32::from(self.locomotor_tone),
+            i32::from(self.interoceptive_gain),
+            i32::from(self.reserve_recovery),
+            i32::from(self.maturity_percent),
+            self.plasticity_scale,
+            i32::from(self.reserve_threshold),
+            i32::from(self.reproductive_cost),
+        ]
     }
 
     /// Whether every parameter is inside the range its locus can produce, so checkpoints that
@@ -270,35 +301,57 @@ impl DevelopmentalPhenotype {
         let within = |value: i32, range: (i32, i32)| {
             value >= range.0.min(range.1) && value <= range.0.max(range.1)
         };
-        let values = [
-            i32::from(self.thrust_gain),
-            i32::from(self.turn_gain),
-            i32::from(self.motor_threshold),
-            i32::from(self.hunger_drive),
-            i32::from(self.pain_flight),
-            i32::from(self.jaw_gain),
-            i32::try_from(self.connection_stride).unwrap_or(i32::MAX),
-            i32::from(self.predictor_learning_divisor),
-            i32::from(self.predictor_update_period),
-            i32::from(self.predictor_rehearsal_batch),
-            i32::from(self.episodic_surprise_write),
-            i32::from(self.episodic_retention),
-            i32::from(self.maturity_percent),
-            self.plasticity_scale,
-            i32::from(self.reserve_threshold),
-            i32::from(self.reproductive_cost),
-        ];
+        let values = self.parameters();
         values
             .iter()
             .zip(LOCUS_ROLES.iter())
             .all(|(value, role)| within(*value, role.range))
     }
 
+    /// Scales the external receptor amplitudes the brain receives by this individual's sensitivities.
+    /// [`ExpressionVersion::Legacy`] leaves the frame untouched.
+    pub fn shape_senses(&self, frame: &mut RawSensoryFrame) {
+        if self.version == ExpressionVersion::Legacy {
+            return;
+        }
+        let amplify = |value: u16, gain: u16| -> u16 {
+            let scaled = i32::from(value) * i32::from(gain) / i32::from(GAIN_UNIT);
+            u16::try_from(scaled.clamp(0, RECEPTOR_MAX)).unwrap_or_default()
+        };
+        for ray in &mut frame.retinal {
+            ray.red = amplify(ray.red, self.visual_gain);
+            ray.green = amplify(ray.green, self.visual_gain);
+            ray.blue = amplify(ray.blue, self.visual_gain);
+            ray.brightness = amplify(ray.brightness, self.visual_gain);
+        }
+        for chemical in &mut frame.chemicals {
+            *chemical = amplify(*chemical, self.chemical_gain);
+        }
+    }
+
+    /// Scales how strongly the body feels its own hunger, gut, toxin and damage, in the frame the
+    /// brain receives. [`ExpressionVersion::Legacy`] leaves the frame untouched.
+    pub fn shape_interoception(&self, frame: &mut RawSensoryFrame) {
+        if self.version == ExpressionVersion::Legacy {
+            return;
+        }
+        for channel in [
+            &mut frame.energy,
+            &mut frame.gut_pressure,
+            &mut frame.toxin_stress,
+            &mut frame.damage,
+        ] {
+            let scaled =
+                i32::from(*channel) * i32::from(self.interoceptive_gain) / i32::from(GAIN_UNIT);
+            *channel = u16::try_from(scaled.clamp(0, RECEPTOR_MAX)).unwrap_or_default();
+        }
+    }
+
     /// Applies the motor parameters to the action the body is about to carry out.
     ///
-    /// Gain scales thrust, turn and jaw; the threshold removes movements too small to start;
-    /// hunger and pain then add their drives. [`ExpressionVersion::Legacy`] returns the action
-    /// untouched.
+    /// Gain scales thrust, turn and jaw; the threshold removes movements too small to start; the
+    /// drives and tone then raise forward thrust where they apply. A drive or tone of zero
+    /// changes nothing. [`ExpressionVersion::Legacy`] returns the action untouched.
     #[must_use]
     pub fn shape_action(
         &self,
@@ -325,18 +378,21 @@ impl DevelopmentalPhenotype {
         shaped.turn = initiate(scale(action.turn, self.turn_gain));
         let jaw = u32::from(action.jaw) * u32::from(self.jaw_gain) / u32::from(GAIN_UNIT);
         shaped.jaw = u16::try_from(jaw.min(256)).unwrap_or(256);
+        let raise = |thrust: i16, drive: u16| thrust.max(i16::try_from(drive).unwrap_or(i16::MAX));
         if let Some(felt) = felt {
-            if felt.fullness < HUNGER_DRIVE_BELOW {
-                shaped.thrust = shaped
-                    .thrust
-                    .max(i16::try_from(self.hunger_drive).unwrap_or(i16::MAX));
+            let hungry = felt.fullness < HUNGER_DRIVE_BELOW;
+            let hurt = felt.pain > 0;
+            if hungry && self.hunger_drive > 0 {
+                shaped.thrust = raise(shaped.thrust, self.hunger_drive);
             }
-            if felt.pain > 0 {
-                let flight = i16::try_from(self.pain_flight).unwrap_or(i16::MAX);
-                shaped.thrust = shaped.thrust.max(flight);
+            if hurt && self.pain_flight > 0 {
+                shaped.thrust = raise(shaped.thrust, self.pain_flight);
                 if shaped.turn == 0 {
-                    shaped.turn = flight / 2;
+                    shaped.turn = i16::try_from(self.pain_flight / 2).unwrap_or(i16::MAX);
                 }
+            }
+            if !hungry && !hurt && self.locomotor_tone > 0 {
+                shaped.thrust = raise(shaped.thrust, self.locomotor_tone);
             }
         }
         shaped
@@ -356,24 +412,25 @@ impl DevelopmentalGenome {
             return legacy;
         }
         let at = |locus: usize| lerp(self.loci()[locus], LOCUS_ROLES[locus].range);
+        let unsigned = |locus: usize| u16::try_from(at(locus)).unwrap_or_default();
         DevelopmentalPhenotype {
             version,
-            thrust_gain: u16::try_from(at(0)).unwrap_or(GAIN_UNIT),
-            turn_gain: u16::try_from(at(1)).unwrap_or(GAIN_UNIT),
-            motor_threshold: u16::try_from(at(2)).unwrap_or_default(),
-            hunger_drive: u16::try_from(at(3)).unwrap_or_default(),
-            pain_flight: u16::try_from(at(4)).unwrap_or_default(),
-            jaw_gain: u16::try_from(at(5)).unwrap_or(GAIN_UNIT),
+            thrust_gain: unsigned(0),
+            turn_gain: unsigned(1),
+            motor_threshold: unsigned(2),
+            hunger_drive: unsigned(3),
+            pain_flight: unsigned(4),
+            jaw_gain: unsigned(5),
             connection_stride: config.connection_stride,
-            predictor_learning_divisor: u16::try_from(at(7)).unwrap_or(1_024),
-            predictor_update_period: u8::try_from(at(8)).unwrap_or(2),
-            predictor_rehearsal_batch: u8::try_from(at(9)).unwrap_or(8),
-            episodic_surprise_write: u16::try_from(at(10)).unwrap_or(6),
-            episodic_retention: u16::try_from(at(11)).unwrap_or(1_024),
-            maturity_percent: u16::try_from(at(12)).unwrap_or(100),
+            visual_gain: unsigned(7),
+            chemical_gain: unsigned(8),
+            locomotor_tone: unsigned(9),
+            interoceptive_gain: unsigned(10),
+            reserve_recovery: unsigned(11),
+            maturity_percent: unsigned(12),
             plasticity_scale: config.plasticity_scale,
-            reserve_threshold: u16::try_from(at(14)).unwrap_or(160),
-            reproductive_cost: u16::try_from(at(15)).unwrap_or(80),
+            reserve_threshold: unsigned(14),
+            reproductive_cost: unsigned(15),
         }
     }
 }
@@ -434,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_matches_the_original_brain_config_and_never_touches_an_action() {
+    fn legacy_matches_the_original_brain_config_and_never_touches_anything() {
         let genome = DevelopmentalGenome::founder(9, 3);
         let config = genome.default_brain_config();
         let legacy = genome.phenotype(ExpressionVersion::Legacy);
@@ -447,6 +504,13 @@ mod tests {
             ..PrimitiveAction::default()
         };
         assert_eq!(legacy.shape_action(action, Some(felt(0, 255))), action);
+        let mut frame = RawSensoryFrame::EMPTY;
+        frame.retinal[0].brightness = 90;
+        frame.chemicals[1] = 40;
+        let before = frame;
+        legacy.shape_senses(&mut frame);
+        legacy.shape_interoception(&mut frame);
+        assert_eq!(frame, before);
     }
 
     #[test]
@@ -461,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn gain_threshold_and_drives_shape_the_action() {
+    fn gain_threshold_drives_and_tone_shape_the_action() {
         let base = DevelopmentalGenome::uniform(32, 12_000);
         let walk = PrimitiveAction {
             thrust: 200,
@@ -477,14 +541,110 @@ mod tests {
             0,
             "a small turn is below the threshold"
         );
-        let driven = base.with_locus(3, 64).phenotype(ExpressionVersion::V2);
         let idle = PrimitiveAction::default();
+        let driven = base
+            .with_locus(3, 64)
+            .with_locus(9, 0)
+            .phenotype(ExpressionVersion::V2);
         assert_eq!(driven.shape_action(idle, Some(felt(255, 0))).thrust, 0);
-        assert!(driven.shape_action(idle, Some(felt(10, 0))).thrust > 0);
-        let flighty = base.with_locus(4, 64).phenotype(ExpressionVersion::V2);
-        assert_eq!(flighty.shape_action(idle, Some(felt(255, 0))).thrust, 0);
+        assert_eq!(driven.shape_action(idle, Some(felt(10, 0))).thrust, 128);
+        let flighty = base
+            .with_locus(4, 64)
+            .with_locus(9, 0)
+            .phenotype(ExpressionVersion::V2);
         let hurt = flighty.shape_action(idle, Some(felt(255, 30)));
-        assert!(hurt.thrust > 0 && hurt.turn > 0);
+        assert!(hurt.thrust >= 256 && hurt.turn > 0);
+        let toned = base.with_locus(9, 64).phenotype(ExpressionVersion::V2);
+        assert_eq!(toned.shape_action(idle, Some(felt(255, 0))).thrust, 96);
+    }
+
+    #[test]
+    fn sensitivities_scale_the_receptor_amplitudes_and_stay_in_range() {
+        let base = DevelopmentalGenome::uniform(32, 12_000);
+        let mut frame = RawSensoryFrame::EMPTY;
+        frame.retinal[3].red = 100;
+        frame.chemicals[0] = 100;
+        frame.energy = 100;
+        frame.damage = 40;
+        let dim = base
+            .with_locus(7, 0)
+            .with_locus(8, 0)
+            .with_locus(10, 0)
+            .phenotype(ExpressionVersion::V2);
+        let keen = base
+            .with_locus(7, 64)
+            .with_locus(8, 64)
+            .with_locus(10, 64)
+            .phenotype(ExpressionVersion::V2);
+        let (mut low, mut high) = (frame, frame);
+        dim.shape_senses(&mut low);
+        dim.shape_interoception(&mut low);
+        keen.shape_senses(&mut high);
+        keen.shape_interoception(&mut high);
+        assert!(low.retinal[3].red < frame.retinal[3].red && high.retinal[3].red == 200);
+        assert!(low.chemicals[0] < high.chemicals[0]);
+        assert!(low.energy < frame.energy && high.energy == 200);
+        assert!(low.damage < high.damage);
+        frame.retinal[3].red = 250;
+        keen.shape_senses(&mut frame);
+        assert_eq!(
+            frame.retinal[3].red, 255,
+            "amplitudes saturate at the receptor bound"
+        );
+    }
+
+    #[test]
+    fn zero_drives_and_tone_never_remove_a_backward_movement() {
+        let neutral = DevelopmentalGenome::uniform(32, 12_000)
+            .with_locus(3, 0)
+            .with_locus(4, 0)
+            .with_locus(9, 0)
+            .phenotype(ExpressionVersion::V2);
+        assert_eq!(
+            (
+                neutral.hunger_drive,
+                neutral.pain_flight,
+                neutral.locomotor_tone
+            ),
+            (0, 0, 0)
+        );
+        let backward = PrimitiveAction {
+            thrust: -256,
+            ..PrimitiveAction::default()
+        };
+        for fullness in [0, 255] {
+            for pain in [0, 90] {
+                assert_eq!(
+                    neutral
+                        .shape_action(backward, Some(felt(fullness, pain)))
+                        .thrust,
+                    neutral.shape_action(backward, None).thrust
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parameters_are_listed_in_locus_order_and_follow_their_locus() {
+        let base = DevelopmentalGenome::uniform(32, 12_000);
+        for locus in 0..DevelopmentalGenome::LOCUS_COUNT {
+            let low = base
+                .with_locus(locus, 0)
+                .phenotype(ExpressionVersion::V2)
+                .parameters();
+            let high = base
+                .with_locus(locus, 64)
+                .phenotype(ExpressionVersion::V2)
+                .parameters();
+            let changed: Vec<_> = (0..DevelopmentalGenome::LOCUS_COUNT)
+                .filter(|index| low[*index] != high[*index])
+                .collect();
+            assert_eq!(
+                changed,
+                [locus],
+                "locus {locus} must move exactly its own parameter"
+            );
+        }
     }
 
     #[test]

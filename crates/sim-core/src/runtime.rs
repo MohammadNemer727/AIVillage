@@ -13,7 +13,7 @@ use crate::{
         DeadChannels, EnvironmentAdapter, EnvironmentCapabilities, EnvironmentObservation,
         EnvironmentTransition, PrimitiveAction, TransportStatus,
     },
-    phenotype::{DevelopmentalPhenotype, ExpressionVersion},
+    phenotype::DevelopmentalPhenotype,
     scale_v2_orientation_turn,
 };
 
@@ -747,26 +747,10 @@ impl AgentRuntime {
         self.state.episodic_memory.config = config;
     }
 
-    /// Builds this individual's learning machinery from its expressed phenotype: predictor update
-    /// tuning and episodic salience and retention. Acquired state is untouched, and under
-    /// [`ExpressionVersion::Legacy`] every value is the legacy constant.
+    /// Gives this individual its expressed developmental phenotype. Acquired state is
+    /// untouched, so this belongs to a newborn; under [`crate::phenotype::ExpressionVersion::Legacy`] it changes
+    /// nothing observable.
     pub fn set_phenotype(&mut self, phenotype: DevelopmentalPhenotype) {
-        self.state.recurrent_predictor.set_tuning(
-            i32::from(phenotype.predictor_learning_divisor),
-            u64::from(phenotype.predictor_update_period),
-            usize::from(phenotype.predictor_rehearsal_batch),
-        );
-        let legacy = phenotype.version == ExpressionVersion::Legacy;
-        self.state.episodic_memory.surprise_write = if legacy {
-            0
-        } else {
-            phenotype.episodic_surprise_write
-        };
-        self.state.episodic_memory.initial_retention = if legacy {
-            0
-        } else {
-            phenotype.episodic_retention
-        };
         self.state.phenotype = phenotype;
     }
 
@@ -817,6 +801,7 @@ impl AgentRuntime {
         }
         let mut external = observation.senses;
         observation.capabilities.dead.silence(&mut external);
+        self.state.phenotype.shape_senses(&mut external);
         let smell = [external.chemicals[0], external.chemicals[1]];
         if let Some(felt) = observation.interoception {
             // A body that reports what it feels replaces the fixed stores with its own: energy
@@ -834,13 +819,14 @@ impl AgentRuntime {
         let (chemicals, adaptation) =
             adapt_chemical_receptors(external.chemicals, self.state.chemical_adaptation);
         external.chemicals = chemicals;
-        let frame = compose_raw_sensory_frame(
+        let mut frame = compose_raw_sensory_frame(
             external,
             self.state.physiology.stores(),
             self.seed,
             self.state.decision_tick,
             self.agent_id,
         );
+        self.state.phenotype.shape_interoception(&mut frame);
         let step = self
             .state
             .brain

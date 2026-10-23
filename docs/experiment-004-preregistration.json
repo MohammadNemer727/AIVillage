@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "protocol": "experiment-004-genotype-to-phenotype-expression",
+  "status": "preregistered_before_outcome_generation",
+  "frozen_on": "2026-10-23",
+  "question": "Does every one of the 16 heritable loci reach a bounded, interpretable developmental parameter that measurably changes behaviour or reproduction in a matched comparison, and do ordinary birth mutations actually change those parameters?",
+  "scope": "Expression and mutation reach only. It does not test whether any variant helps survival or reproduction (Experiment 006), or whether baseline founders survive (Experiment 005).",
+  "part_1_audit": {
+    "report": "docs/experiment-004-audit.md and docs/experiment-004-mutation-audit.json",
+    "finding": "Two of 16 loci reach the live runtime, 11 are read nowhere, and mutation samples loci as written (replica of the real mutation matched on every one of 4,000,000 births). Experiment 002's zero expressed changes in 54 births had a 57 percent chance."
+  },
+  "expression": {
+    "module": "crates/sim-core/src/phenotype.rs",
+    "versions": "Legacy is an exact no-op (every retained trace replays exactly); V2 gives each locus one role.",
+    "map": "one monotone integer map per locus, listed in LOCUS_ROLES: thrust_gain, turn_gain, motor_threshold, hunger_drive, pain_flight, jaw_gain, connection_stride, visual_gain, chemical_gain, locomotor_tone, interoceptive_gain, reserve_recovery, maturity_percent, plasticity_scale, reserve_threshold, reproductive_cost",
+    "one_to_one": "a unit test shows that setting any one locus from 0 to 64 changes exactly its own parameter and no other",
+    "applied_in": {
+      "action shaping": "the final action of the policy: gains, movement threshold, hunger drive, pain flight, locomotor tone, jaw",
+      "senses": "the receptor amplitudes the brain receives: retinal colour and brightness, chemical receptors, felt hunger/gut/toxin/damage",
+      "brain": "connection stride and plasticity scale, unchanged from before",
+      "lifecycle": "reproductive maturity, reserve threshold, birth cost and reserve refill speed, per individual"
+    }
+  },
+  "development_history_not_results": "Probes were developed on seeds 1 and 2 and with debugging runs that touched seeds 3 and 5; all are consumed. The development found and fixed real faults: three predictor-tuning genes and the surprise threshold had no effect on any prediction or action (the decoder they tuned never feeds a prediction, surprise exceeds even 6 on under 1 percent of real decisions), so they were removed and their loci given sensory and drive roles; the retinal-motion gene did nothing because the brain's input context ignores retinal motion, so it became interoceptive gain; a zero hunger or pain drive still removed backward movement (fixed, with a regression test); locomotor tone and the other additive drives masked other loci, so they are off in the matched base; a sawtooth hunger stream starved reproduction, so the stream has a fed plateau. The final map and measures were not tuned on the seeds below.",
+  "part_2_matched_probes": {
+    "design": "For each locus, two genomes identical except that locus is 8 (low) or 56 (high). All other loci are 32, except the additive drives (hunger_drive, pain_flight, locomotor_tone) which are 0 in the base so one drive cannot mask another locus; each drive is probed on its own pair. Both genomes see the same scripted, action-independent observation stream of 600 decisions (retina, chemicals, a fed plateau, a hungry stretch, periodic pain), so the pair is matched exactly. The decision loop is the real AgentRuntime in the evolving founders' baseline mode, and the life-history loci use the real PopulationCoordinator eligibility and birth path.",
+    "seeds": [31, 37, 41, 43, 47, 53, 59, 61],
+    "measures": "one pre-declared measure per locus (see PROBES in crates/sim-luanti/src/locus_probe.rs): mean absolute thrust (0), mean absolute turn (1), fraction of fed unhurt decisions that move (2), mean thrust while hungry (3), mean thrust while hurt (4), mean jaw (5), mean thrust while fed and unhurt (9), births in 600 decisions (11, 14, 15), decision of first birth (12); for loci 6, 7, 8, 10 and 13, which reshape what the brain does, the fraction of decisions whose action differs between the arms",
+    "expected_direction": "declared from what each parameter means: more gain, drive, tone, recovery or maturity delay raises its measure; a higher movement threshold, reserve threshold or birth cost lowers it",
+    "pass_per_locus": [
+      "the high arm moves the measure the expected way in at least 7 of 8 seeds (for loci 6, 7, 8, 10, 13: at least 7 of 8 seeds have at least 2 percent of decisions differing)",
+      "the median over seeds of the relative effect |high - low| / max(|high|, |low|) is at least 0.10 (for loci 6, 7, 8, 10, 13: the median fraction of decisions differing is at least 0.02)"
+    ],
+    "accept_expression": "all 16 loci pass; loci that fail are listed individually and the expression is then reported as incomplete"
+  },
+  "part_3_mutation_reaches_phenotype": {
+    "audit": "genome-audit over 4,000,000 simulated births under the v2 map, with the legacy map as baseline",
+    "pass": [
+      "at least 10 percent of births change at least one expressed parameter (legacy baseline: about 1 percent)",
+      "for at least 14 of 16 loci, at least 80 percent of mutation events that change the stored locus value also change the expressed parameter"
+    ],
+    "effect_sizes_report_only": "the behavioural effect of a one-step-largest ordinary mutation (plus or minus two from the locus midpoint) on each locus's pre-declared measure, over the same 8 seeds. These are reported, not judged: they say which mutations are large enough to be selected on their own and which need to accumulate."
+  },
+  "exclusions_and_stopping": {
+    "runs": "every probe and the audit run exactly once; the probes are deterministic, so a rerun reproduces them",
+    "after_outcomes": "this file, the seeds, and the thresholds are not revised after the results are produced; a failing locus is reported, not tuned until it passes"
+  },
+  "outputs": {
+    "machine_report": "docs/experiment-004-result.json",
+    "written_report": "docs/experiment-004-result.md"
+  }
+}

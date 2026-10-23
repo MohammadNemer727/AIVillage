@@ -19,10 +19,10 @@ use sim_format::{PopulationBlockReason, PopulationLifecycleEvent};
 use sim_luanti::{
     Bridge, LifecycleConfig, PopulationCoordinator, TraceRecord, ablation, benchmark,
     bind_loopback, contingency, episodic_eval, foraging, genome_audit, lineage, load_state,
-    prediction_eval, reaching, replay_trace, save_state, serve_once_concurrent,
+    locus_probe, prediction_eval, reaching, replay_trace, save_state, serve_once_concurrent,
 };
 
-const USAGE: &str = "usage: sim-luanti [replay <trace.ndjson>|prediction-eval|episodic-eval|prediction-ablation <trace.ndjson> [report.json]|online-prediction off|policy|prediction|both|graph <trace.ndjson> [report.json]|founders|genome-audit [births]|lineage <genome-rotation> <population-report.json>|benchmark|contingency|foraging|reaching [report.json] [report.md]]";
+const USAGE: &str = "usage: sim-luanti [replay <trace.ndjson>|prediction-eval|episodic-eval|prediction-ablation <trace.ndjson> [report.json]|online-prediction off|policy|prediction|both|graph <trace.ndjson> [report.json]|founders|genome-audit [births] [legacy|v2]|locus-probe [seed,seed,...]|mutation-effect [seed,seed,...]|lineage <genome-rotation> <population-report.json>|benchmark|contingency|foraging|reaching [report.json] [report.md]]";
 
 /// Decisions between saves of the founder's brain (about ten seconds of watched play).
 const SAVE_EVERY_DECISIONS: u64 = 40;
@@ -377,18 +377,81 @@ fn stall_config() -> Result<Option<(u64, Duration)>, Box<dyn std::error::Error +
     )))
 }
 
-/// Runs an offline command: evaluation, replay, lineage, or a fixed simulated test.
-fn run_subcommand(
+/// Offline commands about genomes: lineage reconstruction, founder listings, the mutation audit
+/// and the matched locus probes. Returns `None` when `command` is not one of them.
+fn run_genome_subcommand(
     command: &str,
-    mut args: impl Iterator<Item = String>,
+    args: &mut impl Iterator<Item = String>,
     config: &ServerConfig,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Option<()>, Box<dyn std::error::Error + Send + Sync>> {
     let &ServerConfig {
         seed,
         agent_id,
         founder_count,
         ..
     } = config;
+    if command == "lineage" {
+        let (Some(rotation), Some(path), None) = (args.next(), args.next(), args.next()) else {
+            return Err(USAGE.into());
+        };
+        let report: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+        let manifest = serde_json::from_value(report["manifest"].clone())?;
+        return Ok(Some(emit(
+            &lineage::reconstruct(&manifest, agent_id, founder_count, rotation.parse()?)?,
+            None,
+        )?));
+    }
+    if command == "locus-probe" {
+        let seeds: Vec<u64> = match args.next() {
+            Some(list) => list.split(',').map(str::parse).collect::<Result<_, _>>()?,
+            None => vec![31, 37, 41, 43, 47, 53, 59, 61],
+        };
+        if args.next().is_some() || seeds.is_empty() {
+            return Err(USAGE.into());
+        }
+        return Ok(Some(emit(&locus_probe::run_all(&seeds), None)?));
+    }
+    if command == "mutation-effect" {
+        let seeds: Vec<u64> = match args.next() {
+            Some(list) => list.split(',').map(str::parse).collect::<Result<_, _>>()?,
+            None => vec![31, 37, 41, 43, 47, 53, 59, 61],
+        };
+        if args.next().is_some() || seeds.is_empty() {
+            return Err(USAGE.into());
+        }
+        return Ok(Some(emit(&locus_probe::mutation_effects(&seeds), None)?));
+    }
+    if command == "genome-audit" {
+        let births = args.next().map_or(Ok(1_000_000), |value| value.parse())?;
+        let expression = match args.next().as_deref() {
+            None | Some("legacy") => ExpressionVersion::Legacy,
+            Some("v2") => ExpressionVersion::V2,
+            Some(_) => return Err(USAGE.into()),
+        };
+        if args.next().is_some() {
+            return Err(USAGE.into());
+        }
+        return Ok(Some(emit(&genome_audit::audit(births, expression), None)?));
+    }
+    if command == "founders" {
+        if args.next().is_some() {
+            return Err(USAGE.into());
+        }
+        return Ok(Some(emit(
+            &founder_genotypes(seed, agent_id, founder_count),
+            None,
+        )?));
+    }
+    Ok(None)
+}
+
+/// Runs an offline command: evaluation, replay, lineage, or a fixed simulated test.
+fn run_subcommand(
+    command: &str,
+    mut args: impl Iterator<Item = String>,
+    config: &ServerConfig,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let &ServerConfig { seed, agent_id, .. } = config;
     if matches!(
         command,
         "prediction-eval" | "episodic-eval" | "prediction-ablation" | "online-prediction"
@@ -411,29 +474,8 @@ fn run_subcommand(
             _ => emit(&ablation::frozen_replay(seed, &records)?, output),
         };
     }
-    if command == "lineage" {
-        let (Some(rotation), Some(path), None) = (args.next(), args.next(), args.next()) else {
-            return Err(USAGE.into());
-        };
-        let report: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
-        let manifest = serde_json::from_value(report["manifest"].clone())?;
-        return emit(
-            &lineage::reconstruct(&manifest, agent_id, founder_count, rotation.parse()?)?,
-            None,
-        );
-    }
-    if command == "genome-audit" {
-        let births = args.next().map_or(Ok(1_000_000), |value| value.parse())?;
-        if args.next().is_some() {
-            return Err(USAGE.into());
-        }
-        return emit(&genome_audit::audit(births), None);
-    }
-    if command == "founders" {
-        if args.next().is_some() {
-            return Err(USAGE.into());
-        }
-        return emit(&founder_genotypes(seed, agent_id, founder_count), None);
+    if let Some(done) = run_genome_subcommand(command, &mut args, config)? {
+        return Ok(done);
     }
     if command == "benchmark" {
         let report = benchmark::run();
