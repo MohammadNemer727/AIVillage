@@ -103,6 +103,10 @@ pub enum ExperimentMode {
     /// Live energy: learns from its own drive reduction while hungry, explores by curiosity
     /// while sated.
     Homeostatic,
+    /// A fixed exploratory gait (deterministic motor babbling): walk, turn, and pause in short
+    /// segments. It is a test driver that gives memory something to use, standing in for evolved
+    /// exploration; it learns nothing and reads nothing.
+    Wander,
 }
 
 /// Number of primitive experiments the live policy chooses between.
@@ -828,6 +832,11 @@ impl AgentRuntime {
                 let (action, score) = self.homeostatic_choice(&observation, smell, reward);
                 (action, score, baseline_action)
             }
+            ExperimentMode::Wander => (
+                wander_action(self.seed, self.agent_id, decision_tick),
+                0,
+                baseline_action,
+            ),
         };
         let pre_episodic_action = action;
         let (recommended_action, mut episodic_policy) =
@@ -840,7 +849,7 @@ impl AgentRuntime {
         // Self-motion first: integrate the action just executed and remember what it felt like,
         // then let remembered places steer. Untouched while spatial memory is unused.
         let felt_utility = if self.state.recurrent_predictor.prediction_ready {
-            episodic::felt_utility(
+            episodic::place_utility(
                 &self.state.recurrent_predictor.previous_senses,
                 &current_source,
             )
@@ -849,6 +858,8 @@ impl AgentRuntime {
         };
         self.state.spatial_memory.observe(
             self.state.recurrent_predictor.previous_action,
+            observation.body.held_ms,
+            external.orientation,
             external.touch > 0,
             felt_utility,
             decision_tick,
@@ -911,10 +922,34 @@ impl AgentRuntime {
     }
 }
 
+/// Length of one wander segment in decisions (2.5 s at the 100 ms decision interval).
+const WANDER_SEGMENT: u64 = 25;
+
+/// The fixed exploratory gait: each segment is an idle pause (one in six), or a turn of up to
+/// nine decisions followed by walking straight ahead. Pure in the seed, individual, and tick.
+fn wander_action(seed: u64, agent_id: u64, tick: u64) -> PrimitiveAction {
+    let segment = derive(seed, agent_id, tick / WANDER_SEGMENT, 0x5741_4E44);
+    if (segment >> 16).is_multiple_of(6) {
+        return PrimitiveAction::default();
+    }
+    let turning = segment % 10;
+    if tick % WANDER_SEGMENT < turning {
+        PrimitiveAction {
+            turn: if (segment >> 8) & 1 == 0 { 256 } else { -256 },
+            ..PrimitiveAction::default()
+        }
+    } else {
+        PrimitiveAction {
+            thrust: 256,
+            ..PrimitiveAction::default()
+        }
+    }
+}
+
 /// Fingerprint of whichever learner the experiment mode uses, or zero for the baseline.
 fn learner_fingerprint(state: &AgentRuntimeState) -> u64 {
     match state.experiment_mode {
-        ExperimentMode::PredictiveBaseline => 0,
+        ExperimentMode::PredictiveBaseline | ExperimentMode::Wander => 0,
         ExperimentMode::AffordanceDiscovery => affordance_fingerprint(&state.affordance),
         ExperimentMode::Homeostatic => derive(
             affordance_fingerprint(&state.affordance),
@@ -1227,6 +1262,31 @@ impl EnvironmentAdapter for FakeEnvironment {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn wander_is_deterministic_mobile_and_varied() {
+        let first: Vec<_> = (0..900)
+            .map(|tick| super::wander_action(7, 3, tick))
+            .collect();
+        let second: Vec<_> = (0..900)
+            .map(|tick| super::wander_action(7, 3, tick))
+            .collect();
+        assert_eq!(first, second);
+        let walking = first.iter().filter(|action| action.thrust != 0).count();
+        let turning = first.iter().filter(|action| action.turn != 0).count();
+        let idle = first
+            .iter()
+            .filter(|action| **action == PrimitiveAction::default())
+            .count();
+        assert!(
+            walking > 300 && turning > 40 && idle > 40,
+            "{walking} {turning} {idle}"
+        );
+        let other: Vec<_> = (0..900)
+            .map(|tick| super::wander_action(8, 3, tick))
+            .collect();
+        assert_ne!(first, other);
+    }
+
     use sim_kernels::gpu::GpuFrame;
 
     use super::{

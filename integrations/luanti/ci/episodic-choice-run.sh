@@ -19,7 +19,9 @@ games=${LUANTI_GAMES:-"$HOME/.minetest/games"}
 rm -rf "$world"
 mkdir -p "$world/worldmods" "$world/home"
 cp -R "$root/games/ai_village/mods/ai_bridge" "$world/worldmods/ai_bridge"
-cp -R "$root/ci/episodic_choice_ab" "$world/worldmods/ai_bridge_episodic_choice_ab"
+fixture=${EPISODIC_CHOICE_FIXTURE:-episodic_choice_ab}
+result_name=${EPISODIC_CHOICE_RESULT:-episodic-choice-result.json}
+cp -R "$root/ci/$fixture" "$world/worldmods/ai_bridge_$fixture"
 cat >"$world/world.mt" <<EOF
 gameid = mineclone2
 backend = sqlite3
@@ -51,6 +53,7 @@ episodic_choice_protocol = $protocol
 episodic_choice_warmup = 24
 episodic_choice_scored = $scored
 episodic_choice_reverse_after = $reverse_after
+${FIXTURE_CONFIG:-}
 EOF
 cat >"$world/founder-client.conf" <<'EOF'
 video_driver = opengl
@@ -82,7 +85,7 @@ trap cleanup EXIT INT TERM
 SIM_LUANTI_SEED="$seed" SIM_LUANTI_AGENT_ID=1 SIM_LUANTI_PORT="$bridge_port" \
   SIM_LUANTI_FOUNDER_COUNT=1 SIM_LUANTI_POPULATION_CAPACITY=1 \
   SIM_LUANTI_REPRODUCTIVE_MATURITY=1000000 \
-  SIM_LUANTI_MODE=affordance SIM_LUANTI_EPISODIC="$arm" \
+  SIM_LUANTI_MODE="${EPISODIC_CHOICE_MODE:-affordance}" SIM_LUANTI_EPISODIC="$arm" \
   SIM_LUANTI_TRACE="$world/bridge.ndjson" SIM_LUANTI_STATE="$world/founder-brain.json" \
   "$bridge" >"$world/bridge.log" 2>&1 &
 bridge_pid=$!
@@ -108,14 +111,14 @@ HOME="$world/home" LUANTI_GAME_PATH="$games" SDL_VIDEODRIVER=offscreen \
   --port "$server_port" --name founder >"$world/founder-client.log" 2>&1 &
 client_pid=$!
 for _ in $(seq 1 1200); do
-  [ -f "$world/episodic-choice-result.json" ] && break
+  [ -f "$world/$result_name" ] && break
   kill -0 "$bridge_pid" 2>/dev/null && kill -0 "$server_pid" 2>/dev/null \
     && kill -0 "$client_pid" 2>/dev/null || {
       cat "$world/server.log"; cat "$world/bridge.log"; exit 1;
     }
   sleep 0.5
 done
-[ -f "$world/episodic-choice-result.json" ] || {
+[ -f "$world/$result_name" ] || {
   echo "episodic choice A/B arm timed out" >&2; exit 1;
 }
 cleanup

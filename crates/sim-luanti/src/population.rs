@@ -539,7 +539,7 @@ impl PopulationCoordinator {
         let observed_reserve = request.observation.interoception.map(|body| body.fullness);
         let transition = individual
             .runtime
-            .step(request.observation)
+            .step(crate::with_body_clock(&request))
             .map_err(BridgeError::Sequence)?;
         if let Some(observed) = observed_reserve {
             let recovery = observed / 64;

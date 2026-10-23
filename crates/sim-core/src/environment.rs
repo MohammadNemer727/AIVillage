@@ -94,6 +94,10 @@ pub struct BodyProprioception {
     /// something edible within reach (body contract version 5). Never names what was eaten.
     #[serde(default)]
     pub swallowed: u16,
+    /// The body's own sense of time: how long, in milliseconds, the previous action was held
+    /// before this observation. Zero when the endpoint does not report it.
+    #[serde(default)]
+    pub held_ms: u16,
 }
 
 /// What the body feels of itself (body contract version 6): how healthy, fed and breathing it is,

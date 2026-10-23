@@ -401,7 +401,7 @@ pub fn replay_trace(
     runtime.set_spatial_config(spatial);
     for record in records {
         let transition = runtime
-            .step(record.request.observation)
+            .step(with_body_clock(&record.request))
             .map_err(BridgeError::Sequence)?;
         let mut replayed = response_for(
             record.request.agent_id,
@@ -417,6 +417,18 @@ pub fn replay_trace(
         }
     }
     Ok(runtime)
+}
+
+/// The observation the runtime receives: what Lua sent, plus the body's own sense of time (how
+/// long the previous action was held), which the bridge already measures as application
+/// evidence. Live handling and replay must derive it identically.
+pub(crate) fn with_body_clock(request: &BridgeRequest) -> EnvironmentObservation {
+    let mut observation = request.observation;
+    if observation.body.held_ms == 0 {
+        observation.body.held_ms =
+            u16::try_from(request.trace.accumulated_dtime_us / 1_000).unwrap_or(u16::MAX);
+    }
+    observation
 }
 
 /// Checks that an evaluation trace has at least `minimum` contiguous current-protocol records

@@ -295,6 +295,12 @@ end)
 -- Automated body tests (integrations/luanti/ci/body-test.sh) may steer the held action and read
 -- the bridge state through this table; it exists only when ai_bridge_test_hooks is set.
 local test_hooks = minetest.settings:get_bool("ai_bridge_test_hooks", false)
+-- A fixture may set ai_bridge_test.paused to hold every body out of the bridge until it is ready,
+-- so no decision is made (and no motion integrated) before the experiment begins.
+local function bridge_paused()
+  local hooks = test_hooks and rawget(_G, "ai_bridge_test")
+  return hooks and hooks.paused
+end
 if test_hooks then
   rawset(_G, "ai_bridge_test", {state = state, states = states, states_by_name = states_by_name})
 end
@@ -1030,7 +1036,9 @@ local function drive_founder(state, player, dtime)
     if (action.next_slot or 0) > 0 then next_item(player) end
     chew(state, player, action.jaw or 0)
   end
-  if not state.pending and state.elapsed >= step_seconds then send_transition(state, body, state.elapsed) end
+  if not state.pending and state.elapsed >= step_seconds and not bridge_paused() then
+    send_transition(state, body, state.elapsed)
+  end
 end
 
 if play then
@@ -1154,7 +1162,9 @@ minetest.register_entity("ai_bridge:founder", {
         end
       end
     end
-    if not state.pending and state.elapsed >= step_seconds then send_transition(state, self, state.elapsed) end
+    if not state.pending and state.elapsed >= step_seconds and not bridge_paused() then
+      send_transition(state, self, state.elapsed)
+    end
   end,
 })
 

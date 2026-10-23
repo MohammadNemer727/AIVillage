@@ -645,10 +645,15 @@ fn outcome(source_before: &[i16], source_after: &[i16]) -> ([i16; 3], i16) {
     (body_delta, drive_delta)
 }
 
-/// Signed felt utility of the change between two felt states, for memories other than events.
-pub(super) fn felt_utility(source_before: &[i16], source_after: &[i16]) -> i32 {
-    let (body_delta, drive_delta) = outcome(source_before, source_after);
-    body_utility(drive_delta, body_delta)
+/// Felt value of what happened *at a place*: relief from being fed or healed, harm from being
+/// hurt. Ordinary hunger is the body's own clock, not something a place did, so a falling
+/// fullness is never counted as harm.
+pub(super) fn place_utility(source_before: &[i16], source_after: &[i16]) -> i32 {
+    let (body_delta, _) = outcome(source_before, source_after);
+    let health = i32::from(body_delta[0]);
+    let fullness = i32::from(body_delta[1]);
+    let pain = i32::from(body_delta[2]);
+    4 * health.max(0) + 2 * fullness.max(0) - 4 * (-health).max(0) - 4 * pain.max(0)
 }
 
 fn body_utility(drive_delta: i16, body_delta: [i16; 3]) -> i32 {

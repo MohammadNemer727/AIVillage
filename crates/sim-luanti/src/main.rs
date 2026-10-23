@@ -149,10 +149,11 @@ fn founder_bridge(
     let mode = match std::env::var("SIM_LUANTI_MODE").as_deref() {
         Ok("affordance") => ExperimentMode::AffordanceDiscovery,
         Ok("homeostatic") => ExperimentMode::Homeostatic,
+        Ok("wander") => ExperimentMode::Wander,
         Ok("baseline") | Err(_) => ExperimentMode::PredictiveBaseline,
         Ok(value) => {
             return Err(format!(
-                "SIM_LUANTI_MODE must be baseline, affordance or homeostatic, got {value}"
+                "SIM_LUANTI_MODE must be baseline, affordance, homeostatic or wander, got {value}"
             )
             .into());
         }
